@@ -14,6 +14,7 @@
 
 - [完整开发计划与 WBS](docs/DEVELOPMENT_PLAN.md)
 - [验收清单](docs/ACCEPTANCE.md)
+- [画质、细节与口型控制](docs/AVATAR_QUALITY.md)
 - [依赖和许可记录](docs/DEPENDENCIES.md)
 - [GitHub 提交安排](docs/GITHUB_WORKFLOW.md)
 
