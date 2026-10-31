@@ -20,6 +20,7 @@ export interface Job {
   product_version: number; persona_version: number; epoch: number
   source: 'manual' | 'deepseek'; question: string; text: string; status: JobStatus
   reason: string; error_code: string; input_tokens: number; output_tokens: number
+  priority?: number; expires_at?: string | null; business_fingerprint?: string
   created_at: string; updated_at: string
 }
 export interface QualityCheck { key: string; label: string; passed: boolean; notes: string }

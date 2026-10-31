@@ -152,6 +152,12 @@ func (s *Store) Recover(ctx context.Context) error {
 	if _, err = tx.Exec(ctx, `UPDATE speech_jobs SET status='delivery_unknown',error_code='restart_delivery_unknown',reason='发送期间服务重启，不能确认上游结果；请接管场次核对，禁止自动重播。',updated_at=now() WHERE status='sending'`); err != nil {
 		return dbError(err)
 	}
+	if err = recoverOutputs(ctx, tx); err != nil {
+		return err
+	}
+	if err = recoverAutomation(ctx, tx); err != nil {
+		return err
+	}
 	return dbError(tx.Commit(ctx))
 }
 
@@ -202,7 +208,7 @@ type querier interface {
 const productColumns = `id::text,shop_id::text,title,sku,description,specs,price_cents,stock,active,version,expires_at,updated_at`
 const personaColumns = `shop_id::text,name,tone,prompt,version,updated_at`
 const sessionColumns = `id::text,shop_id::text,title,status,epoch,media_session_id,created_at,updated_at`
-const jobColumns = `id::text,shop_id::text,session_id::text,product_id::text,product_version,persona_version,epoch,source,question,text,status,reason,error_code,input_tokens,output_tokens,created_at,updated_at,knowledge_version,approved_at,audio_ready`
+const jobColumns = `id::text,shop_id::text,session_id::text,product_id::text,product_version,persona_version,epoch,source,question,text,status,reason,error_code,input_tokens,output_tokens,created_at,updated_at,knowledge_version,approved_at,audio_ready,business_fingerprint,delivery_lease_id::text,delivery_generation,priority,expires_at,audio_engine_id`
 
 func scanProduct(r scanner) (p domain.Product, err error) {
 	err = r.Scan(&p.ID, &p.ShopID, &p.Title, &p.SKU, &p.Description, &p.Specs, &p.PriceCents, &p.Stock, &p.Active, &p.Version, &p.ExpiresAt, &p.UpdatedAt)
@@ -217,7 +223,7 @@ func scanSession(r scanner) (p domain.Session, err error) {
 	return p, dbError(err)
 }
 func scanJob(r scanner) (p domain.Job, err error) {
-	err = r.Scan(&p.ID, &p.ShopID, &p.SessionID, &p.ProductID, &p.ProductVersion, &p.PersonaVersion, &p.Epoch, &p.Source, &p.Question, &p.Text, &p.Status, &p.Reason, &p.ErrorCode, &p.InputTokens, &p.OutputTokens, &p.CreatedAt, &p.UpdatedAt, &p.KnowledgeVersion, &p.ApprovedAt, &p.AudioReady)
+	err = r.Scan(&p.ID, &p.ShopID, &p.SessionID, &p.ProductID, &p.ProductVersion, &p.PersonaVersion, &p.Epoch, &p.Source, &p.Question, &p.Text, &p.Status, &p.Reason, &p.ErrorCode, &p.InputTokens, &p.OutputTokens, &p.CreatedAt, &p.UpdatedAt, &p.KnowledgeVersion, &p.ApprovedAt, &p.AudioReady, &p.BusinessFingerprint, &p.DeliveryLeaseID, &p.DeliveryGeneration, &p.Priority, &p.ExpiresAt, &p.AudioEngineID)
 	return p, dbError(err)
 }
 
@@ -356,7 +362,7 @@ func (s *Store) ListKnowledge(ctx context.Context, shopID string) ([]domain.Know
 	return listKnowledge(ctx, s.pool, shopID)
 }
 func listKnowledge(ctx context.Context, q querier, shopID string) ([]domain.Knowledge, error) {
-	r, err := q.Query(ctx, "SELECT id::text,shop_id::text,title,content,kind,updated_at FROM knowledge WHERE shop_id=$1 ORDER BY updated_at DESC LIMIT 1000", shopID)
+	r, err := q.Query(ctx, "SELECT id::text,shop_id::text,title,content,kind,updated_at FROM knowledge WHERE shop_id=$1 AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1000", shopID)
 	if err != nil {
 		return nil, dbError(err)
 	}
@@ -459,7 +465,7 @@ func (s *Store) ChangeSession(ctx context.Context, shopID, id, action string) (d
 		return domain.Session{}, dbError(err)
 	}
 	defer tx.Rollback(ctx)
-	p, err := scanSession(tx.QueryRow(ctx, "SELECT "+sessionColumns+" FROM live_sessions WHERE id=$1 AND shop_id=$2 FOR UPDATE", id, shopID))
+	p, err := outputSession(ctx, tx, shopID, id, "FOR UPDATE")
 	if err != nil {
 		return p, err
 	}
@@ -480,11 +486,11 @@ func (s *Store) ChangeSession(ctx context.Context, shopID, id, action string) (d
 		if err != nil {
 			return p, err
 		}
-		if _, err = tx.Exec(ctx, `UPDATE speech_jobs SET status='cancelled',reason='场次接管或结束，旧执行批次已作废。',error_code='session_interrupted',updated_at=now() WHERE session_id=$1 AND status IN ('draft','blocked','approved','queued','synthesizing','ready','failed')`, id); err != nil {
-			return p, dbError(err)
+		if err = invalidateOutput(ctx, tx, id, action); err != nil {
+			return p, err
 		}
-		if _, err = tx.Exec(ctx, `UPDATE speech_jobs SET status='delivery_unknown',reason='接管时发送尚未确认；需停止上游并核对，不能自动重播。',error_code='interrupted_in_flight',updated_at=now() WHERE session_id=$1 AND status='sending'`, id); err != nil {
-			return p, dbError(err)
+		if err = cancelSessionJobs(ctx, tx, id); err != nil {
+			return p, err
 		}
 	}
 	if err != nil {
@@ -497,13 +503,30 @@ func (s *Store) ChangeSession(ctx context.Context, shopID, id, action string) (d
 }
 
 func (s *Store) BindMedia(ctx context.Context, shopID, id string, epoch int64, mediaID string) (domain.Session, error) {
-	p, err := scanSession(s.pool.QueryRow(ctx, "UPDATE live_sessions SET media_session_id=$4,updated_at=now() WHERE id=$1 AND shop_id=$2 AND epoch=$3 AND status<>'ended' RETURNING "+sessionColumns, id, shopID, epoch, mediaID))
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		if _, e := s.GetSession(ctx, shopID, id); e == nil {
-			return p, domain.Conflict("stale_epoch", "连接过程中场次状态改变，媒体会话未绑定。")
-		}
+		return domain.Session{}, dbError(err)
 	}
-	return p, err
+	defer tx.Rollback(ctx)
+	p, err := outputSession(ctx, tx, shopID, id, "FOR UPDATE")
+	if err != nil {
+		return p, err
+	}
+	if p.Epoch != epoch || p.Status == "ended" {
+		return p, domain.Conflict("stale_epoch", "连接过程中场次状态改变，媒体会话未绑定。")
+	}
+	o, err := readOutput(ctx, tx, shopID, id, "FOR SHARE")
+	if err != nil {
+		return p, err
+	}
+	if o.Enabled {
+		return p, domain.Conflict("output_managed", "独立输出已启用，管理预览不能替换其连接。")
+	}
+	p, err = scanSession(tx.QueryRow(ctx, "UPDATE live_sessions SET media_session_id=$2,updated_at=now() WHERE id=$1 RETURNING "+sessionColumns, id, mediaID))
+	if err != nil {
+		return p, err
+	}
+	return p, dbError(tx.Commit(ctx))
 }
 
 func (s *Store) GetQuality(ctx context.Context, shopID string) (domain.QualityProfile, error) {

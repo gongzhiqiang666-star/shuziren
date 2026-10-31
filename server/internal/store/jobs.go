@@ -33,6 +33,10 @@ func snapshot(ctx context.Context, tx pgx.Tx, shop, session, product string) (do
 		return s, err
 	}
 	s.Knowledge, err = listKnowledge(ctx, tx, shop)
+	if err != nil {
+		return s, err
+	}
+	err = loadBusinessSnapshot(ctx, tx, &s, time.Now())
 	return s, err
 }
 
@@ -70,6 +74,7 @@ func (s *Store) CreateJob(ctx context.Context, original domain.Snapshot, j domai
 	j.PersonaVersion = original.Persona.Version
 	j.KnowledgeVersion = original.KnowledgeVersion
 	j.Epoch = original.Session.Epoch
+	j.BusinessFingerprint = original.Business.Fingerprint
 	if err = domain.ValidateJob(j, current, time.Now()); err != nil {
 		return j, err
 	}
@@ -80,7 +85,7 @@ func (s *Store) CreateJob(ctx context.Context, original domain.Snapshot, j domai
 	if err != nil {
 		return j, err
 	}
-	j, err = scanJob(tx.QueryRow(ctx, `INSERT INTO speech_jobs(id,shop_id,session_id,product_id,product_version,persona_version,knowledge_version,epoch,source,question,text,status,reason,input_tokens,output_tokens,context_snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING `+jobColumns, j.ID, j.ShopID, j.SessionID, j.ProductID, j.ProductVersion, j.PersonaVersion, j.KnowledgeVersion, j.Epoch, j.Source, j.Question, j.Text, j.Status, j.Reason, j.InputTokens, j.OutputTokens, b))
+	j, err = scanJob(tx.QueryRow(ctx, `INSERT INTO speech_jobs(id,shop_id,session_id,product_id,product_version,persona_version,knowledge_version,epoch,source,question,text,status,reason,input_tokens,output_tokens,context_snapshot,business_fingerprint) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING `+jobColumns, j.ID, j.ShopID, j.SessionID, j.ProductID, j.ProductVersion, j.PersonaVersion, j.KnowledgeVersion, j.Epoch, j.Source, j.Question, j.Text, j.Status, j.Reason, j.InputTokens, j.OutputTokens, b, j.BusinessFingerprint))
 	if err != nil {
 		return j, err
 	}
@@ -196,7 +201,7 @@ func (s *Store) QueueSynthesis(ctx context.Context, shop, id string) (domain.Job
 
 func (s *Store) ClaimNext(ctx context.Context) (domain.Job, error) {
 	var id, shop string
-	err := s.pool.QueryRow(ctx, "SELECT id::text,shop_id::text FROM speech_jobs WHERE status='queued' ORDER BY created_at,id LIMIT 1").Scan(&id, &shop)
+	err := s.pool.QueryRow(ctx, "SELECT id::text,shop_id::text FROM speech_jobs WHERE status='queued' ORDER BY priority DESC,created_at,id LIMIT 1").Scan(&id, &shop)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Job{}, ErrNoWork
 	}
@@ -257,6 +262,9 @@ func (s *Store) Revalidate(ctx context.Context, shop, id, requiredStatus string)
 }
 
 func (s *Store) FinishSynthesis(ctx context.Context, shop, id string) (domain.Job, error) {
+	return s.FinishSynthesisWithIdentity(ctx, shop, id, "")
+}
+func (s *Store) FinishSynthesisWithIdentity(ctx context.Context, shop, id, engine string) (domain.Job, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return domain.Job{}, dbError(err)
@@ -279,7 +287,7 @@ func (s *Store) FinishSynthesis(ctx context.Context, shop, id string) (domain.Jo
 		}
 		return j, e
 	}
-	j, err = scanJob(tx.QueryRow(ctx, "UPDATE speech_jobs SET status='ready',audio_ready=true,reason='音频已就绪，尚未发送。',error_code='',updated_at=now() WHERE id=$1 RETURNING "+jobColumns, id))
+	j, err = scanJob(tx.QueryRow(ctx, "UPDATE speech_jobs SET status='ready',audio_ready=true,audio_engine_id=$2,reason='音频已就绪，尚未发送。',error_code='',updated_at=now() WHERE id=$1 RETURNING "+jobColumns, id, engine))
 	if err != nil {
 		return j, err
 	}
@@ -290,7 +298,7 @@ func (s *Store) FinishSynthesis(ctx context.Context, shop, id string) (domain.Jo
 }
 
 func (s *Store) FailSynthesis(ctx context.Context, shop, id, code, reason string) error {
-	_, err := s.pool.Exec(ctx, "UPDATE speech_jobs SET status='failed',error_code=$3,reason=$4,updated_at=now() WHERE id=$1 AND shop_id=$2 AND status='synthesizing'", id, shop, code, reason)
+	_, err := s.pool.Exec(ctx, "UPDATE speech_jobs SET status='failed',error_code=$3,reason=$4,approved_at=CASE WHEN $3='tts_engine_changed' THEN NULL ELSE approved_at END,updated_at=now() WHERE id=$1 AND shop_id=$2 AND status='synthesizing'", id, shop, code, reason)
 	return dbError(err)
 }
 
@@ -310,10 +318,14 @@ func (s *Store) StartSend(ctx context.Context, shop, id string) (domain.Job, dom
 	if j.Status != "ready" || !j.AudioReady {
 		return j, snap.Session, domain.Conflict("not_ready", "只有已合成且未发送的音频可以发送；结果不明时请接管核对。")
 	}
+	lease, generation, err := outputSendLease(ctx, tx, snap.Session)
+	if err != nil {
+		return j, snap.Session, err
+	}
 	if snap.Session.MediaSessionID == nil || *snap.Session.MediaSessionID == "" {
 		return j, snap.Session, domain.Conflict("media_not_connected", "请先建立该场次的 LiveTalking 预览连接。")
 	}
-	j, err = updateJob(ctx, tx, j, "sending", "正在提交上游；尚不能确认是否被接收。", "")
+	j, err = scanJob(tx.QueryRow(ctx, "UPDATE speech_jobs SET status='sending',reason='正在提交上游；尚不能确认是否被接收。',error_code='',delivery_lease_id=$2,delivery_generation=$3,updated_at=now() WHERE id=$1 RETURNING "+jobColumns, j.ID, lease, generation))
 	if err != nil {
 		return j, snap.Session, err
 	}
@@ -339,7 +351,12 @@ func (s *Store) FinishSend(ctx context.Context, shop, id string, accepted bool) 
 		return j, dbError(tx.Commit(ctx))
 	}
 	status, reason, code := "delivery_unknown", "上游发送结果不明确，请接管场次核对；禁止自动重播。", "media_delivery_unknown"
-	if accepted && domain.ValidateJob(j, snap, time.Now()) == nil {
+	leaseValid := true
+	if j.DeliveryLeaseID != nil {
+		lease, generation, e := outputSendLease(ctx, tx, snap.Session)
+		leaseValid = e == nil && lease != nil && *lease == *j.DeliveryLeaseID && generation == j.DeliveryGeneration
+	}
+	if accepted && leaseValid && domain.ValidateJob(j, snap, time.Now()) == nil {
 		status = "sent"
 		reason = "上游已接收音频；不代表实际播出完成。"
 		code = ""
@@ -375,6 +392,9 @@ func (s *Store) CancelJob(ctx context.Context, shop, id string) (domain.Job, err
 	if err != nil {
 		return j, err
 	}
+	if _, err = tx.Exec(ctx, "UPDATE speech_schedules SET status='cancelled',reason='对应任务已取消。',error_code='job_cancelled',updated_at=now() WHERE job_id=$1 AND status='scheduled'", id); err != nil {
+		return j, dbError(err)
+	}
 	if err = audit(ctx, tx, shop, id, "job_cancelled", map[string]any{}); err != nil {
 		return j, err
 	}
@@ -383,4 +403,15 @@ func (s *Store) CancelJob(ctx context.Context, shop, id string) (domain.Job, err
 
 func (s *Store) RecordMediaStop(ctx context.Context, shop, session, status string) error {
 	return audit(ctx, s.pool, shop, session, "media_stop", map[string]any{"status": status})
+}
+
+func cancelSessionJobs(ctx context.Context, tx pgx.Tx, id string) error {
+	if _, err := tx.Exec(ctx, `UPDATE speech_jobs SET status='cancelled',reason='场次接管或结束，旧执行批次已作废。',error_code='session_interrupted',updated_at=now() WHERE session_id=$1 AND status IN ('draft','blocked','approved','queued','synthesizing','ready','failed')`, id); err != nil {
+		return dbError(err)
+	}
+	_, err := tx.Exec(ctx, `UPDATE speech_jobs SET status='delivery_unknown',reason='接管时发送尚未确认；需停止上游并核对，不能自动重播。',error_code='interrupted_in_flight',updated_at=now() WHERE session_id=$1 AND status='sending'`, id)
+	if err != nil {
+		return dbError(err)
+	}
+	return cancelSessionSchedules(ctx, tx, id)
 }

@@ -5,11 +5,13 @@ import { dateTime, expired, localDateTime, money, parseMoneyToCents } from '../d
 import type { NoticeSink, Product } from '../types'
 import DialogShell from './DialogShell.vue'
 import Icon from './Icon.vue'
+import HistoryDialog from '../business/HistoryDialog.vue'
 
 const props = defineProps<{ api: ApiClient; shopId: string; products: Product[]; reload: () => Promise<void>; notify: NoticeSink }>()
 const search = ref('')
 const open = ref(false)
 const editing = ref<Product | null>(null)
+const history = ref<Product | null>(null)
 const saving = ref(false)
 const error = ref('')
 const form = reactive({ title: '', sku: '', description: '', specs: '', price: '', stock: '0', active: true, expires: '' })
@@ -47,7 +49,7 @@ async function save() {
     <div v-if="!products.length" class="empty-state"><div class="empty-icon"><Icon name="box" :size="32" /></div><h3>先录入一件商品</h3><p>补充商品事实后，才能生成和审核讲解话术。</p><button class="button secondary" @click="edit(null)">添加第一件商品<Icon name="arrow" :size="17" /></button></div>
     <div v-else-if="!filtered.length" class="empty-state compact"><h3>没有匹配的商品</h3><p>试试其他名称或清空搜索条件。</p></div>
     <div v-else class="table-scroll"><table><thead><tr><th>商品 / SKU</th><th>价格</th><th>库存</th><th>资料状态</th><th>版本 / 更新</th><th><span class="sr-only">操作</span></th></tr></thead><tbody>
-      <tr v-for="product in filtered" :key="product.id"><td><strong>{{ product.title }}</strong><div class="secondary-line">{{ product.sku || '未填写 SKU' }}</div></td><td class="price">{{ money(product.price_cents) }}</td><td>{{ product.stock }}</td><td><span class="badge" :class="!product.active ? 'neutral' : expired(product) ? 'danger' : 'success'">{{ !product.active ? '已停用' : expired(product) ? '已过期' : '可用于回复' }}</span><div v-if="product.expires_at" class="secondary-line">有效至 {{ dateTime(product.expires_at) }}</div></td><td><span class="mono">v{{ product.version }}</span><div class="secondary-line">{{ dateTime(product.updated_at) }}</div></td><td><button class="button ghost small" :aria-label="'编辑 ' + product.title" @click="edit(product)"><Icon name="edit" :size="16" />编辑</button></td></tr>
+      <tr v-for="product in filtered" :key="product.id"><td><strong>{{ product.title }}</strong><div class="secondary-line">{{ product.sku || '未填写 SKU' }}</div></td><td class="price">{{ money(product.price_cents) }}</td><td>{{ product.stock }}</td><td><span class="badge" :class="!product.active ? 'neutral' : expired(product) ? 'danger' : 'success'">{{ !product.active ? '已停用' : expired(product) ? '已过期' : '可用于回复' }}</span><div v-if="product.expires_at" class="secondary-line">有效至 {{ dateTime(product.expires_at) }}</div></td><td><span class="mono">v{{ product.version }}</span><div class="secondary-line">{{ dateTime(product.updated_at) }}</div></td><td><button class="button ghost small" :aria-label="'编辑 ' + product.title" @click="edit(product)"><Icon name="edit" :size="16" />编辑</button><button class="button ghost small" @click="history = product">历史</button></td></tr>
     </tbody></table></div>
   </section>
   <p class="page-note">金额按整数分保存。商品变更后会产生新版本；过期或已停用的商品无法继续生成和派发话术。</p>
@@ -65,4 +67,5 @@ async function save() {
       <div class="form-actions"><button class="button secondary" type="button" :disabled="saving" @click="open = false">取消</button><button class="button primary" :disabled="saving">{{ saving ? '正在保存…' : '保存商品' }}</button></div>
     </form>
   </DialogShell>
+  <HistoryDialog v-if="history" :api="api" :shop-id="shopId" kind="product" :record-id="history.id" :current-version="history.version" :title="history.title" @close="history = null" @restored="reload" />
 </template>

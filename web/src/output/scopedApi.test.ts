@@ -1,0 +1,30 @@
+import { afterEach, expect, it, vi } from 'vitest'
+import { OutputClient, outputLink, outputToken } from './scopedApi'
+afterEach(() => vi.unstubAllGlobals())
+it('输出链接仅在片段携带窄 token，不允许任意跳转路径', () => {
+  const link = outputLink('out_narrow', '/output', 'https://local.example')
+  expect(link).toBe('https://local.example/output#token=out_narrow')
+  expect(new URL(link).search).toBe('')
+  expect(outputToken(new URL(link).hash)).toBe('out_narrow')
+  expect(outputLink('out_narrow', '/output#token=out_narrow', 'https://local.example')).toBe(link)
+  expect(() => outputLink('out_narrow', '/output#token=out_other', 'https://local.example')).toThrow()
+  expect(() => outputLink('out_narrow', '/output?token=out_narrow', 'https://local.example')).toThrow()
+  expect(() => outputLink('out_narrow', '//evil.example', 'https://local.example')).toThrow()
+})
+it('输出客户端只能访问专属路由，不使用 cookie 或在 URL 暴露 token', async () => {
+  const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { online: false } })))
+  vi.stubGlobal('fetch', fetcher)
+  const client = new OutputClient('out_narrow')
+  await client.request('status', { receiverId: 'receiver-1' })
+  expect(fetcher.mock.calls[0]![0]).toBe('/output-api/v1/status?receiver_id=receiver-1')
+  expect(fetcher.mock.calls[0]![1]).toMatchObject({ headers: { Authorization: 'Bearer out_narrow' }, credentials: 'omit', referrerPolicy: 'no-referrer' })
+  await expect(client.request('shops' as 'status')).rejects.toMatchObject({ code: 'invalid_endpoint' })
+  expect(fetcher).toHaveBeenCalledTimes(1)
+})
+it('缺少授权不发请求，授权失效保留明确 401 供输出页终止', async () => {
+  const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 'output_unauthorized', message: '输出授权失效' } }), { status: 401 }))
+  vi.stubGlobal('fetch', fetcher)
+  await expect(new OutputClient('').request('status')).rejects.toMatchObject({ status: 401 })
+  expect(fetcher).not.toHaveBeenCalled()
+  await expect(new OutputClient('out_stale').request('status', { receiverId: 'r' })).rejects.toMatchObject({ status: 401, code: 'output_unauthorized' })
+})

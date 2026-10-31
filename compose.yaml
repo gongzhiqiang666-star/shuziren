@@ -28,6 +28,15 @@ services:
       TTS_BASE_URL: ${TTS_BASE_URL:-}
       TTS_API_KEY: ${TTS_API_KEY:-}
       LIVETALKING_BASE_URL: ${LIVETALKING_BASE_URL:-}
+      BGE_BASE_URL: ${BGE_BASE_URL:-}
+      BGE_API_KEY: ${BGE_API_KEY:-}
+      TAOBAO_APP_KEY: ${TAOBAO_APP_KEY:-}
+      TAOBAO_APP_SECRET: ${TAOBAO_APP_SECRET:-}
+      TAOBAO_SESSION: ${TAOBAO_SESSION:-}
+      TAOBAO_SHOP_ID: ${TAOBAO_SHOP_ID:-}
+      TAOBAO_GATEWAY: ${TAOBAO_GATEWAY:-https://gw.api.taobao.com/router/rest}
+      TAOBAO_TMC_GROUP: ${TAOBAO_TMC_GROUP:-default}
+      TAOBAO_POLL_ENABLED: ${TAOBAO_POLL_ENABLED:-0}
     ports:
       - "127.0.0.1:${APP_PORT:-8765}:8080"
     extra_hosts:

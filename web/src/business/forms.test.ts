@@ -1,0 +1,5 @@
+import { expect, it } from 'vitest'
+import { dateRange, optionalAmount, optionalRate, validHash } from './forms'
+it('未设置费率保留 null，显式零与未知不同', () => { expect(optionalRate('')).toBeNull(); expect(optionalRate('0')).toBe(0); expect(optionalRate('2.35')).toBe(2.35); expect(() => optionalRate('Infinity')).toThrow(); expect(() => optionalRate('-1')).toThrow(); expect(() => optionalRate('10000001')).toThrow() })
+it('活动金额精确转换整数分，时间必须有序', () => { expect(optionalAmount('19.99')).toBe(1999); expect(optionalAmount('')).toBeNull(); expect(() => optionalAmount('19.999')).toThrow(); expect(() => dateRange('2026-11-01T10:00', '2026-11-01T09:59')).toThrow(); const range = dateRange('2026-11-01T10:00', '2026-11-01T10:01'); expect(Date.parse(range.ends_at) - Date.parse(range.starts_at)).toBe(60_000) })
+it('资产 hash 限定 64 位小写十六进制，拒绝伪格式', () => { expect(validHash('a'.repeat(64))).toBe(true); expect(validHash('a'.repeat(63))).toBe(false); expect(validHash('G'.repeat(64))).toBe(false); expect(validHash('A'.repeat(64))).toBe(false) })

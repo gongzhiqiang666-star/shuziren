@@ -1,0 +1,21 @@
+# Optional overlay. Persist in .env before using the normal startup/backup scripts:
+# COMPOSE_FILE=compose.yaml,compose.bge.yaml
+# COMPOSE_PATH_SEPARATOR=,
+# See workers/retrieval/README.md for model and credential preparation.
+services:
+  bge:
+    build: ./workers/retrieval
+    environment:
+      BGE_API_KEY: ${BGE_API_KEY:?Configure a local BGE bearer token first}
+      BGE_MODEL_DIR: /models
+      BGE_CPU_THREADS: 2
+    volumes:
+      - ${BGE_MODEL_DIR:?Provide the absolute directory of the pinned BGE model}:/models:ro
+    restart: unless-stopped
+  app:
+    environment:
+      BGE_BASE_URL: http://bge:8010
+      BGE_API_KEY: ${BGE_API_KEY:?Configure a local BGE bearer token first}
+    depends_on:
+      bge:
+        condition: service_started

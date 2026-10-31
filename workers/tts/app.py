@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import importlib.metadata
 import io
+import json
 import logging
 import os
 import re
@@ -94,11 +96,15 @@ class CosyVoiceEngine:
         self._model: Any = None
         self._prompt_path: Path | None = None
         self._prompt_hash = ""
+        self.engine_id = ""
+        self._artifact_stats: list[tuple[Path, tuple[int, int, int]]] = []
         self._lock = threading.Lock()
 
     def load(self) -> None:
         self.ready = False
         self._model = None
+        self.engine_id = ""
+        self._artifact_stats = []
         config = self.settings
         if not config.model_dir or not Path(config.model_dir).is_dir():
             self.reason = "model_missing"
@@ -135,6 +141,16 @@ class CosyVoiceEngine:
         if not (repo_dir / "cosyvoice/cli/cosyvoice.py").is_file() or not (repo_dir / "third_party/Matcha-TTS").is_dir():
             self.reason = "runtime_missing"
             return
+        artifact_roots = (
+            ("model", model_dir, None),
+            ("runtime", repo_dir / "cosyvoice", {".py", ".yaml", ".json"}),
+            ("matcha", repo_dir / "third_party/Matcha-TTS", {".py", ".yaml", ".json"}),
+        )
+        try:
+            before_load = {path: file_signature(path) for _, path in identity_files(artifact_roots)}
+        except (OSError, ValueError):
+            self.reason = "artifact_identity_failed"
+            return
         # Both repository paths are fixed administrator configuration, never
         # taken from an HTTP request. Pin the source revision in deployment.
         sys.path.insert(0, str(repo_dir / "third_party/Matcha-TTS"))
@@ -163,8 +179,63 @@ class CosyVoiceEngine:
         self._model = model
         self._prompt_path = prompt_path
         self._prompt_hash = hashlib.sha256(prompt_bytes).hexdigest()
+        try:
+            # Hash actual local model/runtime contents once. A tag or directory
+            # name cannot identify a replaced model. Only the digest is exposed.
+            digest = hashlib.sha256()
+            files = identity_files(artifact_roots)
+            if set(before_load) != {path for _, path in files}:
+                raise ValueError("artifact set changed while loading")
+            for label, path in files:
+                before = file_signature(path)
+                if before_load.get(path) != before:
+                    raise ValueError("artifact changed while loading")
+                digest.update(label.encode("utf-8"))
+                digest.update(b"\x00")
+                digest.update(before[0].to_bytes(8, "big"))
+                with path.open("rb") as source:
+                    for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                if file_signature(path) != before:
+                    raise ValueError("artifact changed while hashing")
+                self._artifact_stats.append((path, before))
+            packages = {}
+            for name in ("torch", "torchaudio", "transformers", "numpy", "onnxruntime"):
+                try:
+                    packages[name] = importlib.metadata.version(name)
+                except importlib.metadata.PackageNotFoundError:
+                    packages[name] = "not_installed"
+            configuration = {
+                "protocol": "cosyvoice3-identity-v1", "reference_sha256": self._prompt_hash,
+                "prompt_text_sha256": hashlib.sha256(config.prompt_text.encode("utf-8")).hexdigest(),
+                "fp16": config.fp16, "sample_rate": sample_rate,
+                "stream": False, "speed": 1.0, "text_frontend": True, "prompt_prefix": PROMPT_PREFIX,
+                "packages": packages,
+            }
+            digest.update(json.dumps(configuration, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+            self.engine_id = digest.hexdigest()
+        except (OSError, ValueError):
+            self.reason = "artifact_identity_failed"
+            self._model = None
+            self.engine_id = ""
+            return
         self.reason = "ready"
         self.ready = True
+
+    def identity(self) -> str:
+        if not self.ready or not self.engine_id or self._prompt_path is None:
+            raise EngineUnavailable()
+        try:
+            unchanged = hashlib.sha256(read_prompt_wav(self._prompt_path)).hexdigest() == self._prompt_hash
+            unchanged = unchanged and all(file_signature(path) == signature for path, signature in self._artifact_stats)
+        except (OSError, ValueError, EOFError, wave.Error):
+            unchanged = False
+        if not unchanged:
+            self.ready = False
+            self.reason = "artifacts_changed"
+            self.engine_id = ""
+            raise EngineUnavailable()
+        return self.engine_id
 
     def synthesize(self, text: str) -> bytes:
         if not self.ready or self._model is None or self._prompt_path is None:
@@ -182,6 +253,7 @@ class CosyVoiceEngine:
                 self.ready = False
                 self.reason = "prompt_audio_changed"
                 raise EngineUnavailable()
+            self.identity()
             import numpy as np
             import torch
 
@@ -222,6 +294,27 @@ class CosyVoiceEngine:
             raise SynthesisFailed() from None
         finally:
             self._lock.release()
+
+
+def file_signature(path: Path) -> tuple[int, int, int]:
+    stat = path.stat()
+    return stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+
+def identity_files(roots: Any) -> list[tuple[str, Path]]:
+    files = []
+    for label, root, suffixes in roots:
+        for path in sorted(root.rglob("*")):
+            relative = path.relative_to(root)
+            if any(part in {".git", "__pycache__", ".cache"} for part in relative.parts):
+                continue
+            # Individual checkpoint symlinks are hashed through their target.
+            # A symlink directory could hide unhashed files from rglob.
+            if path.is_symlink() and path.is_dir():
+                raise ValueError("symlink model directories are unsupported")
+            if path.is_file() and (suffixes is None or path.suffix in suffixes):
+                files.append((label + "/" + relative.as_posix(), path))
+    return files
 
 
 def read_prompt_wav(path: Path) -> bytes:
@@ -338,8 +431,18 @@ def create_app(settings: Settings | None = None, engine_factory: Callable[[Setti
     @app.get("/healthz", dependencies=[Depends(authorize)])
     def health(request: Request) -> JSONResponse:
         engine: Engine = request.app.state.engine
+        engine_id = None
+        identity = getattr(engine, "identity", None)
+        if engine.ready and identity is not None:
+            try:
+                engine_id = identity()
+            except EngineUnavailable:
+                pass
+        payload = {"status": "ready" if engine.ready else "unavailable", "model_loaded": engine.ready, "engine": "cosyvoice3", "reason": engine.reason}
+        if engine_id:
+            payload["engine_id"] = engine_id
         return JSONResponse(
-            {"status": "ready" if engine.ready else "unavailable", "model_loaded": engine.ready, "engine": "cosyvoice3", "reason": engine.reason},
+            payload,
             status_code=200 if engine.ready else 503,
             headers={"Cache-Control": "no-store"},
         )

@@ -59,6 +59,12 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if err = svc.ConfigureIntegrations(cfg.Integrations); err != nil {
+		return err
+	}
+	go svc.RunIntegrations(ctx)
+	schedulerDone := make(chan struct{})
+	go func() { defer close(schedulerDone); svc.RunScheduler(ctx) }()
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); svc.RunWorker(ctx) }()
 	lockFailure := make(chan struct{}, 1)
@@ -84,7 +90,7 @@ func run() error {
 			}
 		}
 	}()
-	server := &http.Server{Addr: cfg.Addr, Handler: api.Router(svc, cfg.Token, cfg.WebDist), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 130 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10, BaseContext: func(net.Listener) context.Context { return ctx }}
+	server := &http.Server{Addr: cfg.Addr, Handler: api.Router(svc, cfg.Token, cfg.WebDist), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 150 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10, BaseContext: func(net.Listener) context.Context { return ctx }}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.ListenAndServe() }()
 	log.Printf("shuziren local workbench %s listening on %s", api.Version, cfg.Addr)
@@ -106,6 +112,11 @@ func run() error {
 	case <-workerDone:
 	case <-time.After(10 * time.Second):
 		result = errors.New("worker did not stop within shutdown timeout")
+	}
+	select {
+	case <-schedulerDone:
+	case <-time.After(10 * time.Second):
+		result = errors.New("scheduler did not stop within shutdown timeout")
 	}
 	select {
 	case <-lockFailure:

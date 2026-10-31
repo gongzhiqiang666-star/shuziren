@@ -14,6 +14,7 @@ type Config struct {
 	Addr, Token, DatabaseURL, WebDist, AudioDir string
 	DeepSeek                                    deepseek.Config
 	Media                                       media.Config
+	Integrations                                Integrations
 }
 
 func Load() (Config, error) { return FromEnv(os.Getenv) }
@@ -43,6 +44,10 @@ func FromEnv(get func(string) string) (Config, error) {
 	p, err := strconv.Atoi(port)
 	if err != nil || p < 1 || p > 65535 {
 		return c, errors.New("APP_ADDR port is invalid")
+	}
+	c.Integrations, err = integrationsFromEnv(get)
+	if err != nil {
+		return c, err
 	}
 	return c, nil
 }
