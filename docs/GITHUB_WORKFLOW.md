@@ -43,4 +43,4 @@ v0.1交付范围与验证记录归档在[V01_IMPLEMENTATION_STATUS.md](V01_IMPLE
 
 分支 `codex/local-test-ready` 从v0.1已验证提交 `971d1f2f0578234614567a46f33dd1d9a03d84c7` 继续开发，包含独立输出、业务版本/活动/记忆、模板、费用与调度、真实BGE CPU检索、淘宝官方协议适配和运维工具。该分支包含v0.1全部代码，可独立检出运行。
 
-v0.1的PR尚未合并时，v0.2以其业务分支作为PR基线，便于审查本次新增差异。完成测试后提交代码并记录远端SHA和CI链接；不把PR创建等同于已合并到main。当前功能、实际测试与实机待测项见[IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)。
+v0.1的PR尚未合并时，v0.2以其业务分支作为PR基线，便于审查本次新增差异。[PR #2](https://github.com/gongzhiqiang666-star/shuziren/pull/2)已创建，应用提交为 `fa2d8c913398602f1768f2b2c54a3cbc7fd4a6f6`，Push/PR的verify和container-startup均通过；未合并到main。当前功能、实际测试与实机待测项见[IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)。

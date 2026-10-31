@@ -1,6 +1,6 @@
 # v0.2 本地测试交付状态
 
-日期：2026-10-31。版本：0.2.0。完整代码分支：`codex/local-test-ready`，从v0.1已验证提交 `971d1f2f0578234614567a46f33dd1d9a03d84c7` 继续开发。v0.1证据保留在[V01_IMPLEMENTATION_STATUS.md](V01_IMPLEMENTATION_STATUS.md)。
+日期：2026-10-31。版本：0.2.0。完整代码分支：[codex/local-test-ready](https://github.com/gongzhiqiang666-star/shuziren/tree/codex/local-test-ready)，审查入口：[PR #2](https://github.com/gongzhiqiang666-star/shuziren/pull/2)。从v0.1已验证提交 `971d1f2f0578234614567a46f33dd1d9a03d84c7` 继续开发。v0.1证据保留在[V01_IMPLEMENTATION_STATUS.md](V01_IMPLEMENTATION_STATUS.md)。
 
 本次目标是使业务功能、媒体控制和淘宝适配具备完整的本地测试入口。下表区分已实现代码、已执行软件验证与需要目标机器/账号的验收。真实数字人画质、口型、GPU性能、OBS采集、淘宝权限及8小时运行不能由协议测试推断。
 
@@ -30,6 +30,8 @@ BGE使用PostgreSQL数组缓存和Go精确余弦排名，保留语义检索能�
 
 本地环境：隔离Linux x86_64，Go 1.27.3、Node.js 24.22.1、PostgreSQL 16.15、Python 3.12；Playwright 1.62.1与真实Chrome for Testing。没有真实付费Key、淘宝凭据、CosyVoice/MuseTalk权重或GPU。所有数据库测试使用专用库和可清理schema。
 
+应用源码对应提交[fa2d8c9](https://github.com/gongzhiqiang666-star/shuziren/commit/fa2d8c913398602f1768f2b2c54a3cbc7fd4a6f6)。[Push检查](https://github.com/gongzhiqiang666-star/shuziren/actions/runs/41175291513)与[PR检查](https://github.com/gongzhiqiang666-star/shuziren/actions/runs/41175315886)的 `verify`、`container-startup` 均成功，实际执行了数据库、前端、HTTP worker、两套浏览器及容器备份恢复检查。本记录在检查完成后补写，不改变已验证应用源码。远端172个文件的路径、模式与Git blob SHA均已和本地索引逐一核对。
+
 | 检查 | 实际结果 | 证明范围 |
 | --- | --- | --- |
 | `TEST_DATABASE_URL=... go test -race -count=1 -json ./...` | 76个顶层测试、含子用例116条通过记录；失败0、测试跳过0 | 真实PostgreSQL迁移、事务、乐观锁、归属、时效、并发与迟到结果；TOP/TTS/DeepSeek HTTP协议边界 |
@@ -45,7 +47,11 @@ BGE使用PostgreSQL数组缓存和Go精确余弦排名，保留语义检索能�
 | BGE真实CPU模型与实际API链路 | 固定revision加载、Go→认证HTTP→BGE→PostgreSQL缓存通过 | 真实512维推理、同义问题、过期过滤、第二次查询及后端健康诊断，详见下节 |
 | Compose基础与BGE叠加配置 | `config --quiet` 均退出0 | 变量与配置结构；不等于可选BGE镜像已构建 |
 | Shell启动脚本 | 语法检查退出0 | Windows PowerShell/WSL目标机仍需实测 |
-| GitHub当前版本容器与备份恢复 | 待本次提交后的独立CI执行并补录链接 | 不借用v0.1的容器成功记录冒充v0.2 |
+| GitHub实际容器启动 | Push/PR两套 `container-startup` 成功 | 真正构建镜像、启动数据库和非root应用，检查网页、健康状态、401鉴权与0.2.0版本 |
+| GitHub实际数据与WAV备份恢复 | 两套均成功 | 实际备份→修改商品/版本/音频→恢复，逐字节核对WAV和业务行，并核验场次暂停、令牌撤销、旧计划失效 |
+| GitHub独立全栈复跑 | Push/PR两套 `verify` 成功 | Go真实PostgreSQL/race、Vue、Python 3.11、实际浏览器；Python结果为53项及32子测试通过，2个FFmpeg测试因runner缺二进制跳过，已在上述本地55项中实际执行 |
+
+恢复验证不是空库导入：测试先保存商品和版本历史、输出画布、已审核任务、未来计划及测试WAV，备份后实际修改资料并新增文件；恢复后检查原商品与音频原字节、新增行/文件清除、应用文件读写权限、场次epoch递增并暂停、两代输出令牌均401、旧任务/计划取消及审计记录。测试WAV只作为持久化夹具，不计入真实TTS音质验收。
 
 ### 真实浏览器操作
 
