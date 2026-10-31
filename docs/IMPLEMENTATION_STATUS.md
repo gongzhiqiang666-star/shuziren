@@ -21,7 +21,9 @@
 
 ## 2. 已完成的实际验证
 
-测试环境为隔离 Linux x86_64：Go 1.27.3、Node.js 24.22.1、PostgreSQL 16.15、Python 3.12.14。浏览器使用实际 Chromium / Chrome for Testing，无 GPU 权重、无真实平台凭据。
+本地测试环境为隔离 Linux x86_64：Go 1.27.3、Node.js 24.22.1、PostgreSQL 16.15、Python 3.12.14。浏览器使用实际 Chromium / Chrome for Testing，无 GPU 权重、无真实平台凭据。随后在 GitHub 独立 Linux runner 上使用 Python 3.11 复跑检查，并实际构建、启动 Docker 版本。
+
+应用与工作流验证对应提交 [`80d8b6b`](https://github.com/gongzhiqiang666-star/shuziren/commit/80d8b6bd4a08df13451a015bf8c9ccfd0a671b91)。[Push 检查](https://github.com/gongzhiqiang666-star/shuziren/actions/runs/41165321282)和[PR 检查](https://github.com/gongzhiqiang666-star/shuziren/actions/runs/41165324507)的 `verify`、`container-startup` 均成功；本记录在检查完成后补写，不改变应用源码。
 
 | 验证 | 实际结果 | 证明的范围 |
 | --- | --- | --- |
@@ -37,7 +39,9 @@
 | 第二个后端启动 | 按预期退出 1，提示数据库已有工作实例 | 同一数据库不允许两个后端同时消费队列 |
 | 重启工作台 | 商品价格 / 版本、场次、已取消任务、质量档案保留 | 实际进程重启后的持久化，不仅是单元测试 |
 | `docker compose config --quiet` | Compose 2.40.3 退出 0 | 配置语法、变量和结构；已核验引用镜像标签存在 |
-| Shell 启动脚本 | 语法检查通过 | 不等于 Docker 容器和 Windows 执行通过 |
+| 实际 Docker 构建与 Compose 启动 | GitHub 两套 `container-startup` 均成功 | 真正构建应用镜像、启动 PostgreSQL 与非 root 应用、等待健康状态；验证网页、401 鉴权和受保护状态接口 |
+| GitHub Actions 全套检查 | Push 与 PR 的 `verify` 均成功 | Go / 真实 PostgreSQL、前端、Python 包装测试与配置检查在独立环境复跑 |
+| Shell 启动脚本 | 语法检查通过 | 此项只证明脚本语法；容器启动单列验证；Windows PowerShell 脚本未实测 |
 
 真实浏览器流程：登录错误口令被拒绝 → 创建店铺 → 录入商品并精确保存金额 → 保存人格版本 → 保存 FAQ → 保存全部未通过的画质档案 → 创建场次 → 创建人工草稿 → 人工核对批准 → 缺语音配置时禁止合成 → 改价后 API 拒绝旧版本审批 → 接管取消旧任务 → 恢复时保持新批次 → 刷新后重新认证。另检查了桌面和 390px 宽度布局、口令未写入浏览器存储、最终构建重启后的记录。
 
@@ -53,6 +57,7 @@ DeepSeek、TTS 和媒体的 HTTP 单元 / 集成测试使用明确的测试替�
 - 数据库确认丢失时保留已生成 WAV，避免提交为 ready 后误删唯一音频。
 - 已开始的发送若超时、失败或遇到接管，结果按不确定处理，禁止自动重播。
 - 修复实际审计命中的前端与 Python HTTP 测试依赖，并重新构建 / 测试。
+- 首次 GitHub 检查发现服务容器健康命令的单引号解析问题；改为受支持的双引号后，整套测试和实际容器启动均通过。
 
 ## 4. 未实现或未验证的事项
 
@@ -65,9 +70,8 @@ DeepSeek、TTS 和媒体的 HTTP 单元 / 集成测试使用明确的测试替�
 | 口型与传输量化 | 25fps、80ms 等为目标；尚未实现端到端 PTS 采集、50 条口型语料和 8 小时长时实测 |
 | 独立 OBS 输出 | v0.1预览依赖页面，离开或关闭会断开 Peer；独立媒体源、音频路由和管理页关闭后持续输出待实现 |
 | 淘宝 | 没有连接真实账号、自动评论、商品同步、弹卡、状态上报或获准开播；等待实际授权路径 |
-| BGE / 活动 / 完整运营 | BGE向量检索、活动版本、记忆回滚、多用户权限、自动调度和完整成本报表继续列在原工作包 |
-| Windows / Docker / 同卡性能 | 未运行 Windows PowerShell、Docker daemon、镜像构建或 GPU；已有配置文件不能替代干净环境验收 |
-| GitHub Actions | 已提交工作流定义；实际远程执行结果以对应提交的 Actions 页面为准 |
+| BGE / 活动 / 完整运营 | BGE向量检索、活动版本、记忆回滚、多用户权限、自动调度、每场模型并发 / 预算上限、音频资产缓存复用和完整成本报表继续列在原工作包 |
+| Windows / 同卡性能 | Linux容器构建启动已通过；尚未运行Windows PowerShell、WSL音视频桥接或GPU，仍需目标电脑实测 |
 
 ## 5. 下一轮按这个顺序推进
 
