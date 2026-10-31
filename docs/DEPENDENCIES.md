@@ -2,6 +2,16 @@
 
 当前为选型记录，实施时固定代码提交、模型revision、文件SHA-256和依赖锁定文件。以下不替代完整依赖及素材授权审查。
 
+## v0.1 已锁定的实现
+
+业务依赖以 `server/go.mod` / `go.sum`、`web/package.json` / `package-lock.json` 和 `workers/tts/requirements*.txt` 为准。应用构建使用 Go 1.27.3、Node.js 24.22.1；前端 Vue 3.5.44、Vite 7.3.7。Docker引用的官方版本标签已经核验存在，尚未执行镜像构建和目标Windows安装。
+
+媒体HTTP适配核对上游代码提交：LiveTalking `c7269433a2b6ecebcd9342445d2ecc882c98b0da`、CosyVoice `074ca6dc9e80a2f424f1f74b48bdd7d3fea531cc`，对应源码链接与安装说明分别见 `server/internal/media/README.md`、`workers/tts/README.md`。这表示核对了接口，不表示已加载其权重或验证真实音画。
+
+CosyVoice包装器使用修复公告后的HTTP依赖版本，不能直接沿用上游旧FastAPI依赖清单。实际轻量环境审计和测试结果见[交付记录](IMPLEMENTATION_STATUS.md)；完整GPU环境需在安装后再次运行依赖检查与真实合成。模型revision、权重校验、头像和声音素材尚待目标环境记录。
+
+## 模型与上游许可
+
 | 组件 | 计划用途 | 已核实许可或边界 |
 | --- | --- | --- |
 | LiveTalking | 音视频引擎 | 主代码Apache-2.0；README另有视频水印和标识声明，发布前核对其与许可、实际发布方式的适用关系；依赖与模型另核对 |

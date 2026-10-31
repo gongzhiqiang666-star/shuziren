@@ -1,0 +1,43 @@
+name: shuziren
+services:
+  db:
+    image: postgres:16.15-alpine
+    environment:
+      POSTGRES_DB: shuziren
+      POSTGRES_USER: shuziren
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run the local setup script first}
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shuziren -d shuziren"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  app:
+    build: .
+    environment:
+      APP_TOKEN: ${APP_TOKEN:?Run the local setup script first}
+      DATABASE_URL: postgres://shuziren:${POSTGRES_PASSWORD}@db:5432/shuziren?sslmode=disable
+      APP_ADDR: 0.0.0.0:8080
+      WEB_DIST: /app/web
+      AUDIO_DIR: /data/audio
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
+      TTS_BASE_URL: ${TTS_BASE_URL:-}
+      TTS_API_KEY: ${TTS_API_KEY:-}
+      LIVETALKING_BASE_URL: ${LIVETALKING_BASE_URL:-}
+    ports:
+      - "127.0.0.1:${APP_PORT:-8765}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - audio:/data/audio
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  database:
+  audio:

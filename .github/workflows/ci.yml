@@ -1,0 +1,65 @@
+name: Local workspace checks
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16.15-alpine
+        env:
+          POSTGRES_USER: shuziren
+          POSTGRES_PASSWORD: ci-only-database-password
+          POSTGRES_DB: shuziren_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd 'pg_isready -U shuziren -d shuziren_test'
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          cache-dependency-path: server/go.sum
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.22.1'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+      - name: Backend unit and PostgreSQL integration tests
+        working-directory: server
+        env:
+          TEST_DATABASE_URL: postgres://shuziren:ci-only-database-password@127.0.0.1:5432/shuziren_test?sslmode=disable
+        run: go test -race -count=1 ./...
+      - name: Backend static checks
+        working-directory: server
+        run: go vet ./...
+      - name: Frontend dependencies
+        working-directory: web
+        run: npm ci
+      - name: Frontend tests and build
+        working-directory: web
+        run: |
+          npm test
+          npm run build
+      - name: TTS wrapper dependencies
+        run: |
+          python -m pip install --upgrade pip==26.2.2
+          python -m pip install -r workers/tts/requirements-dev.txt
+      - name: TTS boundary tests without model weights
+        run: python -m pytest workers/tts -q
+      - name: Validate deployment configuration
+        env:
+          APP_TOKEN: ci-only-workspace-token-long-enough
+          POSTGRES_PASSWORD: ci-only-database-password
+        run: docker compose config --quiet
