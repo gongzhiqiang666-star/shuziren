@@ -4,7 +4,8 @@
   "version": "0.2.0",
   "scripts": {
     "test": "node transport.cjs",
-    "test:business": "node business.cjs"
+    "test:business": "node business.cjs",
+    "test:avatar3d": "node avatar3d.cjs"
   },
   "devDependencies": {
     "playwright": "1.62.1"

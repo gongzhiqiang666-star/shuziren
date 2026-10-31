@@ -6,6 +6,20 @@ v0.2 提供完整的本地测试工作流：维护商品与活动、管理有来
 
 **当前下一步：**按[首条真实播出链路](docs/FIRST_LIVE_VALIDATION.md)，用一个人物、一种声音、一个商品、一台目标电脑完成真实模型与 OBS 验证，再验收获准的淘宝路径。已有软件功能继续复用，LivePortrait 动作增强和低端真正 3D 分别设置验证门槛。
 
+## 新增：低端 3D 本地验证版
+
+`codex/low-end-3d-preview` 分支新增独立的 `/avatar3d` 页面：真实 GLB 人物、可旋转视角、嘴形/牙齿/舌头驱动、本地 WAV/录音、音频声学分析、轨道导入校验、暂停拖动与重播、绿幕/纯画面、带声音的浏览器录像及验证记录导出。原有工作台可下载已合成 WAV 后导入该页。
+
+```sh
+git clone --branch codex/low-end-3d-preview https://github.com/gongzhiqiang666-star/shuziren.git
+cd shuziren
+sh scripts/start-avatar3d.sh
+```
+
+Windows 使用 `powershell -File scripts/start-avatar3d.ps1`。源码启动只需 Node/npm 与 Python 3.10+，浏览器打开 `http://127.0.0.1:5173/avatar3d`；无需先安装数据库或 CUDA。也可使用包含 CC0 人物的预构建包，解压后执行 `node start.mjs --dir app`。
+
+自动嘴形采用本地声学试验模型，中文精细口型和真人观感仍待实际验收；这不是已可自动淘宝开播的低端商品版。操作见[本地验证说明](docs/AVATAR3D_LOCAL.md)，实际测试与未验收项见[v0.3交付记录](docs/AVATAR3D_IMPLEMENTATION_STATUS.md)，模型和资产来源见[许可记录](docs/AVATAR3D_ASSETS.md)。
+
 ## 已实现的本地功能
 
 | 模块 | 功能 |
