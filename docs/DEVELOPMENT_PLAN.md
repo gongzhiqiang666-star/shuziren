@@ -1,13 +1,21 @@
 # 淘宝数字人直播本地部署开发计划
 
 版本日期：2026-10-31
-状态：已启动 v0.1 本地工作台开发；目标仓库为 gongzhiqiang666-star/shuziren。完整产品路线与本次交付范围分别记录，实际验证结果见 IMPLEMENTATION_STATUS.md。
+状态：v0.2本地测试功能已实现，正在按交付记录完成最终集成验证；目标仓库为 gongzhiqiang666-star/shuziren。原始工期与目标机器验收继续保留，实际验证结果见 IMPLEMENTATION_STATUS.md。
 
 执行版 2026年10月31日  依据已上传的技术部署成本与卖点方案
 
 **本项目只服务淘宝直播。保留原商品管理、品牌人格、记忆、问答、审核、插播、人工接管和恢复的完整产品范围；DeepSeek作为唯一按量付费AI接口，语音、向量检索及数字人口型优先本地运行。先交付可本地启动的 v0.1 工作台，再按下述门槛完成目标电脑、模型效果与淘宝联调。**
 
-## 本次执行：先完成 v0.1 本地工作台
+## v0.2 更新：补齐本地测试工作流
+
+在v0.1基础上实现独立OBS输出、活动与业务快照、商品/人格/记忆历史恢复、可复用商品话术模板、BGE CPU检索、资产版本、真实TTS引擎指纹及缓存、优先级/截止时间/定时派发、生成并发与保守额度、费用记录、官方淘宝TOP/TMC适配、诊断、备份恢复和音画校准工具。详细范围与证据分别见 [LOCAL_TEST_CONTRACT.md](LOCAL_TEST_CONTRACT.md) 和 [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)。
+
+为减少本机安装依赖，BGE向量持久化使用PostgreSQL数组，Go进行精确余弦排名，暂不强制安装原先规划的pgvector扩展；小规模知识库保留语义检索功能，大规模索引优化继续单列。模板/资产台账是本地业务功能，真实头像、音色和模型配置需由媒体服务安装与核验，不能把档案修改当成已经切换GPU模型。
+
+原384小时是完整工程与客户联调的初始估算，不是实际累计开发工时。真实GPU效果、8小时持续运行、Windows/WSL与OBS链路、已获权限淘宝实播继续由目标机器和真实账号验收。本次不使用协议替身给这些项目打勾。
+
+## v0.1 历史执行：先完成本地工作台
 
 用户已要求将失真、人物细节和口型控制写入计划并立即开发。具体控制与验收设计见[AVATAR_QUALITY.md](AVATAR_QUALITY.md)，已映射到 W00、W03、W04、W10、W11、W13、W16 和 W17。以下是第一版的交付切片，不代表下文全部 WBS 已完成。
 
@@ -35,7 +43,7 @@
 | 控制与业务 | Vue 3 TypeScript + Go Gin + PostgreSQL | 客户电脑 |
 | 文本生成 | DeepSeek deepseek-flash 非思考模式 | 官方云API |
 | 中文语音 | Fun-CosyVoice3-0.5B-2512 | 本地独立服务 |
-| 检索 | BGE-small-zh-v1.5 + pgvector | 本地CPU |
+| 检索 | BGE-small-zh-v1.5 + PostgreSQL数组缓存与精确余弦排名；pgvector为后续规模优化 | 本地CPU |
 | 数字人口型 | LiveTalking + MuseTalk | 本地NVIDIA GPU |
 | 直播输出 | Windows OBS + 淘宝获准开播路径 | 本地与淘宝 |
 | 淘宝连接器 | TOP TMC 授权和允许的数据同步 | 按平台批准位置 |
@@ -82,8 +90,10 @@ flowchart TD
   GO --> DB[PostgreSQL与本地BGE]
   GO --> DS[DeepSeek云API]
   GO --> TTS[本地CosyVoice3]
-  TTS --> AV[LiveTalking与MuseTalk]
-  AV --> OBS[Windows OBS]
+  TTS -->|同一份WAV| GO
+  GO -->|已审核WAV| AV[LiveTalking与MuseTalk]
+  AV --> OUT[独立WebRTC输出页]
+  OUT --> OBS[Windows OBS]
   OBS --> TB[淘宝获准输出]
 ```
 
@@ -292,20 +302,20 @@ WSL中的虚拟摄像头不会自动成为Windows的摄像头。画面、声音�
 
 ## 十一 GitHub项目与提交计划
 
-**用户已指定仓库 https://github.com/gongzhiqiang666-star/shuziren。2026-10-31 初始化前检查时仓库为空、可见性为公开、默认分支为 main。仓库已加入当前GitHub应用的授权范围，README初始化提交已成功。本次收录完整开发计划及验收资料；业务代码尚未实现，开发和验收按下述工作包推进。**
+**用户已指定仓库 https://github.com/gongzhiqiang666-star/shuziren。2026-10-31初始化时为空的公开仓库，默认分支为main。初始化资料、v0.1与v0.2业务开发按任务分支和PR交付；当前完整本地代码位于codex/local-test-ready，实际提交与CI见交付记录。**
 
 ### 仓库建议
 
 使用用户指定的独立仓库 gongzhiqiang666-star/shuziren。先初始化README，再提交开发计划、验收标准、来源与依赖记录和.gitignore；这些文档不代表已完成功能。后续使用任务分支，每个提交对应可核对的工作包。仓库当前为公开，提交内容可被公开查看。
 
-| 拟建目录 | 责任 |
+| 当前目录 | 责任 |
 | --- | --- |
 | server/ | Go业务 商品 人格 调度 DeepSeek 淘宝连接器 |
 | web/ | Vue运营台 预览 审核 插播与诊断入口 |
-| workers/media/ | LiveTalking与MuseTalk适配及媒体会话 |
+| server/internal/media/ | LiveTalking与MuseTalk适配及媒体会话 |
 | workers/tts/ | 本地CosyVoice3服务与音频协议 |
-| workers/embedding/ | CPU向量服务与模型固定 |
-| desktop/ 与 deploy/ | Windows接入助手 WSL安装 升级 回滚 |
+| workers/retrieval/ | CPU向量服务与模型固定 |
+| scripts/ 与 compose*.yaml | 本地启动、诊断、备份恢复和音画校准；Windows/WSL驱动与OBS按手册安装 |
 | docs/ 与 tests/ | 架构 接口 验收与脱敏测试数据 |
 
 ### 提交顺序
@@ -337,7 +347,7 @@ Go与Vue测试和构建在CI执行；GPU和淘宝真实验收放在明确的测�
 
 ### 交付状态
 
-已完成需求收敛、官方资料核验、WBS与成本测算、验收设计，以及用户指定GitHub仓库的计划资料整理。尚未执行模型部署、账号登录、真实直播、GPU压测或业务代码开发。本计划中的技术目标、工期和收益均需后续验证。
+已完成需求收敛、官方资料核验、WBS与成本测算、验收设计及v0.2本地业务代码。BGE模型已在CPU实际加载并完成语义检索功能测试；完整证据见[交付记录](IMPLEMENTATION_STATUS.md)。尚未执行真实CosyVoice/MuseTalk GPU部署、账号登录、淘宝实播或8小时GPU压测。本计划中的性能目标、原工期和收益须在相应条件下验证。
 
 本计划沿用原方案的产品价值与业务功能，具体实现以本执行版的淘宝范围、DeepSeek接口、本地服务边界和验收记录为准。价格与资料核验日期为2026年10月31日，发生变化时更新相应记录。
 

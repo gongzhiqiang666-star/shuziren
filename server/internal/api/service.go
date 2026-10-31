@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,15 +38,17 @@ type sessionLocks struct {
 	dispatch sync.Mutex
 }
 type Service struct {
-	Store     *store.Store
-	Media     Media
-	Generator Generator
-	AudioDir  string
-	mu        sync.Mutex
-	sessions  map[string]*sessionLocks
-	shops     map[string]*sync.RWMutex
-	ops       map[string]operation
-	wake      chan struct{}
+	Store          *store.Store
+	Media          Media
+	Generator      Generator
+	AudioDir       string
+	mu             sync.Mutex
+	sessions       map[string]*sessionLocks
+	shops          map[string]*sync.RWMutex
+	ops            map[string]operation
+	wake           chan struct{}
+	integrations   *integrationState
+	generationGate chan struct{}
 }
 
 func New(st *store.Store, m Media, g Generator, audioDir string) (*Service, error) {
@@ -59,9 +62,10 @@ func New(st *store.Store, m Media, g Generator, audioDir string) (*Service, erro
 	if err = os.MkdirAll(abs, 0750); err != nil {
 		return nil, errors.New("unable to create AUDIO_DIR")
 	}
-	return &Service{Store: st, Media: m, Generator: g, AudioDir: abs, sessions: map[string]*sessionLocks{}, shops: map[string]*sync.RWMutex{}, ops: map[string]operation{}, wake: make(chan struct{}, 1)}, nil
+	return &Service{Store: st, Media: m, Generator: g, AudioDir: abs, sessions: map[string]*sessionLocks{}, shops: map[string]*sync.RWMutex{}, ops: map[string]operation{}, wake: make(chan struct{}, 1), generationGate: make(chan struct{}, 1)}, nil
 }
 func (s *Service) sessionLock(id string) *sessionLocks {
+	id = strings.ToLower(id)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p := s.sessions[id]
@@ -72,6 +76,7 @@ func (s *Service) sessionLock(id string) *sessionLocks {
 	return p
 }
 func (s *Service) shopLock(id string) *sync.RWMutex {
+	id = strings.ToLower(id)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p := s.shops[id]
@@ -82,6 +87,8 @@ func (s *Service) shopLock(id string) *sync.RWMutex {
 	return p
 }
 func (s *Service) register(ctx context.Context, session, job string) (context.Context, func()) {
+	session = strings.ToLower(session)
+	job = strings.ToLower(job)
 	ctx, cancel := context.WithCancel(ctx)
 	id := domain.NewID()
 	s.mu.Lock()
@@ -90,6 +97,8 @@ func (s *Service) register(ctx context.Context, session, job string) (context.Co
 	return ctx, func() { cancel(); s.mu.Lock(); delete(s.ops, id); s.mu.Unlock() }
 }
 func (s *Service) cancelOperations(session, job string) {
+	session = strings.ToLower(session)
+	job = strings.ToLower(job)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, o := range s.ops {
@@ -113,8 +122,22 @@ func (s *Service) Manual(ctx context.Context, shop, session, product, text strin
 	return s.Store.CreateJob(ctx, snap, domain.Job{Source: "manual", Text: text, Status: "draft", Reason: "人工草稿，仍需检查事实来源并审批。"})
 }
 func (s *Service) Generate(ctx context.Context, shop, session, product, question string) (domain.Job, error) {
+	ctx, generationCancel := context.WithTimeout(ctx, 110*time.Second)
+	defer generationCancel()
 	if s.Generator == nil || !s.Generator.Configured() {
 		return domain.Job{}, domain.Unavailable("deepseek_not_configured", "尚未配置 DeepSeek，仍可创建人工草稿。")
+	}
+	s.mu.Lock()
+	if s.generationGate == nil {
+		s.generationGate = make(chan struct{}, 1)
+	}
+	gate := s.generationGate
+	s.mu.Unlock()
+	select {
+	case gate <- struct{}{}:
+		defer func() { <-gate }()
+	default:
+		return domain.Job{}, domain.Conflict("generation_busy", "已有生成流程在途，请等待完成后重试，避免积压旧问题。")
 	}
 	ctx, done := s.register(ctx, session, "")
 	defer done()
@@ -122,15 +145,58 @@ func (s *Service) Generate(ctx context.Context, shop, session, product, question
 	if err != nil {
 		return domain.Job{}, err
 	}
+	ctx, err = s.PrepareGeneration(ctx, snap, question)
+	if err != nil {
+		return domain.Job{}, err
+	}
+	reservation, err := deepseek.GenerationReservation(ctx, snap, question)
+	if err != nil {
+		return domain.Job{}, err
+	}
+	usage, err := s.Store.StartLimitedUsage(ctx, shop, session, s.Generator.Model(), reservation)
+	if err != nil {
+		return domain.Job{}, err
+	}
 	result, err := s.Generator.Generate(ctx, snap, question)
 	if err != nil {
+		s.finishGenerationUsage(ctx, usage, result, nil, err)
 		return domain.Job{}, err
 	}
 	status := "draft"
 	if result.NeedsHuman {
 		status = "blocked"
 	}
-	return s.Store.CreateJob(ctx, snap, domain.Job{Source: "deepseek", Question: question, Text: result.Answer, Status: status, Reason: result.Reason, InputTokens: result.InputTokens, OutputTokens: result.OutputTokens})
+	j, err := s.Store.CreateJob(ctx, snap, domain.Job{Source: "deepseek", Question: question, Text: result.Answer, Status: status, Reason: result.Reason, InputTokens: result.InputTokens, OutputTokens: result.OutputTokens})
+	var jobID *string
+	if err == nil {
+		jobID = &j.ID
+	}
+	s.finishGenerationUsage(ctx, usage, result, jobID, err)
+	return j, err
+}
+
+func (s *Service) finishGenerationUsage(ctx context.Context, u domain.UsageEvent, r deepseek.Result, job *string, cause error) {
+	status := "unknown"
+	input, output := int64(0), int64(0)
+	if r.UsageKnown {
+		status = "complete"
+		input = r.InputTokens
+		output = r.OutputTokens
+	}
+	code := ""
+	if cause != nil {
+		code = "generation_failed"
+		var e *domain.Error
+		if errors.As(cause, &e) {
+			code = e.Code
+		}
+		if errors.Is(cause, context.Canceled) {
+			code = "generation_cancelled"
+		}
+	}
+	c, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	_ = s.Store.FinishUsage(c, u.ShopID, u.ID, status, input, output, job, code)
 }
 
 type TakeoverResult struct {
@@ -152,20 +218,14 @@ func (s *Service) Takeover(ctx context.Context, shop, id, action string) (Takeov
 	locks.dispatch.Lock()
 	defer locks.dispatch.Unlock()
 	result := TakeoverResult{Session: p, MediaStopStatus: "not_connected"}
-	if p.MediaSessionID != nil && s.Media != nil && s.Media.LiveConfigured() {
-		stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 35*time.Second)
-		defer cancel()
-		if err = s.Media.Interrupt(stopCtx, *p.MediaSessionID); errors.Is(err, media.ErrSessionNotFound) {
-			result.MediaStopStatus = "not_connected"
-		} else if err != nil {
-			result.MediaStopStatus = "failed"
-		} else {
-			result.MediaStopStatus = "sent"
-		}
-	}
-	auditCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	lookupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	_ = s.Store.RecordMediaStop(auditCtx, shop, id, result.MediaStopStatus)
+	known, lookupErr := s.Store.KnownMedia(lookupCtx, shop, id)
+	if lookupErr != nil {
+		result.MediaStopStatus = "failed"
+	} else {
+		result.MediaStopStatus = s.stopOutputMedia(ctx, shop, id, known)
+	}
 	return result, nil
 }
 func (s *Service) Resume(ctx context.Context, shop, id string) (domain.Session, error) {
@@ -190,9 +250,13 @@ func (s *Service) Negotiate(ctx context.Context, shop, id string, offer media.Of
 	if p.Status == "ended" {
 		return media.Answer{}, domain.Conflict("session_ended", "已结束场次不能建立媒体连接。")
 	}
+	previous, err := s.Store.PreviewMedia(ctx, shop, id)
+	if err != nil {
+		return media.Answer{}, err
+	}
 	// Replacing an existing preview cannot silently leave its audio queue live.
-	if p.MediaSessionID != nil {
-		if err = s.Media.Interrupt(ctx, *p.MediaSessionID); err != nil && !errors.Is(err, media.ErrSessionNotFound) {
+	if previous != nil {
+		if err = s.Media.Interrupt(ctx, *previous); err != nil && !errors.Is(err, media.ErrSessionNotFound) {
 			return media.Answer{}, domain.Unavailable("media_stop_failed", "旧媒体会话停止失败，请核对上游后再连接。")
 		}
 	}
@@ -225,8 +289,18 @@ func (s *Service) Send(ctx context.Context, shop, id string) (domain.Job, error)
 	gate := s.shopLock(shop)
 	gate.RLock()
 	defer gate.RUnlock()
-	if _, err = s.Store.Revalidate(ctx, shop, id, "ready"); err != nil {
+	if j, err = s.Store.Revalidate(ctx, shop, id, "ready"); err != nil {
 		return j, err
+	}
+	engine, identityRequired, err := s.ttsIdentity(ctx)
+	if err != nil {
+		return j, err
+	}
+	if identityRequired && j.AudioEngineID == "" {
+		return j, domain.Conflict("audio_engine_unverified", "该音频未绑定已核验的语音引擎，请重新创建并审核任务。")
+	}
+	if j.AudioEngineID != "" && (engine == "" || engine != j.AudioEngineID) {
+		return j, domain.Conflict("audio_engine_changed", "实际语音引擎与音频生成时不同，请重新生成和审核任务。")
 	}
 	wav, err := s.readAudio(id)
 	if err != nil {
@@ -284,19 +358,30 @@ func (s *Service) cancelOperationsAll() {
 func (s *Service) synthesize(ctx context.Context, j domain.Job) {
 	work, done := s.register(ctx, j.SessionID, j.ID)
 	defer done()
+	if j.ExpiresAt != nil {
+		var cancel context.CancelFunc
+		work, cancel = context.WithDeadline(work, *j.ExpiresAt)
+		defer cancel()
+	}
 	if _, err := s.Store.Revalidate(work, j.ShopID, j.ID, "synthesizing"); err != nil {
 		s.failSynthesis(ctx, j, "stale_context", "任务上下文已改变，合成未执行。")
 		return
 	}
-	wav, err := s.Media.Synthesize(work, j.Text)
+	wav, engine, err := s.synthesizeAudio(work, j)
 	if err != nil {
-		s.failSynthesis(ctx, j, "tts_failed", "本地语音合成失败或被中断，请核对服务后人工重试。")
+		var stateErr *domain.Error
+		if errors.As(err, &stateErr) && stateErr.Code == "tts_engine_changed" {
+			s.failSynthesis(ctx, j, "tts_engine_changed", "合成期间引擎改变，结果已丢弃；请重新创建并审核任务。")
+		} else {
+			s.failSynthesis(ctx, j, "tts_failed", "本地语音合成失败或被中断，请核对服务后人工重试。")
+		}
 		return
 	}
 	if work.Err() != nil {
 		s.failSynthesis(ctx, j, "synthesis_cancelled", "合成被取消，迟到音频已丢弃。")
 		return
 	}
+	j.AudioEngineID = engine
 	if err = s.writeAudio(j.ID, wav); err != nil {
 		s.failSynthesis(ctx, j, "audio_storage_failed", "无法保存语音文件，请检查磁盘权限和空间。")
 		return
@@ -307,7 +392,7 @@ func (s *Service) synthesize(ctx context.Context, j domain.Job) {
 func (s *Service) completeSynthesis(ctx context.Context, j domain.Job) {
 	finishCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	result, err := s.Store.FinishSynthesis(finishCtx, j.ShopID, j.ID)
+	result, err := s.Store.FinishSynthesisWithIdentity(finishCtx, j.ShopID, j.ID, j.AudioEngineID)
 	if err != nil {
 		// A COMMIT acknowledgement can be lost after PostgreSQL has committed
 		// ready. Never delete the only WAV on an ambiguous database error. The

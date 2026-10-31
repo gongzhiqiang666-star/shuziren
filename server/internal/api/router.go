@@ -19,7 +19,7 @@ import (
 	"github.com/gongzhiqiang666-star/shuziren/server/internal/media"
 )
 
-const Version = "0.1.0"
+const Version = "0.2.0"
 
 func Router(s *Service, token, webDist string) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
@@ -40,6 +40,12 @@ func Router(s *Service, token, webDist string) *gin.Engine {
 				return
 			}
 		}
+		if c.Request.URL.Path == "/output-api/v1" || strings.HasPrefix(c.Request.URL.Path, "/output-api/v1/") {
+			c.Header("Cache-Control", "no-store")
+			if !s.authorizeOutput(c) {
+				return
+			}
+		}
 		c.Next()
 	})
 	// Gin's default panic logger prints headers; a bearer secret must never be
@@ -54,6 +60,11 @@ func Router(s *Service, token, webDist string) *gin.Engine {
 	})
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })
 	a := r.Group("/api/v1")
+	s.RegisterOutputRoutes(r, a)
+	s.RegisterBusinessRoutes(a)
+	s.RegisterIntegrationRoutes(a)
+	s.RegisterAutomationRoutes(a)
+	s.RegisterTemplateRoutes(a)
 	a.GET("/status", func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
 		defer cancel()
@@ -66,7 +77,8 @@ func Router(s *Service, token, webDist string) *gin.Engine {
 		if s.Generator != nil {
 			model = s.Generator.Model()
 		}
-		ok(c, gin.H{"version": Version, "storage": "postgresql", "deepseek": gin.H{"configured": configured, "model": model}, "media": gin.H{"tts_configured": s.Media != nil && s.Media.TTSConfigured(), "live_configured": s.Media != nil && s.Media.LiveConfigured()}, "taobao": gin.H{"status": "not_connected"}, "retrieval": gin.H{"mode": "keyword"}})
+		taobao, retrieval := s.IntegrationStatus()
+		ok(c, gin.H{"version": Version, "storage": "postgresql", "deepseek": gin.H{"configured": configured, "model": model}, "media": gin.H{"tts_configured": s.Media != nil && s.Media.TTSConfigured(), "live_configured": s.Media != nil && s.Media.LiveConfigured()}, "taobao": taobao, "retrieval": retrieval})
 	})
 	a.GET("/shops", func(c *gin.Context) { p, e := s.Store.ListShops(c.Request.Context()); respond(c, p, e) })
 	a.POST("/shops", func(c *gin.Context) {
@@ -302,7 +314,7 @@ func Router(s *Service, token, webDist string) *gin.Engine {
 		fail(c, &domain.Error{Status: 405, Code: "method_not_allowed", Message: "此接口不支持该请求方法。"})
 	})
 	r.NoRoute(func(c *gin.Context) {
-		if strings.HasPrefix(c.Request.URL.Path, "/api/") || c.Request.Method != http.MethodGet || webDist == "" {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") || strings.HasPrefix(c.Request.URL.Path, "/output-api/") || c.Request.Method != http.MethodGet || webDist == "" {
 			fail(c, &domain.Error{Status: 404, Code: "not_found", Message: "未找到此页面或接口。"})
 			return
 		}

@@ -22,6 +22,24 @@ import (
 
 const testToken = "local-test-token-01234567890123456789"
 
+func TestUUIDCaseUsesOneDispatchGateAndCancellationDomain(t *testing.T) {
+	s, err := New(nil, nil, nil, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := "abcdef01-2345-6789-abcd-ef0123456789"
+	upper := strings.ToUpper(id)
+	if s.sessionLock(id) != s.sessionLock(upper) || s.shopLock(id) != s.shopLock(upper) {
+		t.Fatal("UUID case split shared resource locks")
+	}
+	ctx, done := s.register(context.Background(), upper, upper)
+	defer done()
+	s.cancelOperations(id, "")
+	if !errors.Is(ctx.Err(), context.Canceled) {
+		t.Fatal("UUID case prevented cancellation")
+	}
+}
+
 func request(r http.Handler, method, path, body, token string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")

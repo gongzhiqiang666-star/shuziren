@@ -1,0 +1,27 @@
+<script setup lang="ts">
+import { onMounted, reactive, ref, watch } from 'vue'
+import { ApiClient, errorMessage } from '../api'
+import type { NoticeSink, Session } from '../types'
+import { optionalRate } from './forms'
+import type { CostSettings, CostSummary } from './types'
+const props = defineProps<{ api: ApiClient; shopId: string; sessions: Session[]; notify: NoticeSink }>()
+const summary = ref<CostSummary | null>(null), settings = ref<CostSettings | null>(null), sessionId = ref(''), loading = ref(true), busy = ref(false), error = ref(''), formError = ref(''), dirty = ref(false)
+const form = reactive({ input: '', output: '', electricity: '', watts: '', budget: '', notes: '' })
+let serial = 0
+function applySettings(value: CostSettings) { settings.value = value; if (!dirty.value) Object.assign(form, { input: value.input_cny_per_million?.toString() ?? '', output: value.output_cny_per_million?.toString() ?? '', electricity: value.electricity_cny_per_kwh?.toString() ?? '', watts: value.device_watts?.toString() ?? '', budget: value.monthly_budget_cny?.toString() ?? '', notes: value.notes }) }
+async function load() { const revision = ++serial; loading.value = true; error.value = ''; try { const value = await props.api.request<CostSummary>('/costs', { query: { shop_id: props.shopId, ...(sessionId.value ? { session_id: sessionId.value } : {}) } }); if (revision === serial) { summary.value = value; applySettings(value.settings) } } catch (cause) { if (revision === serial) error.value = errorMessage(cause) } finally { if (revision === serial) loading.value = false } }
+onMounted(load); watch(sessionId, load)
+function amount(value: number | null | undefined) { return value == null ? '尚无法估算' : '¥' + value.toFixed(4) }
+async function save() {
+  if (busy.value || !settings.value) return; formError.value = ''
+  try {
+    const body = { shop_id: props.shopId, input_cny_per_million: optionalRate(form.input), output_cny_per_million: optionalRate(form.output), electricity_cny_per_kwh: optionalRate(form.electricity), device_watts: optionalRate(form.watts), monthly_budget_cny: optionalRate(form.budget), notes: form.notes.trim(), version: settings.value.version }
+    busy.value = true; const value = await props.api.request<CostSettings>('/cost-settings', { method: 'PUT', body }); dirty.value = false; applySettings(value); await load(); props.notify('估算费率已保存；这里只记录用量估算，不替代供应商账单。')
+  } catch (cause) { formError.value = errorMessage(cause) } finally { busy.value = false }
+}
+</script>
+<template>
+  <div class="page-heading"><div><div class="eyebrow">USAGE & COST</div><h1>用量与成本</h1><p>分别看清已知用量、未知调用和人工录入费率。</p></div><button class="button secondary" :disabled="loading" @click="load">刷新用量</button></div><div v-if="error" class="alert error" role="alert">{{ error }}</div>
+  <section class="panel padded cost-summary"><div class="section-heading"><h2>用量范围</h2><select v-model="sessionId" aria-label="成本统计场次"><option value="">本店全部场次</option><option v-for="session in sessions" :key="session.id" :value="session.id">{{ session.title }}</option></select></div><div v-if="loading && !summary" class="empty-state compact">正在读取用量…</div><template v-else-if="summary"><div class="metric-grid"><div><span>已知输入 tokens</span><strong>{{ summary.input_tokens.toLocaleString() }}</strong></div><div><span>已知输出 tokens</span><strong>{{ summary.output_tokens.toLocaleString() }}</strong></div><div><span>已知 AI 费用估算</span><strong>{{ amount(summary.estimated_ai_cny) }}</strong></div><div><span>额定功率电费 / 小时</span><strong>{{ amount(summary.estimated_power_cny_per_hour) }}</strong></div></div><p class="hint">生成任务 {{ summary.generated_jobs }} · 用量事件 {{ summary.usage_events }} · 用量未知事件 {{ summary.unknown_usage_events }}</p><div v-if="summary.unknown_usage_events" class="alert warning">有 {{ summary.unknown_usage_events }} 次调用未取得明确用量。可能已计费，不计入已知费用总额，请核对供应商账单。</div><p class="page-note">{{ summary.note }}</p></template></section>
+  <div class="settings-grid"><section class="panel padded"><form class="form-stack" @submit.prevent="save" @input="dirty = true"><h2>估算参数</h2><p class="hint">留空表示未设置，不能解释为免费。费率由你按实际账户与模型填写，不预置供应商价格。</p><div class="form-row"><label>输入价格（元 / 百万 tokens）<input v-model="form.input" name="input_rate" inputmode="decimal" placeholder="未设置" /></label><label>输出价格（元 / 百万 tokens）<input v-model="form.output" name="output_rate" inputmode="decimal" placeholder="未设置" /></label></div><div class="form-row"><label>电价（元 / kWh）<input v-model="form.electricity" inputmode="decimal" placeholder="未设置" /></label><label>设备功率（W）<input v-model="form.watts" inputmode="decimal" placeholder="未设置" /></label></div><label>月度预算（元，仅记录）<input v-model="form.budget" inputmode="decimal" placeholder="未设置" /><small>没有自动停播或账单扣费功能。</small></label><label>费率依据与备注<textarea v-model="form.notes" rows="3" maxlength="2000" placeholder="模型名称、价格适用日期、实际账单口径等" /></label><div v-if="formError" class="alert error" role="alert">{{ formError }}</div><div class="form-actions"><span class="muted small-text">{{ dirty ? '有未保存修改' : '当前估算参数' }}</span><button class="button primary" :disabled="busy || !settings">{{ busy ? '保存中…' : '保存参数' }}</button></div></form></section><aside class="panel padded tinted"><h2>估算与实际账单<br />保持清楚的边界。</h2><p>输入 / 输出 tokens 来自服务端保留的调用用量。超时或取消后无法取得用量的调用会单独标为未知。</p><div class="fine-divider" /><p>电费采用人工填写的功率估算，不是硬件测量。当前统计不含税费、维修、人员、平台费用和外部已发生但未记录的调用。</p><p>已知 AI 费用按目前填写的统一费率估算；若存在缓存命中或多档计费，请以实际账单核对。</p></aside></div>
+</template>

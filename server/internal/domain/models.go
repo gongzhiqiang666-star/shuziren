@@ -62,26 +62,32 @@ type Session struct {
 }
 
 type Job struct {
-	ID               string     `json:"id"`
-	ShopID           string     `json:"shop_id"`
-	SessionID        string     `json:"session_id"`
-	ProductID        string     `json:"product_id"`
-	ProductVersion   int64      `json:"product_version"`
-	PersonaVersion   int64      `json:"persona_version"`
-	Epoch            int64      `json:"epoch"`
-	Source           string     `json:"source"`
-	Question         string     `json:"question"`
-	Text             string     `json:"text"`
-	Status           string     `json:"status"`
-	Reason           string     `json:"reason"`
-	ErrorCode        string     `json:"error_code"`
-	InputTokens      int64      `json:"input_tokens"`
-	OutputTokens     int64      `json:"output_tokens"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
-	KnowledgeVersion int64      `json:"-"`
-	ApprovedAt       *time.Time `json:"-"`
-	AudioReady       bool       `json:"-"`
+	ID                  string     `json:"id"`
+	ShopID              string     `json:"shop_id"`
+	SessionID           string     `json:"session_id"`
+	ProductID           string     `json:"product_id"`
+	ProductVersion      int64      `json:"product_version"`
+	PersonaVersion      int64      `json:"persona_version"`
+	Epoch               int64      `json:"epoch"`
+	Source              string     `json:"source"`
+	Question            string     `json:"question"`
+	Text                string     `json:"text"`
+	Status              string     `json:"status"`
+	Reason              string     `json:"reason"`
+	ErrorCode           string     `json:"error_code"`
+	InputTokens         int64      `json:"input_tokens"`
+	OutputTokens        int64      `json:"output_tokens"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+	KnowledgeVersion    int64      `json:"-"`
+	ApprovedAt          *time.Time `json:"-"`
+	AudioReady          bool       `json:"-"`
+	BusinessFingerprint string     `json:"business_fingerprint"`
+	DeliveryLeaseID     *string    `json:"-"`
+	DeliveryGeneration  int64      `json:"-"`
+	Priority            int        `json:"priority"`
+	ExpiresAt           *time.Time `json:"expires_at"`
+	AudioEngineID       string     `json:"audio_engine_id"`
 }
 
 type QualityCheck struct {
@@ -105,12 +111,13 @@ type QualityProfile struct {
 }
 
 type Snapshot struct {
-	Shop             Shop        `json:"shop"`
-	Session          Session     `json:"session"`
-	Product          Product     `json:"product"`
-	Persona          Persona     `json:"persona"`
-	Knowledge        []Knowledge `json:"knowledge"`
-	KnowledgeVersion int64       `json:"knowledge_version"`
+	Shop             Shop             `json:"shop"`
+	Session          Session          `json:"session"`
+	Product          Product          `json:"product"`
+	Persona          Persona          `json:"persona"`
+	Knowledge        []Knowledge      `json:"knowledge"`
+	KnowledgeVersion int64            `json:"knowledge_version"`
+	Business         BusinessSnapshot `json:"business"`
 }
 
 func DefaultPersona(shopID string) Persona {
@@ -173,7 +180,7 @@ func ValidateSnapshot(s Snapshot, now time.Time) error {
 	if s.Product.ExpiresAt != nil && !now.Before(*s.Product.ExpiresAt) {
 		return Conflict("product_expired", "商品资料已过期，请更新后重新生成。")
 	}
-	return nil
+	return ValidateBusinessSnapshot(s.Business, now)
 }
 
 func ValidateJob(j Job, s Snapshot, now time.Time) error {
@@ -182,6 +189,9 @@ func ValidateJob(j Job, s Snapshot, now time.Time) error {
 	}
 	if err := ValidateSnapshot(s, now); err != nil {
 		return err
+	}
+	if j.ExpiresAt != nil && !now.Before(*j.ExpiresAt) {
+		return Conflict("job_expired", "任务已超过允许派发的截止时间，请重新生成与审核。")
 	}
 	if j.Epoch != s.Session.Epoch {
 		return Conflict("stale_epoch", "场次执行批次已改变，旧任务不能继续执行。")
@@ -195,7 +205,7 @@ func ValidateJob(j Job, s Snapshot, now time.Time) error {
 	if j.KnowledgeVersion != s.KnowledgeVersion {
 		return Conflict("stale_knowledge", "FAQ或记忆已修改，请重新生成和审核话术。")
 	}
-	return nil
+	return ValidateBusinessJob(j, s, now)
 }
 
 type Error struct {

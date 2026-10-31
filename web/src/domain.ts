@@ -42,6 +42,7 @@ export function jobTone(status: JobStatus): string {
 export const sessionLabels: Record<Session['status'], string> = { active: '运行中', paused: '已暂停 · 人工接管', ended: '本地已结束' }
 
 export function jobGuard(job: Job, product: Product | undefined, persona: Persona | null, session: Session | undefined, now = Date.now()): string {
+  if (job.expires_at && Date.parse(job.expires_at) <= now) return '任务已过截止时间，请重新生成并审核。'
   if (!session || session.status !== 'active') return '场次未运行，不能继续审批或派发。'
   if (session.epoch !== job.epoch) return '任务属于接管前的旧批次，请重新创建草稿。'
   if (!product || !product.active) return '商品已停用或不存在，请重新选择商品。'

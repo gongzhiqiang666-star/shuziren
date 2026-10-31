@@ -146,6 +146,42 @@ def configured_files(tmp_path):
     return Settings(api_key=TOKEN, repo_dir=str(repo), model_dir=str(model), prompt_wav=str(prompt), prompt_text="授权音频的准确转写。", prompt_authorized=True)
 
 
+def test_engine_identity_hashes_actual_files_and_changes_with_voice_parameters(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    settings = configured_files(tmp_path)
+    install_official_api_double(monkeypatch)
+    first = CosyVoiceEngine(settings)
+    first.load()
+    identity = first.identity()
+    assert len(identity) == 64
+    same = CosyVoiceEngine(settings)
+    same.load()
+    assert same.identity() == identity
+    changed_prompt = CosyVoiceEngine(replace(settings, prompt_text="更换后的准确转写。"))
+    changed_prompt.load()
+    assert changed_prompt.identity() != identity
+    Path(settings.model_dir, "flow.pt").write_bytes(b"replaced-model-contents")
+    with pytest.raises(EngineUnavailable):
+        first.identity()
+    assert first.ready is False
+    assert first.reason == "artifacts_changed"
+    reloaded = CosyVoiceEngine(settings)
+    reloaded.load()
+    assert reloaded.identity() != identity
+
+
+def test_health_identity_is_not_a_path_or_reference_transcript(tmp_path, monkeypatch):
+    settings = configured_files(tmp_path)
+    install_official_api_double(monkeypatch)
+    with TestClient(create_app(settings)) as client:
+        response = client.get("/healthz", headers=AUTH)
+    assert response.status_code == 200
+    assert len(response.json()["engine_id"]) == 64
+    assert str(tmp_path) not in response.text
+    assert settings.prompt_text not in response.text
+
+
 def install_official_api_double(monkeypatch, outputs=None):
     """Simulate only the verified API shape, never CosyVoice quality/performance."""
     calls = {}

@@ -1,27 +1,35 @@
 # shuziren · 淘宝数字人本地工作台
 
-v0.1 是可以本地运行的单操作者开发版：管理商品、人格和知识，准备并审核话术，调度本地语音，连接 LiveTalking 预览与人工接管。业务数据保存在 PostgreSQL；DeepSeek 是唯一接入的按量付费 AI 服务。
+v0.2 提供完整的本地测试工作流：维护商品与活动、管理有来源的人格记忆、生成并审核话术、安排语音任务、通过独立输出页接收媒体，以及接管和恢复。业务数据保存到 PostgreSQL，DeepSeek 是唯一远程 AI 提供者；CosyVoice3、BGE 和 LiveTalking/MuseTalk 在本地运行。
 
-首版没有获得或模拟淘宝正式授权，也不把媒体接口测试当作真实数字人画质通过。实际验证结果和待完成项见[交付记录](docs/IMPLEMENTATION_STATUS.md)。
+软件验证、真实模型验证和淘宝实播分别记录在[交付状态](docs/IMPLEMENTATION_STATUS.md)。本地工作台可以先运行，模型权重、授权人物/声音素材、DeepSeek Key 和淘宝应用权限由实际部署环境提供。
 
-## 第一版可以做什么
+## 已实现的本地功能
 
-| 模块 | 当前实现 |
+| 模块 | 功能 |
 | --- | --- |
-| 本地工作台 | Vue 3 + TypeScript 中文界面，口令认证，多店配置，单操作者 |
-| 商品事实 | 名称、SKU、规格、价格、库存、启停和有效期；金额以整数分保存，编辑产生版本 |
-| 品牌人格 | 名称、语气、表达规则和版本；FAQ、人工维护记忆可增删改 |
-| 话术审核 | 人工草稿或 DeepSeek JSON 草稿；需要人工确认后才能合成，未知信息转人工 |
-| 队列与接管 | PostgreSQL 持久队列；版本与批次校验；取消、暂停接管、恢复及本地结束 |
-| 本地语音 | CosyVoice3 真实调用包装；认证、格式校验、单路合成，无模型时明确不可用 |
-| 媒体连接 | LiveTalking WebRTC 协商、同一份 WAV 上传与打断；派发结果不明时禁止自动重播 |
-| 画质核验 | 源素材、模型、输出画布、帧率/同步目标和逐项证据记录；人工档案，不是自动测量 |
+| 中文工作台 | Vue 3/TypeScript、同源 API、管理口令、多店资料、单操作者 |
+| 商品与活动 | SKU、整数分金额、库存、启停、有效期、版本与历史恢复；活动到期会使旧稿失效 |
+| 人格与记忆 | 名称、语气、表达规则、历史恢复；FAQ/记忆的来源、店铺/商品/场次范围、有效期、删除与恢复 |
+| 话术模板 | 将当前商品事实展开成草稿，模板版本控制，不执行脚本，不自动审核 |
+| 本地检索 | 默认明确的关键词模式；可选真实 BGE CPU 语义检索和持久化向量缓存 |
+| 生成与费用 | DeepSeek JSON 草稿、可信 token 用量、未知用量、运营者费率估算；请求并发、速率及每日保守额度 |
+| 队列与计划 | 人工审核、优先级、截止时间、单次定时派发；重启不补播错过的任务 |
+| 语音与缓存 | CosyVoice3 真实推理包装；固定授权参考声音；引擎内容指纹和 WAV 完整性核验，跨任务缓存隔离 |
+| 独立输出 | OBS 浏览器源；场次专用可撤销口令、单接收者租约、真实 WebRTC/播放状态心跳；运营台关闭不影响独立接收页 |
+| 淘宝适配 | 官方 TOP 签名、直播间详情、出售商品预览、显式弹卡/状态上报、TMC HTTP 消费与确认、事件去重及本地回放 |
+| 质量与运维 | 资产版本档案、人工质量核验、50句口型语料、闪光蜂鸣传输校准、配置诊断、带校验与回退的备份恢复 |
 
-商品、人格或知识改变后，旧上下文任务不能继续通过审核或派发。接管增加场次批次号，迟到结果不写成可播放音频。媒体“已接收”只表示上游 HTTP 确认，实际播放仍需在接收端核验。
+商品、人格、记忆、活动、素材、任务期限与场次批次在审核、合成和派发时重新校验。接管会让旧批次失效；未知派发不会自动重试。`sent` 表示媒体服务接受上传，实际播出需检查 OBS 和淘宝接收端。
 
 ## 快速启动
 
-安装支持 Compose 的 Docker / Docker Desktop，进入仓库目录。
+在已安装 Docker/Compose 的电脑上获取本次代码。若 `main` 尚未合并开发分支：
+
+```sh
+git clone --branch codex/local-test-ready https://github.com/gongzhiqiang666-star/shuziren.git
+cd shuziren
+```
 
 Windows PowerShell：
 
@@ -29,46 +37,45 @@ Windows PowerShell：
 ./scripts/start-local.ps1
 ```
 
-Linux、macOS、WSL：
+Linux、macOS 或 WSL：
 
 ```sh
 sh scripts/start-local.sh
 ```
 
-首次执行会生成 `.env` 中的随机工作台口令和数据库密码。打开 **http://127.0.0.1:8765**，使用 `.env` 中的 `APP_TOKEN` 登录。此入口默认仅本机可用。
+首次运行生成 `.env` 中的随机口令和数据库密码。打开 **http://127.0.0.1:8765**，使用本机 `.env` 的 `APP_TOKEN` 登录。默认只监听本机。该命令启动工作台和数据库，不会自动下载模型或开始淘宝直播。
 
-该步骤启动工作台和数据库。没有配置模型服务时，可以先录入商品、配置人格、创建人工草稿并审核；页面会显示 DeepSeek、语音和媒体的未配置状态。配置方法、原生开发启动及备份方式见[本地启动说明](docs/LOCAL_SETUP.md)。
+先录入虚构测试商品、场次、活动和知识，走通人工草稿/审核及评论回放。完成后按[本地完整测试手册](docs/LOCAL_TEST_RUNBOOK.md)配置模型、独立输出与目标机器验收。运行诊断：
 
-> Docker / Windows 与真实 GPU 的验证状态单独记录在交付记录中；启动文件存在不代表这些目标环境已经通过实测。
-
-## 模型和淘宝的边界
-
-- DeepSeek 只生成文本，由后端读取用户自己的 API Key。不会把 Key 放进浏览器或仓库。
-- 本地语音安装见 [workers/tts](workers/tts/README.md)；接口协议见 [media](server/internal/media/README.md)。模型权重和授权人物/声音素材需要另外准备。
-- v0.1 使用关键词检索；BGE 向量检索继续保留在完整路线中。
-- 淘宝评论、商品同步、弹卡和获准开播链路尚未接入，人工输入问题不是自动评论功能。
-- 当前 WebRTC 预览依赖工作台页面。独立 OBS 媒体源与关闭管理页后持续输出的链路尚未实现；不能把首版预览当作无人值守直播输出。
-- 第一版单后端实例运行，启动时使用数据库锁防止重复消费。多店配置不等于多用户 SaaS 权限。
-
-## 目录
-
-```text
-server/              Go / Gin 服务、迁移、持久队列与适配器
-web/                 Vue 工作台与前端测试
-workers/tts/         CosyVoice3 HTTP 包装与无 GPU 边界测试
-scripts/             Windows / POSIX 本地启动脚本
-docs/                计划、质量控制、接口与交付记录
+```sh
+python3 scripts/doctor.py
 ```
 
-## 开发资料
+## 模型、资产与部署说明
 
-- [完整开发计划与 WBS](docs/DEVELOPMENT_PLAN.md)
-- [v0.1 接口契约](docs/MVP_CONTRACT.md)
-- [本地启动与操作](docs/LOCAL_SETUP.md)
-- [交付状态与验证记录](docs/IMPLEMENTATION_STATUS.md)
-- [画质、细节与口型控制](docs/AVATAR_QUALITY.md)
-- [完整产品验收清单](docs/ACCEPTANCE.md)
-- [依赖和许可记录](docs/DEPENDENCIES.md)
-- [GitHub 提交安排](docs/GITHUB_WORKFLOW.md)
+- DeepSeek 生成文本；Key只放后端环境，不进入浏览器。未配置时可使用人工草稿与模板。
+- [CosyVoice3](workers/tts/README.md)生成同一份用于试听和嘴部驱动的 WAV；[LiveTalking](server/internal/media/README.md)提供数字人媒体。真实 CUDA 环境、人物素材与声音仍需实机安装和验证。
+- [BGE](workers/retrieval/README.md)可在CPU运行，提供可选容器叠加文件 `compose.bge.yaml`。本地精确余弦排名使用PostgreSQL数组缓存，不强制安装pgvector；大规模索引优化仍属后续工作。
+- 资产台账记录授权、版本与SHA256；台账编辑不会直接切换进程外的头像/音色。实际切换由本机模型服务配置与重启完成，再核对引擎指纹。初期每个媒体服务配置固定头像/音色、同时验证一路输出。
+- 淘宝的配置状态、HTTP协议成功、浏览器收到媒体、OBS采集与淘宝实播是不同证据。接口需要应用实际权限；本地回放始终标为回放。评论不会绕过审核直接播报。
+- 单操作者可管理多店资料；不提供多用户 SaaS 角色授权。若向局域网/公网开放，应另行设计身份认证与网络部署。
 
-完整产品工程预算仍为 320 小时基础工作 + 64 小时联调返工。v0.1 完成的是首个可运行切片，目标 Windows 电脑、GPU、淘宝账号和客户试点继续按原计划推进。
+## 测试与恢复
+
+```sh
+cd server && go test -race ./... && go vet ./... && cd ..
+cd web && npm ci && npm test && npm run build && cd ..
+python3 -m unittest discover -s scripts -p 'test_*.py' -v
+python3 scripts/backup_restore.py backup backups/before-upgrade
+python3 scripts/backup_restore.py verify backups/before-upgrade
+```
+
+Go数据库测试需显式设置专用 `TEST_DATABASE_URL`；未设置会跳过数据库测试，不能因此声称数据库路径已验收。真实浏览器测试说明见 [tests/browser](tests/browser/README.md)。备份恢复须在维护窗口执行，恢复要求显式 `--confirm-replace`，会暂停场次、撤销旧输出链接并取消旧任务，防止历史内容突然重播。
+
+## 文档
+
+- [当前交付状态与证据](docs/IMPLEMENTATION_STATUS.md)
+- [完整开发计划](docs/DEVELOPMENT_PLAN.md)与[本地测试范围](docs/LOCAL_TEST_CONTRACT.md)
+- [启动说明](docs/LOCAL_SETUP.md)与[完整测试手册](docs/LOCAL_TEST_RUNBOOK.md)
+- [独立输出](docs/OUTPUT_CONTRACT.md)、[业务版本](docs/BUSINESS_CONTRACT.md)、[限额/缓存/调度](docs/AUTOMATION_CONTRACT.md)、[话术模板](docs/TEMPLATES_CONTRACT.md)、[淘宝与检索](docs/INTEGRATIONS_CONTRACT.md)
+- [画质、细节与口型方案](docs/AVATAR_QUALITY.md)、[验收清单](docs/ACCEPTANCE.md)、[依赖与许可](docs/DEPENDENCIES.md)

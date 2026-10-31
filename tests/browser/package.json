@@ -1,0 +1,12 @@
+{
+  "name": "shuziren-browser-acceptance",
+  "private": true,
+  "version": "0.2.0",
+  "scripts": {
+    "test": "node transport.cjs",
+    "test:business": "node business.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

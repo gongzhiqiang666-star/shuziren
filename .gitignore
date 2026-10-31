@@ -5,6 +5,7 @@
 secrets/
 data/
 backups/
+.backup-restore.lock/
 logs/
 *.log
 
