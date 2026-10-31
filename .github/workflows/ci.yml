@@ -18,7 +18,7 @@ jobs:
           POSTGRES_DB: shuziren_test
         ports: ['5432:5432']
         options: >-
-          --health-cmd 'pg_isready -U shuziren -d shuziren_test'
+          --health-cmd "pg_isready -U shuziren -d shuziren_test"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 20
@@ -63,3 +63,49 @@ jobs:
           APP_TOKEN: ci-only-workspace-token-long-enough
           POSTGRES_PASSWORD: ci-only-database-password
         run: docker compose config --quiet
+
+  container-startup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_TOKEN: ci-only-container-workspace-token
+      POSTGRES_PASSWORD: ci-only-container-database-password
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build and start the actual local deployment
+        run: docker compose up --build -d --wait --wait-timeout 180
+      - name: Verify the container serves the UI and protected API
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          base = 'http://127.0.0.1:8765'
+          with urllib.request.urlopen(base + '/healthz', timeout=10) as response:
+              assert json.load(response)['status'] == 'ok'
+          with urllib.request.urlopen(base + '/', timeout=10) as response:
+              assert b'<div id="app"></div>' in response.read()
+          try:
+              urllib.request.urlopen(base + '/api/v1/status', timeout=10)
+          except urllib.error.HTTPError as error:
+              assert error.code == 401
+          else:
+              raise AssertionError('The API accepted an unauthenticated request')
+          request = urllib.request.Request(base + '/api/v1/status', headers={'Authorization': 'Bearer ' + os.environ['APP_TOKEN']})
+          with urllib.request.urlopen(request, timeout=10) as response:
+              status = json.load(response)['data']
+              assert status['version'] == '0.1.0'
+              assert status['storage'] == 'postgresql'
+              assert status['deepseek']['configured'] is False
+          print('Container UI, PostgreSQL readiness, authentication, and status passed.')
+          PY
+      - name: Collect service status on failure
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --tail=80 app db
+      - name: Remove isolated CI containers and volumes
+        if: always()
+        run: docker compose down -v
