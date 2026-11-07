@@ -152,5 +152,14 @@ class GateTests(unittest.TestCase):
             self.assertNotIn(str(root), (run_dir / "metadata.json").read_text())
 
 
+class WindowsScriptTests(unittest.TestCase):
+    def test_windows_preflight_has_required_checks_and_no_secret_dump(self):
+        source = (PROJECT / "scripts/check-live-readiness.ps1").read_text(encoding="utf-8")
+        for required in ("nvidia-smi", "Win32_SoundDevice", "obs64.exe", "srs-live.bat", "obs-virtualcam-module64.dll", "check-assets"):
+            self.assertIn(required, source)
+        for forbidden in ("Get-ChildItem Env:", "TAOBAO_APP_SECRET", "TAOBAO_SESSION", "APP_TOKEN"):
+            self.assertNotIn(forbidden, source)
+
+
 if __name__ == "__main__":
     unittest.main()
