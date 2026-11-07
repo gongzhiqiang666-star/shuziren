@@ -1556,25 +1556,25 @@ class Api(PluginInstallerApi):
 
     def generate_ip_agent_publish_meta(self, project_id, data):
         from .generate_title import generate_title_and_tags
-        from .ip_agent_post_process import generate_cover, infer_keywords_from_text
         try:
-            info = self._load_ip_agent_project(project_id); script = str(data.get("script") or info.get("rewritten_script") or "")
-            candidates = [data.get("video_path"), info.get("final_video_path"),
-                          info.get("subtitle_video_path"), info.get("video_path")]
-            video = str(next((value for value in candidates if value and Path(value).is_file()), ""))
-            if not script: raise ValueError("请先生成改写文案")
-            try: meta = generate_title_and_tags(script, video)
-            except Exception:
-                meta = {"title": script.strip().splitlines()[0][:28], "tags": infer_keywords_from_text(script)}
-            info["publish_title"] = str(data.get("title") or meta["title"])
-            info["publish_tags"] = self._normalize_publish_tags(data.get("tags") or meta["tags"])
-            if Path(video).is_file():
-                generate_cover(video, info["cover_path"], title=info["publish_title"],
-                               template_id=data.get("template_id", "impact_yellow"), font_file=data.get("font_file"))
-            info = self._save_ip_agent_project(project_id, info)
-            return {"status": "success", "title": info["publish_title"], "tags": info["publish_tags"],
-                    "tags_text": self._stringify_publish_tags(info["publish_tags"]), "cover_path": info["cover_path"]}
-        except Exception as error: return {"status": "error", "message": f"生成发布信息失败: {error}"}
+            project = self._load_ip_agent_project(project_id)
+            if not project:
+                return {"error": "IP项目不存在"}
+            script = (data.get("script") or project.get("rewritten_script") or
+                      project.get("original_script") or "").strip()
+            if not script:
+                return {"error": "请先准备文案内容"}
+            video_url = data.get("video_url") or project.get("benchmark_url", "")
+            title_result = generate_title_and_tags(script, video_url)
+            title = str(title_result.get("title") or "").strip()
+            tags = self._normalize_publish_tags(title_result.get("tags"))
+            project = self._save_ip_agent_project(project_id, {
+                "publish_title": title,
+                "publish_tags_text": self._stringify_publish_tags(tags),
+            })
+            return {"status": "success", "title": title, "tags": tags, "project": project}
+        except Exception as error:
+            return {"error": f"生成发布标题和标签失败: {error}"}
 
     def generate_audio_for_ip_agent_project(self, project_id, data):
         from .short_video_audio_synthesis import synthesize_text_to_audio
