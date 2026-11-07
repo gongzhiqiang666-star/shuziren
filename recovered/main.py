@@ -1006,28 +1006,64 @@ class Api(PluginInstallerApi):
             return {"status": "error", "message": str(error)}
 
     def save_llm_config(self, llm_config_data):
-        from .main_config import save_user_config
-
+        if not isinstance(llm_config_data, dict):
+            raise TypeError("llm_config_data must be a dict")
         try:
-            normalized = {key: str((llm_config_data or {}).get(key) or "").strip()
-                          for key in ("endpoint", "api_key", "model", "vendor")}
-            if not all(normalized[key] for key in ("endpoint", "api_key", "model")):
-                raise ValueError("LLM 地址、API Key 和模型不能为空")
-            save_user_config(resolve_user_config_path(), {"llm_config": normalized})
-            self.config["llm_config"] = normalized
-            return {"status": "success", "config": normalized}
+            self._save_user_config({"llm_config": llm_config_data})
+            self.config["llm_config"] = llm_config_data
+            self._update_managers_config()
+            return {"status": "success", "message": "配置已保存到本地"}
         except Exception as error:
-            return {"status": "error", "message": str(error)}
+            return {"error": str(error)}
 
     def test_llm_availability(self, llm_config):
         from .llm_base_chat import base_chat
-
+        if not isinstance(llm_config, dict):
+            raise TypeError("llm_config must be a dict")
+        vendor = ""
         try:
-            reply = base_chat("只回复 OK", "你是连接测试助手。", raise_on_failure=True,
-                              llm_config=llm_config)
-            return {"status": "success", "reply": reply}
+            vendor = llm_config.get("vendor", "").lower()
+            model = llm_config.get("model", "")
+            endpoint = llm_config.get("endpoint", "")
+            api_key = llm_config.get("api_key", "")
+            provider = vendor or "unknown"
+            if not vendor or not model or not endpoint or not api_key:
+                return {
+                    "status": "error",
+                    "message": "未检测到可用的大模型配置，请先在设置中配置硅基流动 API Key。",
+                    "is_available": False,
+                    "is_recommended_provider": False,
+                    "provider": provider,
+                }
+            reply = base_chat(
+                question="回复一个字：好",
+                sys_prompt="你是一个助手",
+                chat_history=[],
+                llm_config=llm_config,
+            )
+            if reply and len(reply.strip()) > 0 and reply.strip() != " ":
+                return {
+                    "status": "success",
+                    "message": "大模型服务正常",
+                    "is_available": True,
+                    "is_recommended_provider": True,
+                    "provider": provider,
+                }
+            return {
+                "status": "error",
+                "message": "当前大模型配置不可用，请检查设置中的模型参数，或改为配置硅基流动 API Key。",
+                "is_available": False,
+                "is_recommended_provider": False,
+                "provider": provider,
+            }
         except Exception as error:
-            return {"status": "error", "message": str(error)}
+            return {
+                "status": "error",
+                "message": f"测试大模型服务时出错: {error}",
+                "is_available": False,
+                "is_recommended_provider": False,
+                "provider": vendor or "unknown",
+            }
 
     def _normalize_volcengine_image_config(self, image_config_data):
         source = image_config_data if isinstance(image_config_data, dict) else {}
