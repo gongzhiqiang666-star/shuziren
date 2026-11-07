@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "runtime": {
+    "root": "C:/yunchuang_v122/_internal",
+    "environment": "env",
+    "python": "C:/yunchuang_v122/_internal/env/python.exe"
+  },
+  "tts": {
+    "name": "one-local-engine",
+    "model_dir": "C:/live-assets/tts-model",
+    "reference_audio": "C:/live-assets/voice/reference.wav",
+    "reference_text": "C:/live-assets/voice/reference.txt"
+  },
+  "avatar": {
+    "runtime": "yunchuang-image-infer",
+    "model_dir": "C:/live-assets/avatar-model",
+    "character_dir": "C:/live-assets/character-one"
+  },
+  "output": {
+    "mode": "virtual_camera",
+    "width": 1280,
+    "height": 720,
+    "fps": 25,
+    "obs_scene": "minimum-live-proof"
+  },
+  "platform": {
+    "required_for_this_run": false,
+    "approval_status": "blocked"
+  }
+}

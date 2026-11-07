@@ -1,5 +1,28 @@
 # 真实浏览器验收
 
+## 低端 3D 本地预览
+
+`avatar3d.cjs` 只需已构建的前端和本地静态服务，不启动 Go、数据库或模型服务。它实际加载固定 CC0 GLB、比较旋转和嘴形的渲染结果、运行本地声学 Worker、核对音频哈希与播放时间轴，并使用浏览器原生 MediaRecorder 导出带音视频的录像。
+
+```sh
+python3 scripts/avatar3d_setup.py
+npm --prefix web ci
+npm --prefix web run build
+npm --prefix tests/browser ci
+cd tests/browser && npx playwright install chromium && cd ../..
+node scripts/serve_avatar3d.mjs --port 5174
+```
+
+保持服务运行，在另一终端执行：
+
+```sh
+AVATAR3D_BASE_URL=http://127.0.0.1:5174 npm --prefix tests/browser run test:avatar3d
+```
+
+`PLAYWRIGHT_MODULE`、`BROWSER_EXECUTABLE` 可指定已有运行环境；无物理 GPU 的 CI 可显式设置 `AVATAR3D_SOFTWARE_GL=1`。安装 FFmpeg 后，脚本还会用 `ffprobe` 检查录像文件确有音视频双流。录像接口不可用会记录未验收并返回非零值，不使用替身录像。
+
+结果、截图和样片写入 `test-results/avatar3d/`，不提交 Git。测试输入是合成 PCM 音调，只证明本地渲染、音频分析、播放和录制链路；不能证明中文口型准确、真人感、目标低配机帧率、麦克风实录、OBS 采集或淘宝实播。CI 使用相同生产静态服务，覆盖其资源路径和 CSP。
+
 ## 音视频传输
 
 本测试启动实际 Go 后端、隔离 PostgreSQL schema 和两个真实 Chromium WebRTC peer，播放合成画面及测试音调，验证运营页关闭不影响独立输出、重复接收者不抢占、审核/合成/派发、接管/恢复和撤销。测试媒体服务只在此脚本内启动，生产代码不包含测试成功路径。

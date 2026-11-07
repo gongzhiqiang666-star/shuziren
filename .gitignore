@@ -33,3 +33,11 @@ __pycache__/
 coverage/
 test-results/
 playwright-report/
+
+# Local minimum-live manifests and evidence
+config/live-readiness.local.json
+live-readiness-evidence/
+
+# Downloaded CC0 example avatar; pinned source and checksum are in the setup script.
+/web/public/avatar-assets/*.glb
+/releases/
