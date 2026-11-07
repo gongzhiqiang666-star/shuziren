@@ -25,7 +25,7 @@
 | SYS-004 | 系统配置、用户配置合并与私密配置迁移 | `main.pyd` 配置调用链 | `main_config.py` | 静态验证通过 | `%LOCALAPPDATA%` 路径、旧配置迁移、异常断电原子写入 |
 | SYS-005 | pywebview 主窗口及前后端 JS API | `main.main/_main/run_webview` | `main_webview.py`, `main.py` | 已分析 | Windows WebView2、生产/开发 URL、窗口关闭资源回收 |
 | SYS-006 | 登录 Token、管理员/OEM 信息与背景资源 | Token `0x1800644b0/0x180064620`, `0x180064dd0/0x180065090`, `0x180065880/0x1800659f0`; 管理员/OEM/背景/版本原生主体 | `main.py` | 静态验证通过 | Windows 原 `.pyd`、真实旧配置/OEM 包和前端登录流差分 |
-| SYS-007 | 本地资源枚举、预览与删除 | main wrapper/body `get_local_resources` `0x1800b9320/0x1800b9490`、`delete_model` `0x1800b7980/0x1800b7c40`、`delete_voice` `0x1800b8650/0x1800b8910`；CloneManager 原生主体见 `rea-output/main-local-resources-notes.md` | `main.py`, `clone_manager.py` | 开发中 | 主 API 委托/响应契约已恢复并验证；仍需 Windows 原 `.pyd` 差分确认完整记录字段值、旧资源目录、占用文件和删除失败行为 |
+| SYS-007 | 本地资源枚举、预览与删除 | main wrapper/body `get_local_resources` `0x1800b9320/0x1800b9490`、`delete_model` `0x1800b7980/0x1800b7c40`、`delete_voice` `0x1800b8650/0x1800b8910`；CloneManager 枚举/信息写入主体见 `rea-output/main-local-resources-notes.md` | `main.py`, `clone_manager.py` | 开发中 | 主 API、统一 `id/name` YAML、10 键形象记录、6 键音色记录、KT 缓存和删除已恢复并验证；仍需 Windows 原 `.pyd` 差分缩略图压缩参数、旧资源兼容和占用文件行为 |
 | SYS-008 | 文件/目录选择及打开目录 | `open_file_dialog/open_directory` | `main.py` | 开发中 | Windows 对话框、中文/长路径、非法路径 |
 | SYS-009 | 缓存清理 | `Api.clear_cache` | `main.py`, `audio_cache.py` | 已分析 | 正在直播、文件占用、部分清理失败 |
 | SYS-010 | 应用更新状态、下载/启动更新器 | `get_update_status/start_app_update` | `main.py`, `update_integrity.py`, `update_text.py` | 已分析 | Windows 更新器、签名/完整性、失败回滚、进程退出 |
