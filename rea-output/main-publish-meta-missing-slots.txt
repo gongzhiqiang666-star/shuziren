@@ -1,0 +1,114 @@
+=== 180167562 ===
+18016751c	LEA RAX,[0x1801cb4a0]
+180167523	MOV qword ptr [RSP + 0x3318],RAX
+18016752b	MOV qword ptr [RSP + 0x3320],0x23
+180167537	MOV qword ptr [RSP + 0x3328],0x0
+180167543	MOV byte ptr [RSP + 0x3330],0x1
+18016754b	MOV byte ptr [RSP + 0x3331],0x0
+180167553	MOV byte ptr [RSP + 0x3332],0x0
+18016755b	MOV RAX,qword ptr [0x1801e5048]
+180167562	ADD RAX,0xb08
+180167568	MOV qword ptr [RSP + 0x3338],RAX
+180167570	LEA RAX,[0x1801dc028]
+180167577	MOV qword ptr [RSP + 0x3340],RAX
+18016757f	MOV qword ptr [RSP + 0x3348],0x12
+18016758b	MOV qword ptr [RSP + 0x3350],0x0
+180167597	MOV byte ptr [RSP + 0x3358],0x1
+18016759f	MOV byte ptr [RSP + 0x3359],0x0
+1801675a7	MOV byte ptr [RSP + 0x335a],0x1
+1801675af	MOV RAX,qword ptr [0x1801e5048]
+=== 18016a5f2 ===
+18016a5ac	LEA RAX,[0x1801d7af8]
+18016a5b3	MOV qword ptr [RSP + 0x4a38],RAX
+18016a5bb	MOV qword ptr [RSP + 0x4a40],0xe
+18016a5c7	MOV qword ptr [RSP + 0x4a48],0x0
+18016a5d3	MOV byte ptr [RSP + 0x4a50],0x1
+18016a5db	MOV byte ptr [RSP + 0x4a51],0x0
+18016a5e3	MOV byte ptr [RSP + 0x4a52],0x0
+18016a5eb	MOV RAX,qword ptr [0x1801e5048]
+18016a5f2	ADD RAX,0xfa8
+18016a5f8	MOV qword ptr [RSP + 0x4a58],RAX
+18016a600	LEA RAX,[0x1801ca029]
+18016a607	MOV qword ptr [RSP + 0x4a60],RAX
+18016a60f	MOV qword ptr [RSP + 0x4a68],0x1
+18016a61b	MOV qword ptr [RSP + 0x4a70],0x0
+18016a627	MOV byte ptr [RSP + 0x4a78],0x1
+18016a62f	MOV byte ptr [RSP + 0x4a79],0x0
+18016a637	MOV byte ptr [RSP + 0x4a7a],0x0
+18016a63f	MOV RAX,qword ptr [0x1801e5048]
+=== 18016f0c2 ===
+18016f07c	LEA RAX,[0x1801d5418]
+18016f083	MOV qword ptr [RSP + 0x6dd8],RAX
+18016f08b	MOV qword ptr [RSP + 0x6de0],0xd
+18016f097	MOV qword ptr [RSP + 0x6de8],0x0
+18016f0a3	MOV byte ptr [RSP + 0x6df0],0x1
+18016f0ab	MOV byte ptr [RSP + 0x6df1],0x0
+18016f0b3	MOV byte ptr [RSP + 0x6df2],0x1
+18016f0bb	MOV RAX,qword ptr [0x1801e5048]
+18016f0c2	ADD RAX,0x16c8
+18016f0c8	MOV qword ptr [RSP + 0x6df8],RAX
+18016f0d0	LEA RAX,[0x1801cdfd0]
+18016f0d7	MOV qword ptr [RSP + 0x6e00],RAX
+18016f0df	MOV qword ptr [RSP + 0x6e08],0x19
+18016f0eb	MOV qword ptr [RSP + 0x6e10],0x0
+18016f0f7	MOV byte ptr [RSP + 0x6e18],0x1
+18016f0ff	MOV byte ptr [RSP + 0x6e19],0x0
+18016f107	MOV byte ptr [RSP + 0x6e1a],0x1
+18016f10f	MOV RAX,qword ptr [0x1801e5048]
+=== 18016f116 ===
+18016f0d0	LEA RAX,[0x1801cdfd0]
+18016f0d7	MOV qword ptr [RSP + 0x6e00],RAX
+18016f0df	MOV qword ptr [RSP + 0x6e08],0x19
+18016f0eb	MOV qword ptr [RSP + 0x6e10],0x0
+18016f0f7	MOV byte ptr [RSP + 0x6e18],0x1
+18016f0ff	MOV byte ptr [RSP + 0x6e19],0x0
+18016f107	MOV byte ptr [RSP + 0x6e1a],0x1
+18016f10f	MOV RAX,qword ptr [0x1801e5048]
+18016f116	ADD RAX,0x16d0
+18016f11c	MOV qword ptr [RSP + 0x6e20],RAX
+18016f124	LEA RAX,[0x1801d4410]
+18016f12b	MOV qword ptr [RSP + 0x6e28],RAX
+18016f133	MOV qword ptr [RSP + 0x6e30],0x24
+18016f13f	MOV qword ptr [RSP + 0x6e38],0x0
+18016f14b	MOV byte ptr [RSP + 0x6e40],0x1
+18016f153	MOV byte ptr [RSP + 0x6e41],0x0
+18016f15b	MOV byte ptr [RSP + 0x6e42],0x0
+18016f163	MOV RAX,qword ptr [0x1801e5048]
+=== 18017bcda ===
+18017bc94	LEA RAX,[0x1801d8190]
+18017bc9b	MOV qword ptr [RSP + 0xcf08],RAX
+18017bca3	MOV qword ptr [RSP + 0xcf10],0x8
+18017bcaf	MOV qword ptr [RSP + 0xcf18],0x0
+18017bcbb	MOV byte ptr [RSP + 0xcf20],0x0
+18017bcc3	MOV byte ptr [RSP + 0xcf21],0x1
+18017bccb	MOV byte ptr [RSP + 0xcf22],0x1
+18017bcd3	MOV RAX,qword ptr [0x1801e5048]
+18017bcda	ADD RAX,0x2a38
+18017bce0	MOV qword ptr [RSP + 0xcf28],RAX
+18017bce8	LEA RAX,[0x1801d59b4]
+18017bcef	MOV qword ptr [RSP + 0xcf30],RAX
+18017bcf7	MOV qword ptr [RSP + 0xcf38],0x4
+18017bd03	MOV qword ptr [RSP + 0xcf40],0x0
+18017bd0f	MOV byte ptr [RSP + 0xcf48],0x0
+18017bd17	MOV byte ptr [RSP + 0xcf49],0x1
+18017bd1f	MOV byte ptr [RSP + 0xcf4a],0x1
+18017bd27	MOV RAX,qword ptr [0x1801e5048]
+=== 18018e2da ===
+18018e294	LEA RAX,[0x1801d50e4]
+18018e29b	MOV qword ptr [RSP + 0x15b08],RAX
+18018e2a3	MOV qword ptr [RSP + 0x15b10],0x5
+18018e2af	MOV qword ptr [RSP + 0x15b18],0x0
+18018e2bb	MOV byte ptr [RSP + 0x15b20],0x0
+18018e2c3	MOV byte ptr [RSP + 0x15b21],0x1
+18018e2cb	MOV byte ptr [RSP + 0x15b22],0x1
+18018e2d3	MOV RAX,qword ptr [0x1801e5048]
+18018e2da	ADD RAX,0x4638
+18018e2e0	MOV qword ptr [RSP + 0x15b28],RAX
+18018e2e8	LEA RAX,[0x1801d50e4]
+18018e2ef	MOV qword ptr [RSP + 0x15b30],RAX
+18018e2f7	MOV qword ptr [RSP + 0x15b38],0x5
+18018e303	MOV qword ptr [RSP + 0x15b40],0x0
+18018e30f	MOV byte ptr [RSP + 0x15b48],0x1
+18018e317	MOV byte ptr [RSP + 0x15b49],0x0
+18018e31f	MOV byte ptr [RSP + 0x15b4a],0x1
+18018e327	MOV RAX,qword ptr [0x1801e5048]
