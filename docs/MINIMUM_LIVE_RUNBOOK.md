@@ -8,6 +8,8 @@
 
 第一轮到 OBS 为止。没有获准的淘宝测试路径时，平台关保持 `blocked`，本地成功结论只能是 `local_chain_passed_platform_blocked`。不测试弹幕、自动回复、商品弹卡、多模型、多人物、多路并发或八小时稳定性。
 
+实施人员登录工作台后，从左侧进入“开播验证”，创建一条验证记录。页面负责逐关提示、校验证据、保存结论和导出脱敏 JSON；下列 PowerShell、TTS、数字人和 OBS 操作仍在外部执行，页面不会运行任何命令或进程。
+
 ## 1. 准备配置
 
 在 Windows PowerShell 中复制模板：
@@ -29,7 +31,11 @@ powershell -ExecutionPolicy Bypass -File scripts/check-live-readiness.ps1 `
 
 任一必需项为 `fail` 或 `unverified` 时立即停止，不安装驱动、不自动注册 DLL、不切换云服务。先人工解决缺失条件，再重新预检。
 
-## 3. 初始化证据目录
+## 3. 建立验证记录
+
+推荐在工作台“开播验证”页面创建记录，选择虚拟摄像头或 SRS，随后按五个步骤保存报告标签、WAV 哈希和 OBS 回放结果。不要在页面填写绝对路径、日志正文或凭据。
+
+需要离线文件式记录时，才使用下面的命令初始化证据目录：
 
 ```powershell
 py -3.11 scripts/live_readiness.py init-run `
