@@ -161,5 +161,18 @@ class WindowsScriptTests(unittest.TestCase):
             self.assertNotIn(forbidden, source)
 
 
+class RunbookTests(unittest.TestCase):
+    def test_runbook_locks_the_minimum_chain_and_stop_conditions(self):
+        source = (PROJECT / "docs/MINIMUM_LIVE_RUNBOOK.md").read_text(encoding="utf-8")
+        for required in (
+            "Windows/NVIDIA", "5–10", "同一份 WAV", "虚拟摄像头", "OBS",
+            "声音和画面", "local_chain_passed_platform_blocked",
+            "check-live-readiness.ps1", "init-run", "summarize",
+        ):
+            self.assertIn(required, source)
+        self.assertIn("HTTP 可达不能证明真实播出", source)
+        self.assertIn("立即停止", source)
+
+
 if __name__ == "__main__":
     unittest.main()
