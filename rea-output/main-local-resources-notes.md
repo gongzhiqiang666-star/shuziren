@@ -37,7 +37,9 @@
 - 形象内部变量：`model_id`、`model_name`、`model_path`、`model_info`；持久化和返回使用统一字段名。
 - 音色内部变量：`voice_id`、`voice_name`、`voice_path`、`voice_info`、`ref_audio_path`；音色信息和形象信息都写入 `model_info.yaml`，并非 `voice_info.yaml`。
 - 预览编码：形象固定以 `data:image/jpeg;base64,` 输出；音色通过 `_encode_file_as_data_url(..., "audio/wav", ...)` 输出。
+- 形象缩略图常量对象的初始化指令位于 `0x180028ccc` 起：`0xb50` 由 `PyLong(0x48)` 初始化，即 JPEG `quality=72`；`0xb58/0xb60` 分别由 `PyLong(0x140)`、`PyLong(0x238)` 初始化，随后组成 `0xb90=(320,568)`。主体调用 `thumbnail((320,568), LANCZOS)`，再以 `format="JPEG", quality=72, optimize=True` 写入内存缓冲区；任一步骤异常时调用 `_encode_file_as_data_url(sample_path, "image/jpeg", cache)` 回退原文件。
 - 删除：先用 `_resource_dir` 解析资源目录，检查存在性，不存在时抛 `FileNotFoundError`，存在时调用 `shutil.rmtree`，返回 `None`。
+- `_resource_dir` wrapper/body `0x180003060/0x180003410`：先对资源 ID 做字符串化和 `strip()`，拒绝空值、绝对路径以及 `basename(resource_id) != resource_id` 的嵌套/穿越形式，再拼接配置根目录。
 
 ### 精确记录结构
 
@@ -62,5 +64,5 @@ id, name, create_time, sample_data, provider, supported_versions
 
 ## 当前验证边界
 
-`verify_main_local_resources_contract` 已覆盖主 API 的成功响应、异常响应、参数类型和委托参数保真；`verify_clone_manager_local_resources_contract` 已覆盖统一 YAML 结构、形象/音色记录、固定 MIME、KT 缓存判断、删除和目录穿越防护。形象缩略图的精确像素压缩参数、旧资源目录兼容性和 Windows 文件占用异常仍需原 `.pyd` 差分，因此 SYS-007 暂不提升为“静态验证通过”。
+`verify_main_local_resources_contract` 已覆盖主 API 的成功响应、异常响应、参数类型和委托参数保真；`verify_clone_manager_local_resources_contract` 已覆盖统一 YAML 结构、形象/音色记录、固定 MIME、精确缩略图尺寸和格式、KT 缓存判断、删除和目录穿越防护。SYS-007 已提升为“静态验证通过”；旧生产资源样本、Windows 文件占用/权限异常及原 `.pyd` 响应差分仍列入 Windows 验收。
 
