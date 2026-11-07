@@ -2,6 +2,7 @@
 
 import subprocess
 import base64
+from io import BytesIO
 import shutil
 import time
 import yaml
@@ -37,7 +38,22 @@ class CloneManager:
             cache.clear(); cache[key]=f"data:{mime_type};base64,{encoded}"
         return cache[key]
     def _build_model_preview(self,sample_path):
-        return self._encode_file_as_data_url(sample_path,"image/jpeg",self._image_preview_cache)
+        key=self._build_cache_key(sample_path)
+        cached=self._image_preview_cache.get(key)
+        if cached is not None: return cached
+        try:
+            from PIL import Image
+            with Image.open(sample_path) as source:
+                image=source.convert("RGB")
+                resampling=getattr(Image,"Resampling",Image).LANCZOS
+                image.thumbnail((320,568),resampling)
+                buffer=BytesIO()
+                image.save(buffer,format="JPEG",quality=72,optimize=True)
+            data_url="data:image/jpeg;base64,"+base64.b64encode(buffer.getvalue()).decode("ascii")
+            self._image_preview_cache.clear();self._image_preview_cache[key]=data_url
+            return data_url
+        except Exception:
+            return self._encode_file_as_data_url(sample_path,"image/jpeg",self._image_preview_cache)
     def _build_voice_preview(self,audio_path):
         return self._encode_file_as_data_url(audio_path,"audio/wav",self._audio_preview_cache)
     def _probe_audio_duration(self,audio_path):
