@@ -3958,6 +3958,74 @@ def verify_ip_agent_publish_meta_contract():
         generate_title.generate_title_and_tags=original_generate
 
 
+def verify_main_system_identity_contract():
+    from recovered.main import Api
+
+    api=Api.__new__(Api);api.config={"token":"  token-with-space  "}
+    saved=[];updates=[]
+    api._save_user_config=lambda value:saved.append(value)
+    api._update_managers_config=lambda:updates.append(True)
+    assert api.get_token()=={"status":"success","token":"  token-with-space  "}
+    assert api.save_token("  replacement  ")=={"status":"success","message":"Token已保存"}
+    assert saved.pop()=={"token":"  replacement  "}
+    assert api.config["token"]=="  replacement  " and updates.pop() is True
+    assert api.clear_token()=={"status":"success","message":"Token已清除"}
+    assert saved.pop()=={"token":""} and api.config["token"]=="" and updates.pop() is True
+    try:api.save_token(None)
+    except TypeError as error:assert str(error)=="token must be a str"
+    else:raise AssertionError("save_token accepted a non-string token")
+
+    failing=Api.__new__(Api);failing.config={}
+    failing._save_user_config=lambda _value:(_ for _ in ()).throw(OSError("配置只读"))
+    failing._update_managers_config=lambda:None
+    assert failing.save_token("x")=={"error":"配置只读"}
+    assert failing.clear_token()=={"error":"配置只读"}
+    class BrokenConfig:
+        def get(self,*_args):raise RuntimeError("配置损坏")
+    failing.config=BrokenConfig()
+    assert failing.get_token()=={"error":"配置损坏"}
+
+    with tempfile.TemporaryDirectory() as directory:
+        root=Path(directory);web=root/"assets"/"web";web.mkdir(parents=True)
+        api.base_dir=str(root)
+        api._find_asset=lambda relative:root/relative
+        assert api.get_admin_id()=={"status":"success","admin_id":None}
+        (web/"id.txt").write_text(" 021 \n",encoding="utf-8")
+        assert api.get_admin_id()=={"status":"success","admin_id":21}
+        (web/"id.txt").write_text("admin-21",encoding="utf-8")
+        assert api.get_admin_id()=={"status":"success","admin_id":None}
+
+        assert api.get_oem_config()=={"status":"success","config":{}}
+        (web/"oem_config.json").write_text(
+            json.dumps({"window_name":"生产品牌","feature_flags":{"live":True}},ensure_ascii=False),
+            encoding="utf-8",
+        )
+        assert api.get_oem_config()=={
+            "status":"success","config":{"window_name":"生产品牌","feature_flags":{"live":True}},
+        }
+        (web/"oem_config.json").write_text("[]",encoding="utf-8")
+        assert api.get_oem_config()=={"status":"success","config":{}}
+        (web/"oem_config.json").write_text("{broken",encoding="utf-8")
+        broken_oem=api.get_oem_config()
+        assert broken_oem["status"]=="error" and broken_oem["config"]=={}
+        assert broken_oem["message"].startswith("读取贴牌配置失败: ")
+
+        assert api.get_background_image()=={"error":"背景图片不存在"}
+        (web/"bg.png").write_bytes(b"\x89PNG\r\n")
+        assert api.get_background_image()=={
+            "status":"success","image_data":"data:image/png;base64,iVBORw0K",
+        }
+
+        assert api.get_local_version()=={"status":"success","version":"v000"}
+        config_dir=root/"config";config_dir.mkdir()
+        (config_dir/"config.yaml").write_text("version: '  v122-prod  '\n",encoding="utf-8")
+        assert api.get_local_version()=={"status":"success","version":"v122-prod"}
+        (config_dir/"config.yaml").write_text("version: '   '\n",encoding="utf-8")
+        assert api.get_local_version()=={"status":"success","version":"v000"}
+        (config_dir/"config.yaml").write_text("version: [broken\n",encoding="utf-8")
+        assert api.get_local_version()["error"].startswith("获取本地版本号失败: ")
+
+
 def verify_main_translate_text_contract():
     from recovered.main import Api
     from recovered import llm_reply
@@ -5306,7 +5374,7 @@ def main():
     verify_audio_devices_contract()
     verify_audio_player_scan_contract()
     verify_live_sticker_prompt_contract()
-    verify_mapping(); verify_all_modules_importable(); verify_environment_manifests(); verify_voice_helpers(); verify_asr_temp_audio_lifecycle(); verify_audio_duration_fallbacks(); verify_title_fallback_parser(); verify_sentence_generalization_contract(); verify_short_video_language_routing(); verify_short_video_render_parameters(); verify_short_video_metadata_lifecycle(); verify_voice_v2_lifecycle(); verify_voice_v3_lifecycle(); verify_zipvoice_lifecycle(); verify_taobao_explain_cycle(); verify_taobao_action_dispatch(); verify_taobao_control_recovery(); verify_live_brain(); verify_face_hand_manager(); verify_face_hand_player_av_queue(); verify_language_and_live_helpers(); verify_video_player_stream_helpers(); verify_edit_audio_contract(); verify_cloud_avatar_prompt_contract(); verify_live_sticker_title_routing_contract(); verify_taobao_private_helpers(); verify_product_kt_geometry_helpers(); verify_product_image_pipeline(); verify_remaining_private_entrypoints(); verify_auto_live_action_spacing_contract(); verify_image_clone_resource_lifecycle(); verify_image_clone_save_frame_diagnostics(); verify_image_clone_model_assets(); verify_image_clone_generate_cleanup(); verify_pfld_ghostone_architecture(); verify_s3fd_architecture(); verify_kuaishou_message_protocol(); verify_text_special_variables(); verify_funasr_sentence_contract(); verify_get_srt_lifecycle(); verify_ip_agent_post_process_helpers(); verify_origin_video_ffmpeg_reader(); verify_ip_agent_real_media_pipeline(); verify_ip_agent_project_schema_contract(); verify_ip_agent_rewrite_contract(); verify_generate_script_contract(); verify_ip_agent_publish_meta_contract(); verify_main_translate_text_contract(); verify_main_llm_config_contract(); verify_record_live_start_lifecycle(); verify_barrage_port_cleanup(); verify_shopee_action_dispatch(); verify_shopee_page_states(); verify_controller_workers(); verify_v2_fade_curves(); verify_v2_queue_selection(); verify_keyword_contract_behaviors(); verify_core_method_coverage(); verify_all_binary_class_methods(); verify_binary_class_signature_arity(); verify_binary_module_signature_arity(); verify_public_name_inventory(); verify_binary_qualified_module_names(); asyncio.run(verify_live_protocols())
+    verify_mapping(); verify_all_modules_importable(); verify_environment_manifests(); verify_voice_helpers(); verify_asr_temp_audio_lifecycle(); verify_audio_duration_fallbacks(); verify_title_fallback_parser(); verify_sentence_generalization_contract(); verify_short_video_language_routing(); verify_short_video_render_parameters(); verify_short_video_metadata_lifecycle(); verify_voice_v2_lifecycle(); verify_voice_v3_lifecycle(); verify_zipvoice_lifecycle(); verify_taobao_explain_cycle(); verify_taobao_action_dispatch(); verify_taobao_control_recovery(); verify_live_brain(); verify_face_hand_manager(); verify_face_hand_player_av_queue(); verify_language_and_live_helpers(); verify_video_player_stream_helpers(); verify_edit_audio_contract(); verify_cloud_avatar_prompt_contract(); verify_live_sticker_title_routing_contract(); verify_taobao_private_helpers(); verify_product_kt_geometry_helpers(); verify_product_image_pipeline(); verify_remaining_private_entrypoints(); verify_auto_live_action_spacing_contract(); verify_image_clone_resource_lifecycle(); verify_image_clone_save_frame_diagnostics(); verify_image_clone_model_assets(); verify_image_clone_generate_cleanup(); verify_pfld_ghostone_architecture(); verify_s3fd_architecture(); verify_kuaishou_message_protocol(); verify_text_special_variables(); verify_funasr_sentence_contract(); verify_get_srt_lifecycle(); verify_ip_agent_post_process_helpers(); verify_origin_video_ffmpeg_reader(); verify_ip_agent_real_media_pipeline(); verify_ip_agent_project_schema_contract(); verify_ip_agent_rewrite_contract(); verify_generate_script_contract(); verify_ip_agent_publish_meta_contract(); verify_main_system_identity_contract(); verify_main_translate_text_contract(); verify_main_llm_config_contract(); verify_record_live_start_lifecycle(); verify_barrage_port_cleanup(); verify_shopee_action_dispatch(); verify_shopee_page_states(); verify_controller_workers(); verify_v2_fade_curves(); verify_v2_queue_selection(); verify_keyword_contract_behaviors(); verify_core_method_coverage(); verify_all_binary_class_methods(); verify_binary_class_signature_arity(); verify_binary_module_signature_arity(); verify_public_name_inventory(); verify_binary_qualified_module_names(); asyncio.run(verify_live_protocols())
     print("PASS: 128/128 mappings/imports, public/private callable and binary class method inventories, signatures, core methods, live managers, protocols")
 
 
