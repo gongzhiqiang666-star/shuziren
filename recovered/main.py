@@ -1064,15 +1064,39 @@ class Api(PluginInstallerApi):
 
     def generate_script(self, product_info, special_instructions=""):
         from .generate_structured_speech import generate_structured_speech
-        products = product_info if isinstance(product_info, list) else [product_info]
-        scripts, failed = [], []
-        for index, product in enumerate(products):
-            try: scripts.append({"index": index, "script": generate_structured_speech(product, special_instructions), "product": product})
-            except Exception as error:
-                scripts.append({"index": index, "script": "", "product": product}); failed.append({"index": index, "error": str(error)})
-        return {"status": "success" if scripts and len(failed) < len(scripts) else "error",
-                "scripts": scripts, "failed_products": failed,
-                "script": scripts[0]["script"] if len(scripts) == 1 else ""}
+        if not isinstance(product_info, dict):
+            raise TypeError("product_info must be a dict")
+        if not isinstance(special_instructions, str):
+            raise TypeError("special_instructions must be a str")
+        try:
+            print(f"开始处理商品列表,共有{len(product_info)}个商品")
+            scripts = []
+            failed_products = []
+            for product_id, product in product_info.items():
+                try:
+                    if "content" not in product:
+                        continue
+                    script = generate_structured_speech(product["content"], special_instructions)
+                    if script and str(script).strip():
+                        scripts.append(script)
+                    else:
+                        print(f"处理商品 {product_id} 失败，写入空话术后继续")
+                        failed_products.append(str(product_id))
+                        scripts.append("")
+                except Exception as error:
+                    print(f"处理商品 {product_id} 时发生错误: {error}")
+                    failed_products.append(str(product_id))
+                    scripts.append("")
+            result = {
+                "script": "\n\n".join(scripts).strip(),
+                "failed_products": failed_products,
+            }
+            if failed_products and not any(str(script).strip() for script in scripts):
+                result["error"] = "没有成功生成任何话术"
+            return result
+        except Exception as error:
+            print(f"生成脚本时发生错误：{error}")
+            return {"script": "", "failed_products": [], "error": f"生成脚本时发生错误：{error}"}
 
     def translate_text(self, text, target_language):
         from .llm_base_chat import base_chat
