@@ -3860,6 +3860,54 @@ def verify_ip_agent_rewrite_contract():
         ip_agent_post_process.infer_keywords_from_text=original_infer
 
 
+def verify_generate_script_contract():
+    from recovered.main import Api
+    from recovered import generate_structured_speech as speech_module
+
+    api=Api.__new__(Api);calls=[]
+    original=speech_module.generate_structured_speech
+    try:
+        def fake_generate(content,instructions):
+            calls.append((content,instructions))
+            if content=="空结果":return "  "
+            if content=="异常":raise RuntimeError("模型断开")
+            return "话术-"+content
+        speech_module.generate_structured_speech=fake_generate
+        result=api.generate_script({
+            "goods-a":{"content":"苹果"},
+            2:{"content":"空结果"},
+            "goods-c":{"title":"缺少内容"},
+            "goods-d":{"content":"异常"},
+            "goods-e":{"content":"香蕉"},
+        },"口语化")
+        assert calls==[("苹果","口语化"),("空结果","口语化"),("异常","口语化"),("香蕉","口语化")]
+        assert result=={
+            "script":"话术-苹果\n\n\n\n\n\n话术-香蕉",
+            "failed_products":["2","goods-d"],
+        }
+        speech_module.generate_structured_speech=lambda *_args:""
+        assert api.generate_script({"a":{"content":"x"},"b":{"content":"y"}})=={
+            "script":"","failed_products":["a","b"],"error":"没有成功生成任何话术",
+        }
+        assert api.generate_script({"ignored":{"name":"无 content"}})=={
+            "script":"","failed_products":[],
+        }
+        assert api.generate_script({})=={"script":"","failed_products":[]}
+        try:api.generate_script([{"content":"x"}])
+        except TypeError as error:assert str(error)=="product_info must be a dict"
+        else:raise AssertionError("generate_script accepted a list")
+        try:api.generate_script({},None)
+        except TypeError as error:assert str(error)=="special_instructions must be a str"
+        else:raise AssertionError("generate_script accepted a non-string instruction")
+        class BrokenDict(dict):
+            def items(self):raise RuntimeError("字典损坏")
+        assert api.generate_script(BrokenDict({"x":1}))=={
+            "script":"","failed_products":[],"error":"生成脚本时发生错误：字典损坏",
+        }
+    finally:
+        speech_module.generate_structured_speech=original
+
+
 def verify_record_live_start_lifecycle():
     import contextlib
     import io
@@ -5118,7 +5166,7 @@ def main():
     verify_audio_devices_contract()
     verify_audio_player_scan_contract()
     verify_live_sticker_prompt_contract()
-    verify_mapping(); verify_all_modules_importable(); verify_environment_manifests(); verify_voice_helpers(); verify_asr_temp_audio_lifecycle(); verify_audio_duration_fallbacks(); verify_title_fallback_parser(); verify_sentence_generalization_contract(); verify_short_video_language_routing(); verify_short_video_render_parameters(); verify_short_video_metadata_lifecycle(); verify_voice_v2_lifecycle(); verify_voice_v3_lifecycle(); verify_zipvoice_lifecycle(); verify_taobao_explain_cycle(); verify_taobao_action_dispatch(); verify_taobao_control_recovery(); verify_live_brain(); verify_face_hand_manager(); verify_face_hand_player_av_queue(); verify_language_and_live_helpers(); verify_video_player_stream_helpers(); verify_edit_audio_contract(); verify_cloud_avatar_prompt_contract(); verify_live_sticker_title_routing_contract(); verify_taobao_private_helpers(); verify_product_kt_geometry_helpers(); verify_product_image_pipeline(); verify_remaining_private_entrypoints(); verify_auto_live_action_spacing_contract(); verify_image_clone_resource_lifecycle(); verify_image_clone_save_frame_diagnostics(); verify_image_clone_model_assets(); verify_image_clone_generate_cleanup(); verify_pfld_ghostone_architecture(); verify_s3fd_architecture(); verify_kuaishou_message_protocol(); verify_text_special_variables(); verify_funasr_sentence_contract(); verify_get_srt_lifecycle(); verify_ip_agent_post_process_helpers(); verify_origin_video_ffmpeg_reader(); verify_ip_agent_real_media_pipeline(); verify_ip_agent_project_schema_contract(); verify_ip_agent_rewrite_contract(); verify_record_live_start_lifecycle(); verify_barrage_port_cleanup(); verify_shopee_action_dispatch(); verify_shopee_page_states(); verify_controller_workers(); verify_v2_fade_curves(); verify_v2_queue_selection(); verify_keyword_contract_behaviors(); verify_core_method_coverage(); verify_all_binary_class_methods(); verify_binary_class_signature_arity(); verify_binary_module_signature_arity(); verify_public_name_inventory(); verify_binary_qualified_module_names(); asyncio.run(verify_live_protocols())
+    verify_mapping(); verify_all_modules_importable(); verify_environment_manifests(); verify_voice_helpers(); verify_asr_temp_audio_lifecycle(); verify_audio_duration_fallbacks(); verify_title_fallback_parser(); verify_sentence_generalization_contract(); verify_short_video_language_routing(); verify_short_video_render_parameters(); verify_short_video_metadata_lifecycle(); verify_voice_v2_lifecycle(); verify_voice_v3_lifecycle(); verify_zipvoice_lifecycle(); verify_taobao_explain_cycle(); verify_taobao_action_dispatch(); verify_taobao_control_recovery(); verify_live_brain(); verify_face_hand_manager(); verify_face_hand_player_av_queue(); verify_language_and_live_helpers(); verify_video_player_stream_helpers(); verify_edit_audio_contract(); verify_cloud_avatar_prompt_contract(); verify_live_sticker_title_routing_contract(); verify_taobao_private_helpers(); verify_product_kt_geometry_helpers(); verify_product_image_pipeline(); verify_remaining_private_entrypoints(); verify_auto_live_action_spacing_contract(); verify_image_clone_resource_lifecycle(); verify_image_clone_save_frame_diagnostics(); verify_image_clone_model_assets(); verify_image_clone_generate_cleanup(); verify_pfld_ghostone_architecture(); verify_s3fd_architecture(); verify_kuaishou_message_protocol(); verify_text_special_variables(); verify_funasr_sentence_contract(); verify_get_srt_lifecycle(); verify_ip_agent_post_process_helpers(); verify_origin_video_ffmpeg_reader(); verify_ip_agent_real_media_pipeline(); verify_ip_agent_project_schema_contract(); verify_ip_agent_rewrite_contract(); verify_generate_script_contract(); verify_record_live_start_lifecycle(); verify_barrage_port_cleanup(); verify_shopee_action_dispatch(); verify_shopee_page_states(); verify_controller_workers(); verify_v2_fade_curves(); verify_v2_queue_selection(); verify_keyword_contract_behaviors(); verify_core_method_coverage(); verify_all_binary_class_methods(); verify_binary_class_signature_arity(); verify_binary_module_signature_arity(); verify_public_name_inventory(); verify_binary_qualified_module_names(); asyncio.run(verify_live_protocols())
     print("PASS: 128/128 mappings/imports, public/private callable and binary class method inventories, signatures, core methods, live managers, protocols")
 
 
