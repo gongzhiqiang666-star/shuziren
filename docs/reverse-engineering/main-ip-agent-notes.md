@@ -106,3 +106,15 @@ oversized files, guesses MIME with an octet-stream fallback, reads binary data,
 and emits a Base64 Data URL; any exception returns the empty string. Exact MIME,
 fallback, limit, missing-file and exception behavior now have focused tests.
 The complete verifier remains `128/128 PASS`.
+
+`rewrite_ip_script`, wrapper/body `0x1800db240/0x1800db500`, is now aligned
+with the native request and response protocol. The method accepts `text` and
+`prompt`, uses the exact recovered system/default/user/schema prompts, and
+calls `base_chat` with `model_type="script"`, `raise_on_failure=True`, and the
+instance `llm_config`. Versions use native `name/text` fields, with
+`改写版本N` and `成片稿` fallbacks. The success response contains
+`status/rewritten_text/analysis/versions/keywords`; empty keywords fall back to
+`infer_keywords_from_text`. When an existing `project_id` is supplied, the
+native six project fields are persisted and the enriched project is attached.
+Direct validation errors and the general `改写文案失败: ` exception envelope
+are covered by a focused regression. The full verifier remains `128/128 PASS`.
