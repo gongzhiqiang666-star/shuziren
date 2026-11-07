@@ -3937,6 +3937,67 @@ def verify_main_translate_text_contract():
         llm_reply.translate_text_llm=original
 
 
+def verify_main_llm_config_contract():
+    from recovered.main import Api
+    from recovered import llm_base_chat
+
+    api=Api.__new__(Api);api.config={};saved=[];updates=[]
+    api._save_user_config=lambda value:saved.append(value)
+    api._update_managers_config=lambda:updates.append(True)
+    config={"vendor":"SiliconFlow","endpoint":" https://api.example ",
+            "api_key":" key ","model":" model ","custom":"preserved"}
+    result=api.save_llm_config(config)
+    assert result=={"status":"success","message":"配置已保存到本地"}
+    assert saved==[{"llm_config":config}] and api.config["llm_config"] is config
+    assert updates==[True]
+    failing=Api.__new__(Api);failing.config={}
+    failing._save_user_config=lambda _value:(_ for _ in ()).throw(OSError("只读"))
+    failing._update_managers_config=lambda:None
+    assert failing.save_llm_config({"vendor":"x"})=={"error":"只读"}
+    try:api.save_llm_config(None)
+    except TypeError as error:assert str(error)=="llm_config_data must be a dict"
+    else:raise AssertionError("save_llm_config accepted non-dict data")
+
+    original_chat=llm_base_chat.base_chat;calls=[]
+    full={"vendor":"OpenAI","model":"gpt","endpoint":"https://api","api_key":"secret"}
+    try:
+        llm_base_chat.base_chat=lambda **kwargs:(calls.append(kwargs) or " 好 ")
+        assert api.test_llm_availability(full)=={
+            "status":"success","message":"大模型服务正常","is_available":True,
+            "is_recommended_provider":True,"provider":"openai",
+        }
+        assert calls.pop()=={
+            "question":"回复一个字：好","sys_prompt":"你是一个助手",
+            "chat_history":[],"llm_config":full,
+        }
+        missing=api.test_llm_availability({"vendor":"SiliconFlow","model":"","endpoint":"e","api_key":"k"})
+        assert missing=={
+            "status":"error",
+            "message":"未检测到可用的大模型配置，请先在设置中配置硅基流动 API Key。",
+            "is_available":False,"is_recommended_provider":False,"provider":"siliconflow",
+        }
+        llm_base_chat.base_chat=lambda **_kwargs:""
+        assert api.test_llm_availability(full)=={
+            "status":"error",
+            "message":"当前大模型配置不可用，请检查设置中的模型参数，或改为配置硅基流动 API Key。",
+            "is_available":False,"is_recommended_provider":False,"provider":"openai",
+        }
+        llm_base_chat.base_chat=lambda **_kwargs:(_ for _ in ()).throw(RuntimeError("连接超时"))
+        assert api.test_llm_availability(full)=={
+            "status":"error","message":"测试大模型服务时出错: 连接超时",
+            "is_available":False,"is_recommended_provider":False,"provider":"openai",
+        }
+        assert api.test_llm_availability({"vendor":123,"model":"m","endpoint":"e","api_key":"k"})=={
+            "status":"error","message":"测试大模型服务时出错: 'int' object has no attribute 'lower'",
+            "is_available":False,"is_recommended_provider":False,"provider":"unknown",
+        }
+        try:api.test_llm_availability(None)
+        except TypeError as error:assert str(error)=="llm_config must be a dict"
+        else:raise AssertionError("test_llm_availability accepted non-dict data")
+    finally:
+        llm_base_chat.base_chat=original_chat
+
+
 def verify_record_live_start_lifecycle():
     import contextlib
     import io
@@ -5195,7 +5256,7 @@ def main():
     verify_audio_devices_contract()
     verify_audio_player_scan_contract()
     verify_live_sticker_prompt_contract()
-    verify_mapping(); verify_all_modules_importable(); verify_environment_manifests(); verify_voice_helpers(); verify_asr_temp_audio_lifecycle(); verify_audio_duration_fallbacks(); verify_title_fallback_parser(); verify_sentence_generalization_contract(); verify_short_video_language_routing(); verify_short_video_render_parameters(); verify_short_video_metadata_lifecycle(); verify_voice_v2_lifecycle(); verify_voice_v3_lifecycle(); verify_zipvoice_lifecycle(); verify_taobao_explain_cycle(); verify_taobao_action_dispatch(); verify_taobao_control_recovery(); verify_live_brain(); verify_face_hand_manager(); verify_face_hand_player_av_queue(); verify_language_and_live_helpers(); verify_video_player_stream_helpers(); verify_edit_audio_contract(); verify_cloud_avatar_prompt_contract(); verify_live_sticker_title_routing_contract(); verify_taobao_private_helpers(); verify_product_kt_geometry_helpers(); verify_product_image_pipeline(); verify_remaining_private_entrypoints(); verify_auto_live_action_spacing_contract(); verify_image_clone_resource_lifecycle(); verify_image_clone_save_frame_diagnostics(); verify_image_clone_model_assets(); verify_image_clone_generate_cleanup(); verify_pfld_ghostone_architecture(); verify_s3fd_architecture(); verify_kuaishou_message_protocol(); verify_text_special_variables(); verify_funasr_sentence_contract(); verify_get_srt_lifecycle(); verify_ip_agent_post_process_helpers(); verify_origin_video_ffmpeg_reader(); verify_ip_agent_real_media_pipeline(); verify_ip_agent_project_schema_contract(); verify_ip_agent_rewrite_contract(); verify_generate_script_contract(); verify_main_translate_text_contract(); verify_record_live_start_lifecycle(); verify_barrage_port_cleanup(); verify_shopee_action_dispatch(); verify_shopee_page_states(); verify_controller_workers(); verify_v2_fade_curves(); verify_v2_queue_selection(); verify_keyword_contract_behaviors(); verify_core_method_coverage(); verify_all_binary_class_methods(); verify_binary_class_signature_arity(); verify_binary_module_signature_arity(); verify_public_name_inventory(); verify_binary_qualified_module_names(); asyncio.run(verify_live_protocols())
+    verify_mapping(); verify_all_modules_importable(); verify_environment_manifests(); verify_voice_helpers(); verify_asr_temp_audio_lifecycle(); verify_audio_duration_fallbacks(); verify_title_fallback_parser(); verify_sentence_generalization_contract(); verify_short_video_language_routing(); verify_short_video_render_parameters(); verify_short_video_metadata_lifecycle(); verify_voice_v2_lifecycle(); verify_voice_v3_lifecycle(); verify_zipvoice_lifecycle(); verify_taobao_explain_cycle(); verify_taobao_action_dispatch(); verify_taobao_control_recovery(); verify_live_brain(); verify_face_hand_manager(); verify_face_hand_player_av_queue(); verify_language_and_live_helpers(); verify_video_player_stream_helpers(); verify_edit_audio_contract(); verify_cloud_avatar_prompt_contract(); verify_live_sticker_title_routing_contract(); verify_taobao_private_helpers(); verify_product_kt_geometry_helpers(); verify_product_image_pipeline(); verify_remaining_private_entrypoints(); verify_auto_live_action_spacing_contract(); verify_image_clone_resource_lifecycle(); verify_image_clone_save_frame_diagnostics(); verify_image_clone_model_assets(); verify_image_clone_generate_cleanup(); verify_pfld_ghostone_architecture(); verify_s3fd_architecture(); verify_kuaishou_message_protocol(); verify_text_special_variables(); verify_funasr_sentence_contract(); verify_get_srt_lifecycle(); verify_ip_agent_post_process_helpers(); verify_origin_video_ffmpeg_reader(); verify_ip_agent_real_media_pipeline(); verify_ip_agent_project_schema_contract(); verify_ip_agent_rewrite_contract(); verify_generate_script_contract(); verify_main_translate_text_contract(); verify_main_llm_config_contract(); verify_record_live_start_lifecycle(); verify_barrage_port_cleanup(); verify_shopee_action_dispatch(); verify_shopee_page_states(); verify_controller_workers(); verify_v2_fade_curves(); verify_v2_queue_selection(); verify_keyword_contract_behaviors(); verify_core_method_coverage(); verify_all_binary_class_methods(); verify_binary_class_signature_arity(); verify_binary_module_signature_arity(); verify_public_name_inventory(); verify_binary_qualified_module_names(); asyncio.run(verify_live_protocols())
     print("PASS: 128/128 mappings/imports, public/private callable and binary class method inventories, signatures, core methods, live managers, protocols")
 
 
