@@ -3908,6 +3908,35 @@ def verify_generate_script_contract():
         speech_module.generate_structured_speech=original
 
 
+def verify_main_translate_text_contract():
+    from recovered.main import Api
+    from recovered import llm_reply
+
+    api=Api.__new__(Api);calls=[]
+    original=llm_reply.translate_text_llm
+    try:
+        llm_reply.translate_text_llm=lambda *args,**kwargs:(
+            calls.append((args,kwargs)) or "translated"
+        )
+        assert api.translate_text("  保留空白  ","EN_us")=="translated"
+        assert calls.pop()==(("  保留空白  ","en-US"),{"raise_on_failure":True})
+        assert api.translate_text("","")=="translated"
+        assert calls.pop()==(("","zh-CN"),{"raise_on_failure":True})
+        long_text="x"*1200
+        assert api.translate_text(long_text,"vi-VN")=="translated"
+        assert calls.pop()==((long_text,"vi-VN"),{"raise_on_failure":True})
+        llm_reply.translate_text_llm=lambda *_args,**_kwargs:(_ for _ in ()).throw(RuntimeError("翻译服务断开"))
+        assert api.translate_text("文本","en-US")=={"error":"翻译服务断开"}
+        try:api.translate_text(None,"en-US")
+        except TypeError as error:assert str(error)=="text must be a str"
+        else:raise AssertionError("translate_text accepted non-string text")
+        try:api.translate_text("文本",None)
+        except TypeError as error:assert str(error)=="target_language must be a str"
+        else:raise AssertionError("translate_text accepted non-string target language")
+    finally:
+        llm_reply.translate_text_llm=original
+
+
 def verify_record_live_start_lifecycle():
     import contextlib
     import io
@@ -5166,7 +5195,7 @@ def main():
     verify_audio_devices_contract()
     verify_audio_player_scan_contract()
     verify_live_sticker_prompt_contract()
-    verify_mapping(); verify_all_modules_importable(); verify_environment_manifests(); verify_voice_helpers(); verify_asr_temp_audio_lifecycle(); verify_audio_duration_fallbacks(); verify_title_fallback_parser(); verify_sentence_generalization_contract(); verify_short_video_language_routing(); verify_short_video_render_parameters(); verify_short_video_metadata_lifecycle(); verify_voice_v2_lifecycle(); verify_voice_v3_lifecycle(); verify_zipvoice_lifecycle(); verify_taobao_explain_cycle(); verify_taobao_action_dispatch(); verify_taobao_control_recovery(); verify_live_brain(); verify_face_hand_manager(); verify_face_hand_player_av_queue(); verify_language_and_live_helpers(); verify_video_player_stream_helpers(); verify_edit_audio_contract(); verify_cloud_avatar_prompt_contract(); verify_live_sticker_title_routing_contract(); verify_taobao_private_helpers(); verify_product_kt_geometry_helpers(); verify_product_image_pipeline(); verify_remaining_private_entrypoints(); verify_auto_live_action_spacing_contract(); verify_image_clone_resource_lifecycle(); verify_image_clone_save_frame_diagnostics(); verify_image_clone_model_assets(); verify_image_clone_generate_cleanup(); verify_pfld_ghostone_architecture(); verify_s3fd_architecture(); verify_kuaishou_message_protocol(); verify_text_special_variables(); verify_funasr_sentence_contract(); verify_get_srt_lifecycle(); verify_ip_agent_post_process_helpers(); verify_origin_video_ffmpeg_reader(); verify_ip_agent_real_media_pipeline(); verify_ip_agent_project_schema_contract(); verify_ip_agent_rewrite_contract(); verify_generate_script_contract(); verify_record_live_start_lifecycle(); verify_barrage_port_cleanup(); verify_shopee_action_dispatch(); verify_shopee_page_states(); verify_controller_workers(); verify_v2_fade_curves(); verify_v2_queue_selection(); verify_keyword_contract_behaviors(); verify_core_method_coverage(); verify_all_binary_class_methods(); verify_binary_class_signature_arity(); verify_binary_module_signature_arity(); verify_public_name_inventory(); verify_binary_qualified_module_names(); asyncio.run(verify_live_protocols())
+    verify_mapping(); verify_all_modules_importable(); verify_environment_manifests(); verify_voice_helpers(); verify_asr_temp_audio_lifecycle(); verify_audio_duration_fallbacks(); verify_title_fallback_parser(); verify_sentence_generalization_contract(); verify_short_video_language_routing(); verify_short_video_render_parameters(); verify_short_video_metadata_lifecycle(); verify_voice_v2_lifecycle(); verify_voice_v3_lifecycle(); verify_zipvoice_lifecycle(); verify_taobao_explain_cycle(); verify_taobao_action_dispatch(); verify_taobao_control_recovery(); verify_live_brain(); verify_face_hand_manager(); verify_face_hand_player_av_queue(); verify_language_and_live_helpers(); verify_video_player_stream_helpers(); verify_edit_audio_contract(); verify_cloud_avatar_prompt_contract(); verify_live_sticker_title_routing_contract(); verify_taobao_private_helpers(); verify_product_kt_geometry_helpers(); verify_product_image_pipeline(); verify_remaining_private_entrypoints(); verify_auto_live_action_spacing_contract(); verify_image_clone_resource_lifecycle(); verify_image_clone_save_frame_diagnostics(); verify_image_clone_model_assets(); verify_image_clone_generate_cleanup(); verify_pfld_ghostone_architecture(); verify_s3fd_architecture(); verify_kuaishou_message_protocol(); verify_text_special_variables(); verify_funasr_sentence_contract(); verify_get_srt_lifecycle(); verify_ip_agent_post_process_helpers(); verify_origin_video_ffmpeg_reader(); verify_ip_agent_real_media_pipeline(); verify_ip_agent_project_schema_contract(); verify_ip_agent_rewrite_contract(); verify_generate_script_contract(); verify_main_translate_text_contract(); verify_record_live_start_lifecycle(); verify_barrage_port_cleanup(); verify_shopee_action_dispatch(); verify_shopee_page_states(); verify_controller_workers(); verify_v2_fade_curves(); verify_v2_queue_selection(); verify_keyword_contract_behaviors(); verify_core_method_coverage(); verify_all_binary_class_methods(); verify_binary_class_signature_arity(); verify_binary_module_signature_arity(); verify_public_name_inventory(); verify_binary_qualified_module_names(); asyncio.run(verify_live_protocols())
     print("PASS: 128/128 mappings/imports, public/private callable and binary class method inventories, signatures, core methods, live managers, protocols")
 
 
