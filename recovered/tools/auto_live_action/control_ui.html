@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>通用场控助手</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 12px;
+            background-color: #f0f2f5;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        .card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 12px;
+        }
+        .form-group {
+            margin-bottom: 8px;
+        }
+        .form-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .form-row > * {
+            flex: 1;
+        }
+        label {
+            display: block;
+            margin-bottom: 2px;
+            font-weight: bold;
+            color: #333;
+            font-size: 13px;
+        }
+        input[type="text"], input[type="number"], textarea, select {
+            width: 100%;
+            padding: 4px 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 13px;
+        }
+        textarea {
+            height: 60px;
+            resize: vertical;
+        }
+        button {
+            background: #6A5ACD;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #483D8B;
+        }
+        .status {
+            margin-top: 6px;
+            padding: 6px;
+            border-radius: 4px;
+            background: #f8f9fa;
+            font-size: 13px;
+            color: #666;
+        }
+        .header {
+            margin-bottom: 12px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0 0 4px 0;
+            font-size: 20px;
+            color: #333;
+        }
+        .header .subtitle {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 8px;
+        }
+        .save-btn {
+            background: #28a745;
+            margin-top: 8px;
+            width: 100%;
+        }
+        .save-btn:hover {
+            background: #218838;
+        }
+        h2 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #333;
+        }
+        .checkbox-group {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 8px;
+        }
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            font-weight: normal;
+            gap: 4px;
+            font-size: 13px;
+            margin: 0;
+        }
+        .checkbox-group input[type="checkbox"] {
+            margin: 0;
+        }
+        .button-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .button-group button {
+            flex: 1;
+        }
+        input[type="number"] {
+            -moz-appearance: textfield;
+        }
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .tip-box {
+            background: #eef2ff;
+            border-left: 3px solid #6A5ACD;
+            padding: 8px 10px;
+            border-radius: 0 4px 4px 0;
+            font-size: 12px;
+            color: #555;
+            line-height: 1.7;
+            margin-bottom: 10px;
+        }
+        .tip-box b {
+            color: #333;
+        }
+        .positioning-hint {
+            display: none;
+            margin-top: 8px;
+            font-size: 12px;
+            color: #666;
+            line-height: 1.6;
+            background: #fff8e1;
+            border-left: 3px solid #ffc107;
+            padding: 8px 10px;
+            border-radius: 0 4px 4px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>通用场控助手</h1>
+        <div class="subtitle">适用于任意直播平台 · 模拟点击发送</div>
+        <button class="save-btn" onclick="saveAllSettings()">保存配置</button>
+    </div>
+
+    <div class="card">
+        <h2>使用说明</h2>
+        <div class="tip-box">
+            本工具通过<b>框选屏幕位置</b>与<b>模拟鼠标点击 + 键盘输入</b>来发送话术，无需登录账号，适配任意直播平台。<br>
+            使用流程：<b>① 点击「启动场控」</b> → 屏幕出现红色方框 →
+            <b>② 将红框拖动到直播间评论输入框处</b> →
+            <b>③ 点击「确认位置」</b>，系统会自动 OCR 识别发送按钮（支持"发送"、"Send"、"Submit"等关键词）；
+            若无法识别，则自动取所选区域最右侧位置作为发送点 →
+            <b>④ 开始话术发送</b>即可。
+        </div>
+
+        <div class="button-group">
+            <button onclick="toggleControl()" id="controlButton">启动场控</button>
+            <button onclick="confirmPosition()" id="confirmPosBtn" style="display:none;">确认位置</button>
+        </div>
+        <div class="status" id="controlStatus">场控未启动</div>
+        <div class="positioning-hint" id="positioningHint">
+            屏幕上已出现<b>红色方框</b>，请将其拖动到直播间<b>评论输入框/发送按钮</b>所在位置，然后点击右侧<b>确认位置</b>按钮。
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>话术设置</h2>
+        <div class="form-row">
+            <div class="form-group">
+                <label>发送频率(秒)</label>
+                <input type="number" id="sendInterval" value="60" min="1">
+            </div>
+            <div class="form-group">
+                <label>工作时间(分钟)</label>
+                <input type="number" id="workMinutes" value="10" min="1">
+            </div>
+            <div class="form-group">
+                <label>休息时间(分钟)</label>
+                <input type="number" id="restMinutes" value="2" min="1">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>话术内容(每行一条)</label>
+            <textarea id="danmuText">点关注了
+主播好
+太快了</textarea>
+        </div>
+        <div class="checkbox-group">
+            <label>
+                <input type="checkbox" id="randomSend">
+                随机发送
+            </label>
+            <label>
+                <input type="checkbox" id="randomSpace">
+                添加随机空格
+            </label>
+            <label>
+                <input type="checkbox" id="enableTextReply">
+                开启智能回复
+            </label>
+        </div>
+        <button onclick="toggleDanmu()" id="danmuButton">开始发送</button>
+        <div class="status" id="danmuStatus"></div>
+    </div>
+
+    <script>
+        function collectSettings() {
+            return {
+                send_interval: parseInt(document.getElementById('sendInterval').value),
+                work_minutes: parseInt(document.getElementById('workMinutes').value),
+                rest_minutes: parseInt(document.getElementById('restMinutes').value),
+                danmu_list: document.getElementById('danmuText').value.split('\n').filter(line => line.trim() !== ''),
+                random_send: document.getElementById('randomSend').checked,
+                random_space: document.getElementById('randomSpace').checked,
+                enable_text_reply: document.getElementById('enableTextReply').checked,
+            };
+        }
+
+        window.addEventListener('pywebviewready', async function() {
+            const config = await pywebview.api.get_config();
+            applyPackLabels(config.ui_labels);
+            initializeValues(config);
+            updateStatus(config);
+        });
+
+        function applyPackLabels(labels) {
+            if (!labels) {
+                return;
+            }
+            document.querySelector('.header h1').textContent = labels.title;
+            document.querySelector('.header .subtitle').textContent = labels.subtitle;
+            document.querySelector('.save-btn').textContent = labels.save_config;
+            const sectionTitles = document.querySelectorAll('.card h2');
+            if (sectionTitles[0]) sectionTitles[0].textContent = labels.usage_title;
+            if (sectionTitles[1]) sectionTitles[1].textContent = labels.script_title;
+            document.querySelector('.tip-box').innerHTML = labels.usage_tip;
+            const rowLabels = document.querySelectorAll('.form-row .form-group label');
+            if (rowLabels[0]) rowLabels[0].textContent = labels.send_interval;
+            if (rowLabels[1]) rowLabels[1].textContent = labels.work_minutes;
+            if (rowLabels[2]) rowLabels[2].textContent = labels.rest_minutes;
+            const scriptLabel = document.querySelector('.card:last-of-type .form-group label');
+            if (scriptLabel) scriptLabel.textContent = labels.script_content;
+            document.querySelector('#randomSend').parentElement.lastChild.textContent = ' ' + labels.random_send;
+            document.querySelector('#randomSpace').parentElement.lastChild.textContent = ' ' + labels.random_space;
+            document.querySelector('#enableTextReply').parentElement.lastChild.textContent = ' ' + labels.enable_text_reply;
+            document.getElementById('confirmPosBtn').textContent = labels.confirm_position;
+            document.getElementById('positioningHint').innerHTML = labels.positioning_hint;
+            window.__packLabels = labels;
+        }
+
+        function initializeValues(config) {
+            document.getElementById('sendInterval').value = config.send_interval;
+            document.getElementById('workMinutes').value = config.work_minutes;
+            document.getElementById('restMinutes').value = config.rest_minutes;
+            document.getElementById('danmuText').value = config.danmu_list.join('\n');
+            document.getElementById('randomSend').checked = config.random_send;
+            document.getElementById('randomSpace').checked = config.random_space;
+            document.getElementById('enableTextReply').checked = config.enable_text_reply;
+        }
+
+        function updateStatus(config) {
+            const labels = window.__packLabels || {};
+            const controlButton = document.getElementById('controlButton');
+            const danmuButton = document.getElementById('danmuButton');
+            const confirmPosBtn = document.getElementById('confirmPosBtn');
+            const positioningHint = document.getElementById('positioningHint');
+
+            const isActive = config.is_control_running || config.is_positioning;
+            controlButton.textContent = isActive
+                ? (labels.stop_control || '停止场控')
+                : (labels.start_control || '启动场控');
+            danmuButton.textContent = config.is_danmu_running
+                ? (labels.stop_send || '停止发送')
+                : (labels.start_send || '开始发送');
+
+            confirmPosBtn.style.display = config.is_positioning ? 'block' : 'none';
+            positioningHint.style.display = config.is_positioning ? 'block' : 'none';
+
+            if (config.is_positioning) {
+                setStatusText('controlStatus', labels.control_positioning || '定位中：请将红框拖到输入框位置，再点击「确认位置」');
+            } else if (config.is_control_running) {
+                setStatusText('controlStatus', labels.control_running || '场控已启动，正在运行');
+            } else {
+                setStatusText('controlStatus', labels.control_idle || '场控未启动');
+            }
+
+            setStatusText(
+                'danmuStatus',
+                config.is_danmu_running
+                    ? (labels.danmu_running || '话术发送已启动')
+                    : (labels.danmu_idle || '话术发送未启动')
+            );
+        }
+
+        function setStatusText(elementId, message) {
+            document.getElementById(elementId).textContent = message;
+        }
+
+        async function saveAllSettings() {
+            const labels = window.__packLabels || {};
+            setStatusText('controlStatus', labels.saving_config || '正在保存配置...');
+            const result = await pywebview.api.save_all_settings(collectSettings());
+
+            if (result.success) {
+                setStatusText('controlStatus', labels.save_success || '配置保存成功');
+                updateStatus(result.config);
+            } else {
+                alert(result.message);
+                setStatusText('controlStatus', labels.save_failed || '配置保存失败');
+            }
+        }
+
+        async function confirmPosition() {
+            const labels = window.__packLabels || {};
+            setStatusText('controlStatus', labels.recognizing_position || '正在识别位置...');
+            const result = await pywebview.api.confirm_position();
+            setStatusText('controlStatus', result.message);
+            updateStatus(result.config);
+        }
+
+        async function toggleControl() {
+            const labels = window.__packLabels || {};
+            const config = await pywebview.api.get_config();
+            let result;
+            if (!config.is_control_running && !config.is_positioning) {
+                setStatusText('controlStatus', labels.starting || '正在启动...');
+                result = await pywebview.api.start_control();
+            } else {
+                setStatusText('controlStatus', labels.stopping || '正在停止...');
+                result = await pywebview.api.stop_control();
+            }
+            updateStatus(result.config);
+        }
+
+        async function toggleDanmu() {
+            const labels = window.__packLabels || {};
+            const config = await pywebview.api.get_config();
+            if (!config.is_danmu_running) {
+                if (!config.is_control_running) {
+                    alert(labels.start_control_first || '请先启动场控并完成位置确认');
+                    return;
+                }
+
+                const result = await pywebview.api.start_danmu(collectSettings());
+                updateStatus(result.config);
+            } else {
+                const result = await pywebview.api.stop_danmu();
+                updateStatus(result.config);
+            }
+        }
+    </script>
+</body>
+</html>

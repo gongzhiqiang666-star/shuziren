@@ -1,14 +1,14 @@
-# shuziren · 淘宝数字人直播本地部署项目
+# shuziren · yunchuang_v122 功能兼容重建
 
-本仓库当前处于开发计划阶段，尚不包含可运行的业务代码。计划状态不代表模型、淘宝账号或真实直播已经验收。
+本仓库用于在完整保留 `yunchuang_v122` 用户可见功能的前提下，重建可维护、可测试的数字人生产与直播系统。仓库现已收录第一阶段恢复源码及逆向分析证据；这些代码尚未完成 Windows、GPU 和真实平台的全面验收。
 
 ## 确定方向
 
-- 只做淘宝，保留原商品、人格、记忆、审核、插播、接管与恢复功能。
-- DeepSeek 是唯一按量付费 AI 接口；CosyVoice3、BGE 和 MuseTalk 优先本地运行。
-- Go + Vue + PostgreSQL；Windows 11 + WSL2 为首个验证环境。
-- 淘宝连接器及相关数据的位置按实际批准确定，不能预设全部本地。
-- 首期单机同时一路，保留多店和多场次配置。
+- 最终范围覆盖原产品全部用户可见功能，不因重写方案删减能力。
+- 优先模仿原产品已通过生产验证的流程、模块边界、数据格式、接口和异常语义。
+- 采用“架构重建 + 关键点定向逆向 + Windows 差分验证”，不追求机器码逐条等价。
+- 淘宝、快手、Shopee 等平台能力以及文案、语音、图片、视频、数字人、项目管理、启动和打包流程均纳入功能矩阵。
+- GPU、虚拟摄像头、浏览器自动化和平台客户端能力必须在对应真实环境验收。
 
 ## 开发资料
 
@@ -17,11 +17,16 @@
 - [画质、细节与口型控制](docs/AVATAR_QUALITY.md)
 - [依赖和许可记录](docs/DEPENDENCIES.md)
 - [GitHub 提交安排](docs/GITHUB_WORKFLOW.md)
+- [重建规则](AGENTS.md)
+- [逆向分析总报告](docs/reverse-engineering/yunchuang-v122-reverse-report.md)
+- [PYZ 模块清单](docs/reverse-engineering/PYZ-modules.txt)
+- [原生模块清单](docs/reverse-engineering/native-modules.txt)
+- [第一阶段恢复源码](recovered/)
 
 ## 当前状态
 
-2026-10-31：计划、成本和验收设计完成。尚未开发应用代码，未执行模型部署、GPU压测、淘宝账号登录或真实直播。
+2026-11-07：已提交第一阶段恢复源码、模块清单与核心调用链分析。当前验证脚本覆盖模块导入、接口签名和部分重点行为，但不代表所有模块已达到分支等价或生产验收。
 
-项目仓库：[gongzhiqiang666-star/shuziren](https://github.com/gongzhiqiang666-star/shuziren)。用户已于 2026-10-31 指定此仓库；当前可见性为公开，默认分支为 `main`。本次收录开发计划及验收资料，业务实现按工作包后续提交。
+项目仓库：[gongzhiqiang666-star/shuziren](https://github.com/gongzhiqiang666-star/shuziren)。原始商业程序、模型权重、CUDA 环境、凭据和用户数据不纳入版本库。
 
-工期预算：320小时基础工作 + 64小时联调返工，共384小时。平台审批和硬件等待另计。
+后续以完整功能矩阵和真实业务场景作为验收依据；优先完成可运行核心流程，再对不确定行为进行 Windows 原程序差分验证。

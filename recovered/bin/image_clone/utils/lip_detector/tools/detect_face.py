@@ -1,0 +1,1 @@
+from recovered.image_clone_lip_detect import ScrfdFaceDetector

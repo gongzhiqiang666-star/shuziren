@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>弹幕捕获</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+            max-width: 600px;
+            margin: 20px auto;
+        }
+        .control-panel {
+            background-color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .mode-select {
+            margin-bottom: 15px;
+        }
+        .interval-select {
+            margin-bottom: 15px;
+            display: none;
+        }
+        .threshold-input {
+            margin-bottom: 15px;
+            display: none;
+        }
+        .mode-description {
+            font-size: 12px;
+            color: #666;
+            margin: 5px 0 15px 0;
+            padding: 8px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+            line-height: 1.4;
+        }
+        select, input {
+            padding: 5px;
+            margin: 5px 0;
+            width: 200px;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            flex: 1;
+        }
+        button.secondary {
+            background-color: #f44336;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #danmuDisplay {
+            background-color: white;
+            border-radius: 8px;
+            padding: 15px;
+            height: 400px;
+            overflow-y: auto;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .danmu-item {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+            line-height: 1.4;
+        }
+        .display-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="control-panel">
+        <div class="mode-select">
+            <label id="captureModeLabel">捕获模式：</label>
+            <select id="captureMode" onchange="onModeChange()">
+                <option value="interval">循环检测模式</option>
+                <option value="threshold">相似度阈值模式</option>
+            </select>
+        </div>
+
+        <div class="platform-select" style="margin-bottom: 15px;">
+            <label id="platformTypeLabel">平台类型：</label>
+            <select id="platformType" onchange="updateCaptureSettings()">
+                <option value="general">通用 / 其他</option>
+                <option value="wework">企业微信</option>
+                <option value="shopee">虾皮 / Shopee</option>
+            </select>
+        </div>
+        
+        <div id="modeDescription" class="mode-description">
+            相似度阈值模式：页面有变化时才会检测捕获框内的文案提取弹幕，消耗性能小，但可能不准确。如果有新弹幕进入没识别到，请把阈值调低。
+        </div>
+        
+        <div class="interval-select" id="intervalSelect">
+            <label id="captureIntervalLabel">检测间隔：</label>
+            <select id="captureInterval">
+                <option value="2">2秒</option>
+                <option value="4">4秒</option>
+                <option value="8">8秒</option>
+            </select>
+        </div>
+
+        <div class="threshold-input" id="thresholdInput">
+            <label id="similarityThresholdLabel">相似度阈值(0.1-1.0)：</label>
+            <input type="number" id="similarityThreshold" value="0.9" min="0.1" max="1.0" step="0.05">
+        </div>
+
+        <div class="button-group">
+            <button id="createWindowBtn" onclick="pywebview.api.create_window()">创建捕获窗口</button>
+            <button id="captureBtn" onclick="pywebview.api.toggle_capture()" disabled>开始捕获</button>
+        </div>
+    </div>
+    
+    <div id="danmuDisplay"></div>
+
+    <script>
+        let currentMode = 'interval';
+        window.__packLabels = null;
+
+        function getModeDescription(mode) {
+            const labels = window.__packLabels || {};
+            if (mode === 'threshold') {
+                return labels.mode_desc_threshold || '相似度阈值模式：页面有变化时才会检测捕获框内的文案提取弹幕，消耗性能小，但可能不准确。如果有新弹幕进入没识别到，请把阈值调低。';
+            }
+            return labels.mode_desc_interval || '循环检测模式：会按照设定的时间间隔循环检测捕获框内的文案，从中提取弹幕，比较消耗性能。';
+        }
+
+        function getCaptureButtonLabel(running) {
+            const labels = window.__packLabels || {};
+            return running
+                ? (labels.stop_capture || '停止捕获')
+                : (labels.start_capture || '开始捕获');
+        }
+
+        function applyPackLabels(labels) {
+            if (!labels) {
+                window.__packLabels = null;
+                return;
+            }
+
+            window.__packLabels = labels;
+            document.title = labels.page_title || document.title;
+            document.getElementById('captureModeLabel').textContent = labels.capture_mode || '捕获模式：';
+            document.getElementById('platformTypeLabel').textContent = labels.platform_type || '平台类型：';
+            document.getElementById('captureIntervalLabel').textContent = labels.capture_interval || '检测间隔：';
+            document.getElementById('similarityThresholdLabel').textContent = labels.similarity_threshold || '相似度阈值(0.1-1.0)：';
+            document.getElementById('createWindowBtn').textContent = labels.create_window || '创建捕获窗口';
+
+            const modeSelect = document.getElementById('captureMode');
+            modeSelect.options[0].textContent = labels.mode_interval || '循环检测模式';
+            modeSelect.options[1].textContent = labels.mode_threshold || '相似度阈值模式';
+
+            const platformSelect = document.getElementById('platformType');
+            platformSelect.options[0].textContent = labels.platform_general || '通用 / 其他';
+            platformSelect.options[1].textContent = labels.platform_wework || '企业微信';
+            platformSelect.options[2].textContent = labels.platform_shopee || '虾皮 / Shopee';
+
+            const intervalSelect = document.getElementById('captureInterval');
+            Array.from(intervalSelect.options).forEach(option => {
+                if (labels.interval_option) {
+                    option.textContent = labels.interval_option.replace('{value}', option.value);
+                } else {
+                    option.textContent = `${option.value}秒`;
+                }
+            });
+
+            const captureBtn = document.getElementById('captureBtn');
+            if (captureBtn.disabled) {
+                captureBtn.textContent = getCaptureButtonLabel(false);
+            }
+        }
+
+        function onModeChange() {
+            const mode = document.getElementById('captureMode').value;
+            currentMode = mode;
+            
+            document.getElementById('intervalSelect').style.display = 
+                mode === 'interval' ? 'block' : 'none';
+            document.getElementById('thresholdInput').style.display = 
+                mode === 'threshold' ? 'block' : 'none';
+                
+            document.getElementById('modeDescription').textContent = getModeDescription(mode);
+            updateCaptureSettings();
+        }
+
+        function updateCaptureSettings() {
+            const settings = {
+                mode: currentMode,
+                interval: parseInt(document.getElementById('captureInterval').value),
+                threshold: parseFloat(document.getElementById('similarityThreshold').value),
+                platform: document.getElementById('platformType').value
+            };
+            pywebview.api.update_capture_settings(settings);
+        }
+
+        function applyCaptureSettings(settings) {
+            if (!settings) {
+                return;
+            }
+
+            applyPackLabels(settings.ui_labels || null);
+
+            const modeSelect = document.getElementById('captureMode');
+            const intervalSelect = document.getElementById('captureInterval');
+            const thresholdInput = document.getElementById('similarityThreshold');
+            const platformSelect = document.getElementById('platformType');
+
+            if (settings.mode) {
+                modeSelect.value = settings.mode;
+                currentMode = settings.mode;
+            }
+            if (settings.interval) {
+                intervalSelect.value = String(settings.interval);
+            }
+            if (settings.threshold) {
+                thresholdInput.value = String(settings.threshold);
+            }
+            if (settings.platform && Array.from(platformSelect.options).some(option => option.value === settings.platform)) {
+                platformSelect.value = settings.platform;
+            }
+        }
+
+        function updateCaptureButton(enabled) {
+            document.getElementById('captureBtn').disabled = !enabled;
+        }
+
+        function updateCaptureButtonText(text) {
+            document.getElementById('captureBtn').textContent = text;
+        }
+
+        function appendDanmu(text) {
+            const display = document.getElementById('danmuDisplay');
+            const div = document.createElement('div');
+            div.className = 'danmu-item';
+            div.textContent = text;
+            display.appendChild(div);
+            display.scrollTop = display.scrollHeight;
+        }
+
+        function clearDanmuDisplay() {
+            document.getElementById('danmuDisplay').innerHTML = '';
+        }
+
+        window.addEventListener('load', function() {
+            document.getElementById('captureInterval').addEventListener('change', updateCaptureSettings);
+            document.getElementById('similarityThreshold').addEventListener('change', updateCaptureSettings);
+            document.getElementById('platformType').addEventListener('change', updateCaptureSettings);
+
+            if (pywebview.api.get_capture_settings) {
+                pywebview.api.get_capture_settings()
+                    .then(settings => {
+                        applyCaptureSettings(settings);
+                        onModeChange();
+                    })
+                    .catch(() => onModeChange());
+            } else {
+                onModeChange();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+danmu_list:
+- 点关注了111
+- 主播好
+- 太快了
+enable_text_reply: true
+random_send: false
+random_space: false
+rest_minutes: 2
+send_interval: 60
+work_minutes: 10

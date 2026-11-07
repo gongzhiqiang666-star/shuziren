@@ -1,0 +1,1 @@
+from recovered.auto_live_action_ocr import OCRProcessor

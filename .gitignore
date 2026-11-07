@@ -19,6 +19,20 @@ avatars/
 *.onnx
 *.mp4
 *.wav
+*.exe
+*.dll
+*.pyd
+*.so
+*.dylib
+*.bin
+*.engine
+*.marshal
+
+# Original packaged application and reverse-engineering workspaces
+yunchuang_v122/
+ghidra-project*/
+*.gpr
+*.rep/
 
 # Generated dependencies and output
 node_modules/
@@ -28,3 +42,6 @@ __pycache__/
 .venv/
 .venv-*/
 .DS_Store
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

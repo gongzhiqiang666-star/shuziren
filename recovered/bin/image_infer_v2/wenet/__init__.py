@@ -1,0 +1,1 @@
+"""Recovered WeNet compatibility package."""

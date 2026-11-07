@@ -1,0 +1,13 @@
+# Standard yunchuang_v122 environment (CUDA 11.8 / non-RTX-50-series).
+# Install PyTorch wheels using https://download.pytorch.org/whl/cu118.
+torch==2.6.0+cu118
+torchaudio==2.6.0+cu118
+torchvision==0.21.0+cu118
+onnxruntime==1.21.1
+onnxruntime-gpu==1.15.1
+openai-whisper==20240930
+funasr==1.2.3
+modelscope==1.22.3
+huggingface-hub==1.11.0
+transformers==5.3.0
+accelerate==1.13.0

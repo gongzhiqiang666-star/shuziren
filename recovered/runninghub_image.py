@@ -1,0 +1,94 @@
+"""Recovered RunningHub Seedream v5-pro text-to-image client."""
+
+from __future__ import annotations
+
+import time
+from pathlib import Path
+
+import requests
+
+
+RH_BASE = "https://www.runninghub.cn/openapi/v2"
+RH_TEXT2IMG = RH_BASE + "/seedream-v5-pro/text-to-image"
+DEFAULT_MODEL = "seedream-v5-pro"
+
+
+def _as_path(path): return Path(path).expanduser().resolve()
+def _headers(api_key): return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+
+def _explain_rh_error(body):
+    code = body.get("code") or body.get("errorCode") or "UNKNOWN"
+    message = body.get("message") or body.get("msg") or body.get("error") or "RunningHub request failed"
+    if code == "APIKEY_USER_NOT_FOUND": message = "RunningHub API Key 无效或用户不存在"
+    return f"{code}: {message}"
+
+
+def _raise_if_rh_failed(body):
+    code = body.get("code")
+    if code not in (None, 0, 200, "0", "200", "SUCCESS") or body.get("success") is False:
+        raise RuntimeError(_explain_rh_error(body))
+
+
+def _size_for_aspect(aspect_ratio):
+    return {"9:16": (1440, 2560), "16:9": (2560, 1440), "1:1": (2048, 2048),
+            "3:4": (1536, 2048), "4:3": (2048, 1536)}.get(str(aspect_ratio), (1440, 2560))
+
+
+def _request(method, url, **kwargs):
+    try: response = requests.request(method, url, **kwargs); response.raise_for_status(); return response
+    except requests.RequestException as error: raise RuntimeError(f"RunningHub 请求失败: {error}") from error
+
+
+def _result_urls(body):
+    data = body.get("data") or body.get("result") or body
+    results = data.get("results") or data.get("outputs") or data.get("images") or [] if isinstance(data, dict) else []
+    if isinstance(results, dict): results = [results]
+    urls = []
+    for item in results:
+        url = item if isinstance(item, str) else item.get("fileUrl") or item.get("file_url") or item.get("url") or item.get("download_url")
+        if url: urls.append(url)
+    for key in ("fileUrl", "file_url", "download_url", "url"):
+        if isinstance(data, dict) and data.get(key): urls.append(data[key])
+    return list(dict.fromkeys(urls))
+
+
+def submit_text_to_image(*, api_key, prompt, aspect_ratio="9:16", resolution="2k", quality="low"):
+    if not str(api_key).strip(): raise ValueError("RunningHub API Key 不能为空")
+    width, height = _size_for_aspect(aspect_ratio)
+    response = _request("POST", RH_TEXT2IMG, headers=_headers(api_key),
+                        json={"prompt": prompt, "width": width, "height": height,
+                              "resolution": resolution, "quality": quality, "outputFormat": "png"}, timeout=60)
+    body = response.json(); _raise_if_rh_failed(body)
+    data = body.get("data") or body
+    task_id = data.get("taskId") or data.get("task_id")
+    if not task_id: raise RuntimeError("RunningHub 未返回 taskId")
+    return str(task_id)
+
+
+def poll_task_url(*, api_key, task_id, poll_interval=5, poll_timeout=900):
+    deadline = time.monotonic() + poll_timeout
+    url = RH_BASE + f"/task/{task_id}"
+    while time.monotonic() < deadline:
+        body = _request("GET", url, headers=_headers(api_key), timeout=60).json(); _raise_if_rh_failed(body)
+        data = body.get("data") or body; status = str(data.get("status") or "").upper()
+        urls = _result_urls(body)
+        if urls: return urls[0]
+        if status in {"FAILED", "ERROR", "CANCELLED"}: raise RuntimeError(_explain_rh_error(body))
+        time.sleep(poll_interval)
+    raise TimeoutError(f"RunningHub taskId={task_id} 超时")
+
+
+def download_image(url, dest, timeout=300):
+    target = Path(dest); target.parent.mkdir(parents=True, exist_ok=True)
+    response = _request("GET", url, timeout=timeout); target.write_bytes(response.content)
+    return target
+
+
+def generate_and_download(*, api_key, prompt, dest, aspect_ratio="9:16", resolution="2k",
+                          quality="low", poll_interval=5, poll_timeout=900):
+    task_id = submit_text_to_image(api_key=api_key, prompt=prompt, aspect_ratio=aspect_ratio,
+                                   resolution=resolution, quality=quality)
+    url = poll_task_url(api_key=api_key, task_id=task_id, poll_interval=poll_interval,
+                        poll_timeout=poll_timeout)
+    return download_image(url, dest)

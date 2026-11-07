@@ -1,0 +1,1 @@
+"""Recovered image clone package."""
