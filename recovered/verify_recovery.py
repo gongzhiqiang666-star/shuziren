@@ -3908,6 +3908,56 @@ def verify_generate_script_contract():
         speech_module.generate_structured_speech=original
 
 
+def verify_ip_agent_publish_meta_contract():
+    from recovered.main import Api
+    from recovered import generate_title
+
+    api=Api.__new__(Api);calls=[];saved=[]
+    projects={
+        "missing":None,
+        "empty":{"rewritten_script":"","original_script":""},
+        "fallback":{"rewritten_script":"  改写稿  ","original_script":"原稿",
+                    "benchmark_url":"https://benchmark.example/video"},
+        "original":{"rewritten_script":"","original_script":"  原始稿  ",
+                    "benchmark_url":"https://benchmark.example/original"},
+    }
+    api._load_ip_agent_project=lambda project_id:projects.get(project_id)
+    api._save_ip_agent_project=lambda project_id,data:(saved.append((project_id,data)) or {
+        "id":project_id,**data,
+    })
+    original_generate=generate_title.generate_title_and_tags
+    try:
+        generate_title.generate_title_and_tags=lambda script,video_url:(
+            calls.append((script,video_url)) or
+            {"title":"  生产标题  ","tags":["#标签A","标签A"," 标签B "]}
+        )
+        assert api.generate_ip_agent_publish_meta("missing",{})=={"error":"IP项目不存在"}
+        assert api.generate_ip_agent_publish_meta("empty",{})=={"error":"请先准备文案内容"}
+        result=api.generate_ip_agent_publish_meta("fallback",{})
+        assert calls.pop()==("改写稿","https://benchmark.example/video")
+        assert saved.pop()==("fallback",{
+            "publish_title":"生产标题","publish_tags_text":"#标签A #标签B",
+        })
+        assert result=={
+            "status":"success","title":"生产标题","tags":["标签A","标签B"],
+            "project":{"id":"fallback","publish_title":"生产标题",
+                       "publish_tags_text":"#标签A #标签B"},
+        }
+        api.generate_ip_agent_publish_meta("original",{
+            "script":"  请求文案  ","video_url":"https://request.example/video",
+            "title":"不得覆盖","tags":["不得覆盖"],
+        })
+        assert calls.pop()==("请求文案","https://request.example/video")
+        generate_title.generate_title_and_tags=lambda *_args,**_kwargs:(
+            (_ for _ in ()).throw(RuntimeError("标题服务中断"))
+        )
+        assert api.generate_ip_agent_publish_meta("fallback",{})=={
+            "error":"生成发布标题和标签失败: 标题服务中断",
+        }
+    finally:
+        generate_title.generate_title_and_tags=original_generate
+
+
 def verify_main_translate_text_contract():
     from recovered.main import Api
     from recovered import llm_reply
@@ -5256,7 +5306,7 @@ def main():
     verify_audio_devices_contract()
     verify_audio_player_scan_contract()
     verify_live_sticker_prompt_contract()
-    verify_mapping(); verify_all_modules_importable(); verify_environment_manifests(); verify_voice_helpers(); verify_asr_temp_audio_lifecycle(); verify_audio_duration_fallbacks(); verify_title_fallback_parser(); verify_sentence_generalization_contract(); verify_short_video_language_routing(); verify_short_video_render_parameters(); verify_short_video_metadata_lifecycle(); verify_voice_v2_lifecycle(); verify_voice_v3_lifecycle(); verify_zipvoice_lifecycle(); verify_taobao_explain_cycle(); verify_taobao_action_dispatch(); verify_taobao_control_recovery(); verify_live_brain(); verify_face_hand_manager(); verify_face_hand_player_av_queue(); verify_language_and_live_helpers(); verify_video_player_stream_helpers(); verify_edit_audio_contract(); verify_cloud_avatar_prompt_contract(); verify_live_sticker_title_routing_contract(); verify_taobao_private_helpers(); verify_product_kt_geometry_helpers(); verify_product_image_pipeline(); verify_remaining_private_entrypoints(); verify_auto_live_action_spacing_contract(); verify_image_clone_resource_lifecycle(); verify_image_clone_save_frame_diagnostics(); verify_image_clone_model_assets(); verify_image_clone_generate_cleanup(); verify_pfld_ghostone_architecture(); verify_s3fd_architecture(); verify_kuaishou_message_protocol(); verify_text_special_variables(); verify_funasr_sentence_contract(); verify_get_srt_lifecycle(); verify_ip_agent_post_process_helpers(); verify_origin_video_ffmpeg_reader(); verify_ip_agent_real_media_pipeline(); verify_ip_agent_project_schema_contract(); verify_ip_agent_rewrite_contract(); verify_generate_script_contract(); verify_main_translate_text_contract(); verify_main_llm_config_contract(); verify_record_live_start_lifecycle(); verify_barrage_port_cleanup(); verify_shopee_action_dispatch(); verify_shopee_page_states(); verify_controller_workers(); verify_v2_fade_curves(); verify_v2_queue_selection(); verify_keyword_contract_behaviors(); verify_core_method_coverage(); verify_all_binary_class_methods(); verify_binary_class_signature_arity(); verify_binary_module_signature_arity(); verify_public_name_inventory(); verify_binary_qualified_module_names(); asyncio.run(verify_live_protocols())
+    verify_mapping(); verify_all_modules_importable(); verify_environment_manifests(); verify_voice_helpers(); verify_asr_temp_audio_lifecycle(); verify_audio_duration_fallbacks(); verify_title_fallback_parser(); verify_sentence_generalization_contract(); verify_short_video_language_routing(); verify_short_video_render_parameters(); verify_short_video_metadata_lifecycle(); verify_voice_v2_lifecycle(); verify_voice_v3_lifecycle(); verify_zipvoice_lifecycle(); verify_taobao_explain_cycle(); verify_taobao_action_dispatch(); verify_taobao_control_recovery(); verify_live_brain(); verify_face_hand_manager(); verify_face_hand_player_av_queue(); verify_language_and_live_helpers(); verify_video_player_stream_helpers(); verify_edit_audio_contract(); verify_cloud_avatar_prompt_contract(); verify_live_sticker_title_routing_contract(); verify_taobao_private_helpers(); verify_product_kt_geometry_helpers(); verify_product_image_pipeline(); verify_remaining_private_entrypoints(); verify_auto_live_action_spacing_contract(); verify_image_clone_resource_lifecycle(); verify_image_clone_save_frame_diagnostics(); verify_image_clone_model_assets(); verify_image_clone_generate_cleanup(); verify_pfld_ghostone_architecture(); verify_s3fd_architecture(); verify_kuaishou_message_protocol(); verify_text_special_variables(); verify_funasr_sentence_contract(); verify_get_srt_lifecycle(); verify_ip_agent_post_process_helpers(); verify_origin_video_ffmpeg_reader(); verify_ip_agent_real_media_pipeline(); verify_ip_agent_project_schema_contract(); verify_ip_agent_rewrite_contract(); verify_generate_script_contract(); verify_ip_agent_publish_meta_contract(); verify_main_translate_text_contract(); verify_main_llm_config_contract(); verify_record_live_start_lifecycle(); verify_barrage_port_cleanup(); verify_shopee_action_dispatch(); verify_shopee_page_states(); verify_controller_workers(); verify_v2_fade_curves(); verify_v2_queue_selection(); verify_keyword_contract_behaviors(); verify_core_method_coverage(); verify_all_binary_class_methods(); verify_binary_class_signature_arity(); verify_binary_module_signature_arity(); verify_public_name_inventory(); verify_binary_qualified_module_names(); asyncio.run(verify_live_protocols())
     print("PASS: 128/128 mappings/imports, public/private callable and binary class method inventories, signatures, core methods, live managers, protocols")
 
 
