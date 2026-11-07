@@ -207,31 +207,28 @@ class Api(PluginInstallerApi):
 
     def get_local_resources(self):
         try:
-            assets = self._find_asset("assets")
-            def directories(relative):
-                base = assets / relative
-                return [{"id": path.name, "name": path.name, "path": str(path)}
-                        for path in sorted(base.iterdir()) if path.is_dir()] if base.is_dir() else []
-            return {"status": "success", "image_models": directories("characters/images"),
-                    "voice_models": directories("characters/voices"),
-                    "pretrained_models": directories("pretrained_models")}
-        except Exception as error: return {"status": "error", "message": str(error)}
-
-    def _delete_character_resource(self, relative_base, name, label):
-        try:
-            if not str(name).strip() or Path(str(name)).name != str(name): raise ValueError(f"无效的{label}名称")
-            base = self._find_asset(relative_base).resolve(); target = (base / str(name)).resolve()
-            if target.parent != base: raise ValueError(f"无效的{label}路径")
-            if not target.is_dir(): raise FileNotFoundError(f"{label}不存在: {name}")
-            shutil.rmtree(target)
-            return {"status": "success", "message": f"{label}已删除", "name": str(name)}
-        except Exception as error: return {"status": "error", "message": f"删除{label}失败: {error}"}
+            models, voices = self._clone_manager.get_local_models()
+            return {"models": models, "voices": voices, "status": "success"}
+        except Exception as error:
+            return {"error": str(error)}
 
     def delete_model(self, model_name):
-        return self._delete_character_resource("assets/characters/images", model_name, "形象模型")
+        if not isinstance(model_name, str):
+            raise TypeError("model_name must be a str")
+        try:
+            self._clone_manager.delete_model(model_name)
+            return {"status": "success"}
+        except Exception as error:
+            return {"error": f"删除模型失败: {error}"}
 
     def delete_voice(self, voice_name):
-        return self._delete_character_resource("assets/characters/voices", voice_name, "音色")
+        if not isinstance(voice_name, str):
+            raise TypeError("voice_name must be a str")
+        try:
+            self._clone_manager.delete_voice(voice_name)
+            return {"status": "success"}
+        except Exception as error:
+            return {"error": f"删除音色失败: {error}"}
 
     def get_audio_file_count(self, folder_path):
         try:
