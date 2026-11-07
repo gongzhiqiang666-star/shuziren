@@ -2,9 +2,8 @@
 
 import subprocess
 import base64
-import hashlib
-import mimetypes
 import shutil
+import time
 import yaml
 from pathlib import Path
 
@@ -38,43 +37,55 @@ class CloneManager:
             cache.clear(); cache[key]=f"data:{mime_type};base64,{encoded}"
         return cache[key]
     def _build_model_preview(self,sample_path):
-        mime=mimetypes.guess_type(sample_path)[0] or "image/jpeg"
-        return self._encode_file_as_data_url(sample_path,mime,self._image_preview_cache)
+        return self._encode_file_as_data_url(sample_path,"image/jpeg",self._image_preview_cache)
     def _build_voice_preview(self,audio_path):
-        mime=mimetypes.guess_type(audio_path)[0] or "audio/wav"
-        return self._encode_file_as_data_url(audio_path,mime,self._audio_preview_cache)
+        return self._encode_file_as_data_url(audio_path,"audio/wav",self._audio_preview_cache)
     def _probe_audio_duration(self,audio_path):
         result=subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=nw=1:nk=1",str(audio_path)],capture_output=True,text=True,check=True)
         return float(result.stdout.strip())
 
     def _create_model_info(self,model_dir,name,model_id,supported_versions=None,resolution="720p",width=720,height=1280,kt_board=False,kt_board_hit=0):
-        info={"model_name":name,"model_id":model_id,"supported_versions":supported_versions or ["v1","v2","origin"],
-              "resolution":resolution,"width":int(width),"height":int(height),"kt_board":bool(kt_board),"kt_board_hit":int(kt_board_hit)}
+        info={"name":name,"id":model_id,"create_time":time.strftime("%Y-%m-%d %H:%M:%S"),
+              "provider":"image","supported_versions":sorted(set(supported_versions or ["v2"])),
+              "resolution":resolution,"width":int(width),"height":int(height),
+              "kt_board":bool(kt_board),"kt_board_hit":int(kt_board_hit)}
         path=Path(model_dir)/"model_info.yaml"; path.parent.mkdir(parents=True,exist_ok=True); path.write_text(yaml.safe_dump(info,allow_unicode=True,sort_keys=False),encoding="utf-8")
     def _create_voice_info(self,voice_dir,name,voice_id,supported_versions=None):
-        info={"voice_name":name,"voice_id":voice_id,"supported_versions":supported_versions or ["v1","v2","v3","malai_local","vietnam_local"]}
-        path=Path(voice_dir)/"voice_info.yaml"; path.parent.mkdir(parents=True,exist_ok=True); path.write_text(yaml.safe_dump(info,allow_unicode=True,sort_keys=False),encoding="utf-8")
+        info={"name":name,"id":voice_id,"create_time":time.strftime("%Y-%m-%d %H:%M:%S"),
+              "provider":"voice","supported_versions":sorted(set(supported_versions or ["v1","v2","v3","malai_local","vietnam_local"]))}
+        path=Path(voice_dir)/"model_info.yaml"; path.parent.mkdir(parents=True,exist_ok=True); path.write_text(yaml.safe_dump(info,allow_unicode=True,sort_keys=False),encoding="utf-8")
     def _read_model_info(self,model_dir):
-        for name in ("model_info.yaml","video_info.yaml"):
-            path=Path(model_dir)/name
-            if path.is_file(): return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        path=Path(model_dir)/"model_info.yaml"
+        if path.is_file(): return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         return {}
 
     def _create_model_record(self,directory):
-        info=self._read_model_info(directory); model_id=str(info.get("model_id") or directory.name)
-        sample=next((p for p in (directory/"sample.jpg",directory/"thumbnail.jpg") if p.is_file()),None)
-        return {**info,"model_id":model_id,"model_name":info.get("model_name") or directory.name,"model_dir":str(directory),
-                "preview":self._build_model_preview(sample) if sample else "","kt_board":bool(info.get("kt_board"))}
+        info=self._read_model_info(directory)
+        sample=directory/"sample.jpg"
+        kt_board=False
+        if info.get("kt_board"):
+            from .product_kt_overlay import model_has_kt_board_cache
+            kt_board=bool(model_has_kt_board_cache(directory))
+        return {"id":info.get("id",directory.name),"name":info.get("name"),
+                "create_time":info.get("create_time"),
+                "sample_data":self._build_model_preview(sample) if sample.is_file() else None,
+                "supported_versions":info.get("supported_versions",["v2"]),
+                "resolution":info.get("resolution") or False,
+                "width":int(info.get("width") or 720),"height":int(info.get("height") or 1280),
+                "kt_board":kt_board,"kt_board_hit":int(info.get("kt_board_hit") or 0)}
     def _create_voice_record(self,directory):
-        path=directory/"voice_info.yaml"; info=yaml.safe_load(path.read_text(encoding="utf-8")) if path.is_file() else {}
+        info=self._read_model_info(directory)
         audio=directory/"ref_audio.wav"
-        return {**(info or {}),"voice_id":(info or {}).get("voice_id") or directory.name,"voice_name":(info or {}).get("voice_name") or directory.name,
-                "voice_dir":str(directory),"preview":self._build_voice_preview(audio) if audio.is_file() else ""}
+        return {"id":info.get("id",directory.name),"name":info.get("name"),
+                "create_time":info.get("create_time"),
+                "sample_data":self._build_voice_preview(audio) if audio.is_file() else None,
+                "provider":info.get("provider"),
+                "supported_versions":info.get("supported_versions",["v1","v2","v3","malai_local","vietnam_local"])}
 
     def get_local_models(self):
         image_root=Path(self._config_path("image_base_dir")); voice_root=Path(self._config_path("voice_base_dir"))
-        images=[self._create_model_record(p) for p in sorted(image_root.iterdir()) if p.is_dir()] if image_root.is_dir() else []
-        voices=[self._create_voice_record(p) for p in sorted(voice_root.iterdir()) if p.is_dir()] if voice_root.is_dir() else []
+        images=[self._create_model_record(p) for p in image_root.iterdir() if p.is_dir()] if image_root.is_dir() else []
+        voices=[self._create_voice_record(p) for p in voice_root.iterdir() if p.is_dir()] if voice_root.is_dir() else []
         return images,voices
     def delete_model(self,model_name):
         target=Path(self._resource_dir("image_base_dir",model_name)); shutil.rmtree(target)
