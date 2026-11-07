@@ -37,7 +37,7 @@
 | ID | 用户功能 | 原入口/主要证据 | 当前重建模块 | 当前状态 | 完成前必须验证 |
 |---|---|---|---|---|---|
 | CNT-001 | LLM 配置保存和连通性测试 | `save_llm_config/test_llm_availability` | `main.py`, `llm_base_chat.py` | 开发中 | 各支持提供商、超时、鉴权错误和配置兼容 |
-| CNT-002 | 商品直播话术生成 | `generate_script` | `main.py`, `llm_reply.py` | 开发中 | 原提示词、JSON 解析、降级和真实模型输出 |
+| CNT-002 | 商品直播话术生成 | `generate_script` wrapper/body `0x180036950/0x180037230` | `main.py`, `generate_structured_speech.py` | 静态验证通过 | Windows 原 `.pyd` 差分和真实 LLM 输出质量 |
 | CNT-003 | 文本翻译与多语言提示词 | `translate_text` | `main.py`, `language_prompts.py` | 开发中 | 全语言矩阵、未知语言和服务失败 |
 | CNT-004 | 话术泛化与标题生成 | `generalize_sentences_api` 及 Ghidra 契约 | `generalize_sentences.py`, `generate_title.py` | 静态验证通过 | 真实 LLM 差分、异常输出和重试 |
 | CNT-005 | 违禁词检测/替换 | `forbidden_words.pyd`、`replace_forbidden_words.pyd` | `forbidden_words.py`, `replace_forbidden_words.py` | 静态验证通过 | 原词库、用户增补词、大小写/中英文边界 |
@@ -97,8 +97,8 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 35 |
-| 开发中 | 13 |
+| 静态验证通过 | 36 |
+| 开发中 | 12 |
 | 已分析 | 10 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |
