@@ -24,7 +24,7 @@
 | SYS-003 | 关闭 Windows 执行速度节流 | `win_power_throttling.pyd` Ghidra 证据 | `win_power_throttling.py` | 静态验证通过 | Windows API 权限、远程 PID、keep-alive 生命周期 |
 | SYS-004 | 系统配置、用户配置合并与私密配置迁移 | `main.pyd` 配置调用链 | `main_config.py` | 静态验证通过 | `%LOCALAPPDATA%` 路径、旧配置迁移、异常断电原子写入 |
 | SYS-005 | pywebview 主窗口及前后端 JS API | `main.main/_main/run_webview` | `main_webview.py`, `main.py` | 已分析 | Windows WebView2、生产/开发 URL、窗口关闭资源回收 |
-| SYS-006 | 登录 Token、管理员/OEM 信息与背景资源 | `Api.get/save/clear_token` 等 | `main.py` | 开发中 | 与真实前端、服务端和旧用户配置差分 |
+| SYS-006 | 登录 Token、管理员/OEM 信息与背景资源 | Token `0x1800644b0/0x180064620`, `0x180064dd0/0x180065090`, `0x180065880/0x1800659f0`; 管理员/OEM/背景/版本原生主体 | `main.py` | 静态验证通过 | Windows 原 `.pyd`、真实旧配置/OEM 包和前端登录流差分 |
 | SYS-007 | 本地资源枚举、预览与删除 | `get_local_resources/delete_model/delete_voice` | `main.py`, `clone_manager.py` | 开发中 | 旧资源目录、预览媒体、占用文件和删除失败行为 |
 | SYS-008 | 文件/目录选择及打开目录 | `open_file_dialog/open_directory` | `main.py` | 开发中 | Windows 对话框、中文/长路径、非法路径 |
 | SYS-009 | 缓存清理 | `Api.clear_cache` | `main.py`, `audio_cache.py` | 已分析 | 正在直播、文件占用、部分清理失败 |
@@ -97,8 +97,8 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 39 |
-| 开发中 | 9 |
+| 静态验证通过 | 40 |
+| 开发中 | 8 |
 | 已分析 | 10 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |
