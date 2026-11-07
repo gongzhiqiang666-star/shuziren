@@ -38,7 +38,7 @@
 |---|---|---|---|---|---|
 | CNT-001 | LLM 配置保存和连通性测试 | `save_llm_config/test_llm_availability` | `main.py`, `llm_base_chat.py` | 开发中 | 各支持提供商、超时、鉴权错误和配置兼容 |
 | CNT-002 | 商品直播话术生成 | `generate_script` wrapper/body `0x180036950/0x180037230` | `main.py`, `generate_structured_speech.py` | 静态验证通过 | Windows 原 `.pyd` 差分和真实 LLM 输出质量 |
-| CNT-003 | 文本翻译与多语言提示词 | `translate_text` | `main.py`, `language_prompts.py` | 开发中 | 全语言矩阵、未知语言和服务失败 |
+| CNT-003 | 文本翻译与多语言提示词 | `translate_text` wrapper/body `0x18004f510/0x18004f8c0` | `main.py`, `llm_reply.py`, `language_prompts.py` | 静态验证通过 | Windows 原 `.pyd` 差分、全语言真实模型输出质量 |
 | CNT-004 | 话术泛化与标题生成 | `generalize_sentences_api` 及 Ghidra 契约 | `generalize_sentences.py`, `generate_title.py` | 静态验证通过 | 真实 LLM 差分、异常输出和重试 |
 | CNT-005 | 违禁词检测/替换 | `forbidden_words.pyd`、`replace_forbidden_words.pyd` | `forbidden_words.py`, `replace_forbidden_words.py` | 静态验证通过 | 原词库、用户增补词、大小写/中英文边界 |
 | CNT-006 | IP Agent 项目创建、查询、更新、删除 | `Api.create/get/update/delete_ip_agent_project` | `main.py`, `ip_agent_post_process.py` | 静态验证通过 | 旧项目迁移、并发保存、损坏项目恢复 |
@@ -97,8 +97,8 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 36 |
-| 开发中 | 12 |
+| 静态验证通过 | 37 |
+| 开发中 | 11 |
 | 已分析 | 10 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |
