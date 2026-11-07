@@ -4135,6 +4135,98 @@ def verify_main_file_dialog_contract():
         else:delattr(main_module.os,"startfile")
 
 
+def verify_main_live_sticker_project_contract():
+    from recovered.main import Api
+
+    with tempfile.TemporaryDirectory() as directory:
+        root=Path(directory);api=Api.__new__(Api);api.runtime_dir=root
+        assert api._get_live_sticker_base_dir()==str(root/"assets"/"live_sticker_projects")
+        project_a=Path(api._get_live_sticker_project_dir("project-a"))
+        assert api._get_live_sticker_output_paths("project-a")=={
+            "bg":str(project_a/"背景.png"),
+            "fg_white":str(project_a/"前景贴片_绿底.png"),
+            "fg_alpha":str(project_a/"前景贴片_透明.png"),
+            "cover_raw":str(project_a/"直播间封面_原始.png"),
+            "cover":str(project_a/"直播间封面.png"),
+        }
+        assert api.create_live_sticker_project("   ")=={"error":"请输入项目名称"}
+        created=api.create_live_sticker_project("  生产贴片  ")
+        assert created["status"]=="success"
+        project=created["project"];project_id=project["id"]
+        assert len(project_id)==36 and project["name"]=="生产贴片"
+        assert project["status"]=="draft" and project["room_titles"]==[]
+        assert project["fg_white_preview_url"]==""
+        assert project["path"]==os.path.abspath(api._get_live_sticker_project_dir(project_id))
+        expected_fields={
+            "id","name","create_time","update_time","product_name","product_price",
+            "product_selling_points","product_content","product_item_id","product_pic",
+            "background_prompt","foreground_prompt","cover_prompt","bg_path","fg_white_path",
+            "fg_alpha_path","cover_path","cover_raw_path","bg_size","fg_size","cover_size",
+            "room_title","room_titles","title_model","last_error","status",
+        }
+        stored=api._read_yaml_file(api._get_live_sticker_project_info_path(project_id))
+        assert set(stored)==expected_fields
+
+        outputs=api._get_live_sticker_output_paths(project_id)
+        Path(outputs["bg"]).write_bytes(b"bg-preview")
+        Path(outputs["fg_white"]).write_bytes(b"green-preview")
+        updated=api.update_live_sticker_project(project_id,{
+            "name":"改名项目","bg_path":outputs["bg"],"fg_white_path":outputs["fg_white"],
+            "room_titles":"标题一， 标题二", "id":"must-not-replace",
+        })
+        assert updated["status"]=="success"
+        project=updated["project"]
+        assert project["id"]==project_id and project["name"]=="改名项目"
+        assert project["room_titles"]==["标题一","标题二"] and project["room_title"]=="标题一"
+        assert project["fg_white_preview_url"]=="data:image/png;base64,Z3JlZW4tcHJldmlldw=="
+
+        second_dir=Path(api._get_live_sticker_project_dir("legacy"));second_dir.mkdir(parents=True)
+        legacy_green=second_dir/"前景贴片_绿底.png";legacy_green.write_bytes(b"legacy")
+        api._write_yaml_file(second_dir/"project_info.yaml",{
+            "name":"", "create_time":"2025-01-01 00:00:00",
+            "room_title":"旧标题", "room_titles":None,
+        })
+        legacy=api.get_live_sticker_project("legacy")
+        assert legacy["status"]=="success"
+        assert legacy["project"]["name"]==""
+        assert legacy["project"]["fg_white_path"]==str(legacy_green)
+        assert legacy["project"]["room_titles"]==["旧标题"]
+
+        projects=api.get_all_live_sticker_projects()
+        assert projects["status"]=="success" and len(projects["projects"])==2
+        summaries={item["id"]:item for item in projects["projects"]}
+        assert summaries[project_id]["preview_url"]=="data:image/png;base64,YmctcHJldmlldw=="
+        assert summaries["legacy"]["name"]=="贴片项目-legacy"
+        assert summaries["legacy"]["status"]=="draft"
+
+        Path(outputs["fg_alpha"]).write_bytes(b"alpha")
+        Path(outputs["cover"]).write_bytes(b"cover")
+        project.update({"fg_alpha_path":outputs["fg_alpha"],"cover_path":outputs["cover"]})
+        api._archive_live_sticker_outputs(project_id,project)
+        history=Path(api._get_live_sticker_history_dir(project_id))
+        snapshots=list(history.iterdir())
+        assert len(snapshots)==1
+        assert {item.name for item in snapshots[0].iterdir()}=={
+            "背景.png","前景贴片_绿底.png","前景贴片_透明.png","直播间封面.png",
+        }
+
+        assert api.get_live_sticker_project("missing")=={"error":"贴片项目不存在"}
+        assert api.delete_live_sticker_project("missing")=={"error":"贴片项目不存在"}
+        assert api.delete_live_sticker_project(project_id)=={
+            "status":"success","message":"删除成功",
+        }
+        assert not Path(api._get_live_sticker_project_dir(project_id)).exists()
+        for method,args,message in (
+            (api.create_live_sticker_project,(None,),"name must be a str"),
+            (api.get_live_sticker_project,(None,),"project_id must be a str"),
+            (api.update_live_sticker_project,("legacy",None),"data must be a dict"),
+            (api.delete_live_sticker_project,(1,),"project_id must be a str"),
+        ):
+            try:method(*args)
+            except TypeError as error:assert str(error)==message
+            else:raise AssertionError("live sticker native wrapper type contract was not enforced")
+
+
 def verify_clone_manager_local_resources_contract():
     from recovered.clone_manager import CloneManager
     from recovered.product_kt_overlay import KT_BOARD_CACHE_NAME
@@ -5549,7 +5641,7 @@ def main():
     verify_audio_devices_contract()
     verify_audio_player_scan_contract()
     verify_live_sticker_prompt_contract()
-    verify_mapping(); verify_all_modules_importable(); verify_environment_manifests(); verify_voice_helpers(); verify_asr_temp_audio_lifecycle(); verify_audio_duration_fallbacks(); verify_title_fallback_parser(); verify_sentence_generalization_contract(); verify_short_video_language_routing(); verify_short_video_render_parameters(); verify_short_video_metadata_lifecycle(); verify_voice_v2_lifecycle(); verify_voice_v3_lifecycle(); verify_zipvoice_lifecycle(); verify_taobao_explain_cycle(); verify_taobao_action_dispatch(); verify_taobao_control_recovery(); verify_live_brain(); verify_face_hand_manager(); verify_face_hand_player_av_queue(); verify_language_and_live_helpers(); verify_video_player_stream_helpers(); verify_edit_audio_contract(); verify_cloud_avatar_prompt_contract(); verify_live_sticker_title_routing_contract(); verify_taobao_private_helpers(); verify_product_kt_geometry_helpers(); verify_product_image_pipeline(); verify_remaining_private_entrypoints(); verify_auto_live_action_spacing_contract(); verify_image_clone_resource_lifecycle(); verify_image_clone_save_frame_diagnostics(); verify_image_clone_model_assets(); verify_image_clone_generate_cleanup(); verify_pfld_ghostone_architecture(); verify_s3fd_architecture(); verify_kuaishou_message_protocol(); verify_text_special_variables(); verify_funasr_sentence_contract(); verify_get_srt_lifecycle(); verify_ip_agent_post_process_helpers(); verify_origin_video_ffmpeg_reader(); verify_ip_agent_real_media_pipeline(); verify_ip_agent_project_schema_contract(); verify_ip_agent_rewrite_contract(); verify_generate_script_contract(); verify_ip_agent_publish_meta_contract(); verify_main_system_identity_contract(); verify_main_local_resources_contract(); verify_main_file_dialog_contract(); verify_clone_manager_local_resources_contract(); verify_main_translate_text_contract(); verify_main_llm_config_contract(); verify_record_live_start_lifecycle(); verify_barrage_port_cleanup(); verify_shopee_action_dispatch(); verify_shopee_page_states(); verify_controller_workers(); verify_v2_fade_curves(); verify_v2_queue_selection(); verify_keyword_contract_behaviors(); verify_core_method_coverage(); verify_all_binary_class_methods(); verify_binary_class_signature_arity(); verify_binary_module_signature_arity(); verify_public_name_inventory(); verify_binary_qualified_module_names(); asyncio.run(verify_live_protocols())
+    verify_mapping(); verify_all_modules_importable(); verify_environment_manifests(); verify_voice_helpers(); verify_asr_temp_audio_lifecycle(); verify_audio_duration_fallbacks(); verify_title_fallback_parser(); verify_sentence_generalization_contract(); verify_short_video_language_routing(); verify_short_video_render_parameters(); verify_short_video_metadata_lifecycle(); verify_voice_v2_lifecycle(); verify_voice_v3_lifecycle(); verify_zipvoice_lifecycle(); verify_taobao_explain_cycle(); verify_taobao_action_dispatch(); verify_taobao_control_recovery(); verify_live_brain(); verify_face_hand_manager(); verify_face_hand_player_av_queue(); verify_language_and_live_helpers(); verify_video_player_stream_helpers(); verify_edit_audio_contract(); verify_cloud_avatar_prompt_contract(); verify_live_sticker_title_routing_contract(); verify_taobao_private_helpers(); verify_product_kt_geometry_helpers(); verify_product_image_pipeline(); verify_remaining_private_entrypoints(); verify_auto_live_action_spacing_contract(); verify_image_clone_resource_lifecycle(); verify_image_clone_save_frame_diagnostics(); verify_image_clone_model_assets(); verify_image_clone_generate_cleanup(); verify_pfld_ghostone_architecture(); verify_s3fd_architecture(); verify_kuaishou_message_protocol(); verify_text_special_variables(); verify_funasr_sentence_contract(); verify_get_srt_lifecycle(); verify_ip_agent_post_process_helpers(); verify_origin_video_ffmpeg_reader(); verify_ip_agent_real_media_pipeline(); verify_ip_agent_project_schema_contract(); verify_ip_agent_rewrite_contract(); verify_generate_script_contract(); verify_ip_agent_publish_meta_contract(); verify_main_system_identity_contract(); verify_main_local_resources_contract(); verify_main_file_dialog_contract(); verify_main_live_sticker_project_contract(); verify_clone_manager_local_resources_contract(); verify_main_translate_text_contract(); verify_main_llm_config_contract(); verify_record_live_start_lifecycle(); verify_barrage_port_cleanup(); verify_shopee_action_dispatch(); verify_shopee_page_states(); verify_controller_workers(); verify_v2_fade_curves(); verify_v2_queue_selection(); verify_keyword_contract_behaviors(); verify_core_method_coverage(); verify_all_binary_class_methods(); verify_binary_class_signature_arity(); verify_binary_module_signature_arity(); verify_public_name_inventory(); verify_binary_qualified_module_names(); asyncio.run(verify_live_protocols())
     print("PASS: 128/128 mappings/imports, public/private callable and binary class method inventories, signatures, core methods, live managers, protocols")
 
 
