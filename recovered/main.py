@@ -1099,15 +1099,19 @@ class Api(PluginInstallerApi):
             return {"script": "", "failed_products": [], "error": f"生成脚本时发生错误：{error}"}
 
     def translate_text(self, text, target_language):
-        from .llm_base_chat import base_chat
-        value = str(text or "").strip()
-        if not value: return ""
-        chunks = [value[index:index + 500] for index in range(0, len(value), 500)]
-        translated = []
-        for chunk in chunks:
-            translated.append(base_chat(chunk, f"Translate the user text into {target_language}. Output only the translation, no explanation.",
-                                        model_type="script", raise_on_failure=True))
-        return "".join(translated)
+        from .language_prompts import normalize_language_code
+        from .llm_reply import translate_text_llm
+        if not isinstance(text, str):
+            raise TypeError("text must be a str")
+        if not isinstance(target_language, str):
+            raise TypeError("target_language must be a str")
+        try:
+            source = text if text else ""
+            language = normalize_language_code(target_language if target_language else "zh-CN")
+            return translate_text_llm(source, language, raise_on_failure=True)
+        except Exception as error:
+            print(f"翻译失败: {error}")
+            return {"error": str(error)}
 
     def get_stream_urls(self):
         environment = self.config.get("environment", "production")
