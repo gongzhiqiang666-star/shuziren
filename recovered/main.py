@@ -242,22 +242,30 @@ class Api(PluginInstallerApi):
     def open_file_dialog(self, allow_dir=False):
         try:
             import webview
-            kind = webview.FOLDER_DIALOG if allow_dir else webview.OPEN_DIALOG
-            selected = webview.windows[0].create_file_dialog(kind)
-            if not selected: return {"status": "cancelled"}
-            path = selected[0] if isinstance(selected, (list, tuple)) else selected
-            return {"status": "success", "path": str(path)}
-        except Exception as error: return {"status": "error", "message": str(error)}
+            dialog_type = webview.FOLDER_DIALOG if allow_dir else webview.OPEN_DIALOG
+            files = webview.windows[0].create_file_dialog(dialog_type)
+            if not files:
+                return {"status": "cancelled", "files": []}
+            return {"status": "success", "files": files}
+        except Exception as error:
+            print(f"打开文件对话框失败: {error}")
+            return {"error": str(error)}
 
     def open_directory(self, path):
+        if not isinstance(path, str):
+            raise TypeError("path must be a str")
         try:
-            target = Path(path).expanduser().resolve()
-            if not target.is_dir(): raise NotADirectoryError(target)
-            if sys.platform == "win32": subprocess.Popen(["explorer", str(target)])
-            elif sys.platform == "darwin": subprocess.Popen(["open", str(target)])
-            else: subprocess.Popen(["xdg-open", str(target)])
-            return {"status": "success", "path": str(target)}
-        except Exception as error: return {"status": "error", "message": str(error)}
+            if not os.path.exists(path):
+                return {"error": "目录不存在"}
+            if sys.platform == "win32":
+                os.startfile(path)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", path])
+            else:
+                subprocess.Popen(["xdg-open", path])
+            return {"status": "success"}
+        except Exception as error:
+            return {"error": str(error)}
 
     def clear_cache(self):
         import tempfile
