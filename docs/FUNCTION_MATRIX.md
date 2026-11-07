@@ -47,7 +47,7 @@
 | CNT-009 | IP 发布标题、简介、标签生成 | `generate_ip_agent_publish_meta` wrapper/body `0x180142690/0x180142a40` | `main.py`, `generate_title.py` | 静态验证通过 | Windows 原 `.pyd` 差分和真实 LLM 输出质量 |
 | CNT-010 | IP 一键成片流水线 | 音频→视频→字幕→精加工→发布 API | `main.py`, `ip_agent_post_process.py` | 开发中 | 全链真实媒体、断点恢复、失败清理和结果一致性 |
 | CNT-011 | IP 视频发布 | `publish_ip_agent_video` | `main.py` | 已分析 | 支持平台、账号登录、草稿/发布、失败重试 |
-| CNT-012 | 直播贴片项目管理 | `create/get/update/delete_live_sticker_project` | `main.py` | 开发中 | 历史归档、预览、旧项目兼容 |
+| CNT-012 | 直播贴片项目管理 | main CRUD/helper wrapper/body 与 26 字段 YAML、五类固定输出、历史归档及旧项目迁移证据，见 `rea-output/main-live-sticker-project-notes.md` | `main.py` | 静态验证通过 | Windows 原 `.pyd` 响应差分、真实旧项目、连续生成归档、文件占用/权限错误和前端预览 |
 | CNT-013 | 贴片提示词、房间标题和图片生成 | 对应 `live_sticker_*` 原生模块 | `live_sticker_prompts.py`, `live_sticker_titles.py`, `runninghub_image.py` | 静态验证通过 | 真实 LLM/图片服务、失败重试和图片比例 |
 | CNT-014 | 云端数字人项目与音视频生成 | `cloud_dh` 项目 API | `main.py`, `runninghub_talk.py`, `cloud_dh_prompts.py` | 开发中 | 真实 API、上传、轮询、超时、产物归档 |
 | CNT-015 | 短视频配音、合成、列表和删除 | `generate_audio_for_short_video/create_short_video` | `short_video_audio_synthesis.py`, `generate_lip_sync_video.py` | 静态验证通过 | Windows FFmpeg、各语言 TTS、真实长视频和失败清理 |
@@ -97,8 +97,8 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 42 |
-| 开发中 | 6 |
+| 静态验证通过 | 43 |
+| 开发中 | 5 |
 | 已分析 | 10 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |
