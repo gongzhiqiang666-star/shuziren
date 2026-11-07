@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 from scripts import live_readiness as readiness
 
@@ -91,6 +92,64 @@ class ManifestTests(unittest.TestCase):
                 "label": "runtime.root", "kind": "missing", "present": False,
                 "bytes": 0, "files": 0, "sha256": None,
             })
+
+
+class GateTests(unittest.TestCase):
+    def test_obs_gate_requires_audio_and_video_evidence(self):
+        gate = {"status": "passed", "evidence": {"video": "obs-recording", "audio": ""}}
+        with self.assertRaisesRegex(readiness.ReadinessError, "audio"):
+            readiness.validate_gate("obs", gate)
+
+    def test_generation_gate_requires_new_text_and_wav_hash(self):
+        gate = {"status": "passed", "evidence": {"new_text": True, "wav_sha256": "short"}}
+        with self.assertRaisesRegex(readiness.ReadinessError, "wav_sha256"):
+            readiness.validate_gate("generation", gate)
+
+    def test_platform_gate_requires_approval_and_viewer_evidence(self):
+        gate = {"status": "passed", "evidence": {"approved": False, "viewer_record": "recording"}}
+        with self.assertRaisesRegex(readiness.ReadinessError, "approved"):
+            readiness.validate_gate("platform", gate)
+
+    def test_local_conclusion_stops_at_obs_when_platform_is_blocked(self):
+        gates = readiness.empty_gates()
+        gates["install"] = {"status": "passed", "evidence": {"operator_record": "install"}}
+        gates["generation"] = {"status": "passed", "evidence": {
+            "new_text": True, "wav_sha256": "a" * 64,
+        }}
+        gates["obs"] = {"status": "passed", "evidence": {
+            "video": "obs-recording", "audio": "obs-recording",
+        }}
+        self.assertEqual(readiness.conclusion(gates), "local_chain_passed_platform_blocked")
+
+    def test_init_run_creates_all_gate_files_without_copying_manifest_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assets = root / "assets"
+            assets.mkdir()
+            required = {
+                "runtime": {"root": assets, "python": assets / "python.exe"},
+                "tts": {"model_dir": assets, "reference_audio": assets / "voice.wav", "reference_text": assets / "voice.txt"},
+                "avatar": {"model_dir": assets, "character_dir": assets},
+            }
+            for section in required.values():
+                for path in section.values():
+                    path = Path(path)
+                    if path.suffix and not path.exists():
+                        path.write_bytes(b"fixture")
+            manifest = readiness.example_manifest()
+            for section, fields in required.items():
+                for field, path in fields.items():
+                    manifest[section][field] = "C:\\fixture\\" + (Path(path).name or "assets")
+            manifest_path = root / "manifest.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with mock.patch.object(readiness, "manifest_paths", return_value={"fixture": assets}):
+                run_dir = readiness.init_run(manifest_path, root / "runs", run_id="20261107T120000Z")
+            self.assertEqual(run_dir.name, "20261107T120000Z")
+            self.assertTrue((run_dir / "metadata.json").is_file())
+            for gate in readiness.GATE_NAMES:
+                payload = json.loads((run_dir / "gates" / f"{gate}.json").read_text())
+                self.assertEqual(payload["status"], "blocked")
+            self.assertNotIn(str(root), (run_dir / "metadata.json").read_text())
 
 
 if __name__ == "__main__":

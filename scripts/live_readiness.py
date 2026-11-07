@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import argparse
+import datetime as dt
 import hashlib
 import json
 from pathlib import Path, PureWindowsPath
@@ -64,6 +65,8 @@ _PATH_FIELDS = {
     ("avatar", "model_dir"),
     ("avatar", "character_dir"),
 }
+GATE_NAMES = ("install", "generation", "obs", "platform", "stability")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 def example_manifest() -> dict[str, Any]:
@@ -234,15 +237,144 @@ def check_assets(manifest_path: Path, output: Path) -> int:
     return 0 if payload["ready"] else 1
 
 
+def empty_gates() -> dict[str, dict[str, Any]]:
+    return {
+        name: {"status": "blocked", "evidence": {"reason": "not_run"}}
+        for name in GATE_NAMES
+    }
+
+
+def validate_gate(name: str, gate: dict[str, Any]) -> None:
+    if name not in GATE_NAMES:
+        raise ReadinessError(f"unknown gate {name}")
+    if not isinstance(gate, dict) or set(gate) != {"status", "evidence"}:
+        raise ReadinessError(f"{name} gate must contain status and evidence")
+    status = gate["status"]
+    evidence = gate["evidence"]
+    if status not in {"passed", "failed", "blocked"}:
+        raise ReadinessError(f"{name} status must be passed, failed, or blocked")
+    if not isinstance(evidence, dict):
+        raise ReadinessError(f"{name} evidence must be an object")
+    _reject_sensitive_keys(evidence, f"gates.{name}.evidence")
+    if status != "passed":
+        return
+    if name == "install" and not evidence.get("operator_record"):
+        raise ReadinessError("install gate requires operator_record")
+    if name == "generation":
+        if evidence.get("new_text") is not True:
+            raise ReadinessError("generation gate requires new_text=true")
+        if not isinstance(evidence.get("wav_sha256"), str) or not _SHA256.fullmatch(evidence["wav_sha256"]):
+            raise ReadinessError("generation gate requires a valid wav_sha256")
+    if name == "obs":
+        if not evidence.get("video"):
+            raise ReadinessError("obs gate requires video evidence")
+        if not evidence.get("audio"):
+            raise ReadinessError("obs gate requires audio evidence")
+    if name == "platform":
+        if evidence.get("approved") is not True:
+            raise ReadinessError("platform gate requires approved=true")
+        if not evidence.get("viewer_record"):
+            raise ReadinessError("platform gate requires viewer_record")
+    if name == "stability" and not evidence.get("operator_record"):
+        raise ReadinessError("stability gate requires operator_record")
+
+
+def conclusion(gates: dict[str, dict[str, Any]]) -> str:
+    for name in GATE_NAMES:
+        if name not in gates:
+            raise ReadinessError(f"missing gate {name}")
+        validate_gate(name, gates[name])
+    if any(gate["status"] == "failed" for gate in gates.values()):
+        return "failed"
+    local_passed = all(gates[name]["status"] == "passed" for name in ("install", "generation", "obs"))
+    if local_passed and gates["platform"]["status"] == "passed":
+        return "platform_chain_passed"
+    if local_passed and gates["platform"]["status"] == "blocked":
+        return "local_chain_passed_platform_blocked"
+    return "incomplete"
+
+
+def init_run(manifest_path: Path, root: Path, *, run_id: str | None = None) -> Path:
+    manifest_path = Path(manifest_path)
+    manifest = load_manifest(manifest_path)
+    validate_manifest(manifest)
+    run_id = run_id or dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    if not re.fullmatch(r"\d{8}T\d{6}Z", run_id):
+        raise ReadinessError("run id must use UTC YYYYMMDDTHHMMSSZ format")
+    run_dir = Path(root) / run_id
+    try:
+        (run_dir / "gates").mkdir(parents=True, exist_ok=False)
+    except FileExistsError as error:
+        raise ReadinessError("evidence run already exists") from error
+    metadata = {
+        "schema": 1,
+        "run_id": run_id,
+        "manifest_sha256": sha256_file(manifest_path),
+        "runtime_environment": manifest["runtime"]["environment"],
+        "tts_name": manifest["tts"]["name"],
+        "avatar_runtime": manifest["avatar"]["runtime"],
+        "output": manifest["output"],
+        "platform": manifest["platform"],
+    }
+    _write_json(run_dir / "metadata.json", metadata)
+    assets = inventory_paths(manifest_paths(manifest))
+    _write_json(run_dir / "assets.json", {
+        "schema": 1, "ready": all(item["present"] for item in assets), "assets": assets,
+    })
+    for name, gate in empty_gates().items():
+        _write_json(run_dir / "gates" / f"{name}.json", gate)
+    return run_dir
+
+
+def summarize_run(run_dir: Path) -> tuple[dict[str, Any], int]:
+    gates = {}
+    for name in GATE_NAMES:
+        path = Path(run_dir) / "gates" / f"{name}.json"
+        try:
+            gate = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            raise ReadinessError(f"cannot read gate {name}") from error
+        validate_gate(name, gate)
+        gates[name] = gate
+    result = conclusion(gates)
+    summary = {"schema": 1, "conclusion": result, "gates": {
+        name: gate["status"] for name, gate in gates.items()
+    }}
+    _write_json(Path(run_dir) / "summary.json", summary)
+    return summary, 1 if result in {"failed", "incomplete"} else 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     assets = subparsers.add_parser("check-assets", help="Validate and inventory required local assets")
     assets.add_argument("--manifest", required=True, type=Path)
     assets.add_argument("--output", required=True, type=Path)
+    init = subparsers.add_parser("init-run", help="Create an immutable evidence run skeleton")
+    init.add_argument("--manifest", required=True, type=Path)
+    init.add_argument("--root", required=True, type=Path)
+    init.add_argument("--run-id", type=str)
+    summary = subparsers.add_parser("summarize", help="Validate gate files and write summary.json")
+    summary.add_argument("--run", required=True, type=Path)
     args = parser.parse_args(argv)
     if args.command == "check-assets":
         return check_assets(args.manifest, args.output)
+    if args.command == "init-run":
+        try:
+            run_dir = init_run(args.manifest, args.root, run_id=args.run_id)
+        except ReadinessError as error:
+            print(f"INVALID run — {error}")
+            return 2
+        print("Run: " + str(run_dir))
+        return 0
+    if args.command == "summarize":
+        try:
+            summary_payload, exit_code = summarize_run(args.run)
+        except ReadinessError as error:
+            print(f"INVALID run — {error}")
+            return 2
+        print("Conclusion: " + summary_payload["conclusion"])
+        return exit_code
     raise AssertionError("unreachable command")
 
 
