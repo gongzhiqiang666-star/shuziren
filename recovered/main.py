@@ -1757,7 +1757,7 @@ class Api(PluginInstallerApi):
         except Exception as error: return {"status": "error", "message": f"发布视频失败: {error}"}
 
     def _get_live_sticker_base_dir(self):
-        return str(Path(self.runtime_dir) / "live_sticker_projects")
+        return os.path.join(str(self.runtime_dir), "assets", "live_sticker_projects")
 
     def _get_live_sticker_project_dir(self, project_id):
         base = Path(self._get_live_sticker_base_dir()).resolve()
@@ -1774,39 +1774,100 @@ class Api(PluginInstallerApi):
 
     def _get_live_sticker_output_paths(self, project_id):
         directory = Path(self._get_live_sticker_project_dir(project_id))
-        return {"background": str(directory / "背景.png"),
-                "foreground": str(directory / "前景贴片.png"),
-                "cover": str(directory / "直播间封面.png")}
+        return {
+            "bg": str(directory / "背景.png"),
+            "fg_white": str(directory / "前景贴片_绿底.png"),
+            "fg_alpha": str(directory / "前景贴片_透明.png"),
+            "cover_raw": str(directory / "直播间封面_原始.png"),
+            "cover": str(directory / "直播间封面.png"),
+        }
 
     def _default_live_sticker_project_info(self, project_id, name):
         from datetime import datetime
-        return {"id": project_id, "name": name, "created_at": datetime.now().isoformat(timespec="seconds"),
-                "updated_at": datetime.now().isoformat(timespec="seconds"), "product": {},
-                "background_prompt": "", "foreground_prompt": "", "cover_prompt": "",
-                "room_titles": [], "images": self._get_live_sticker_output_paths(project_id)}
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return {
+            "id": project_id, "name": name, "create_time": now, "update_time": now,
+            "product_name": "", "product_price": "", "product_selling_points": "",
+            "product_content": "", "product_item_id": "", "product_pic": "",
+            "background_prompt": "", "foreground_prompt": "", "cover_prompt": "",
+            "bg_path": "", "fg_white_path": "", "fg_alpha_path": "",
+            "cover_path": "", "cover_raw_path": "", "bg_size": "", "fg_size": "",
+            "cover_size": "", "room_title": "", "room_titles": [], "title_model": "",
+            "last_error": "", "status": "draft",
+        }
 
     def _build_live_sticker_project_summary(self, project_id, info):
-        outputs = self._get_live_sticker_output_paths(project_id)
-        return {"id": project_id, "name": info.get("name", project_id),
-                "updated_at": info.get("updated_at", ""),
-                "images_ready": all(Path(path).is_file() for path in outputs.values()),
-                "cover_path": outputs["cover"] if Path(outputs["cover"]).is_file() else ""}
+        project_dir = self._get_live_sticker_project_dir(project_id)
+        create_time = info.get("create_time", "")
+        return {
+            "id": project_id,
+            "name": info.get("name") or f"贴片项目-{project_id}",
+            "create_time": create_time,
+            "update_time": info.get("update_time", create_time),
+            "preview_url": self._encode_preview_image(str(info.get("bg_path") or "").strip()),
+            "path": os.path.abspath(project_dir),
+            "status": info.get("status") or "draft",
+        }
 
     def _load_live_sticker_project(self, project_id):
-        import yaml
-        path = Path(self._get_live_sticker_project_info_path(project_id))
-        if not path.is_file(): raise FileNotFoundError("贴片项目不存在")
-        value = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        return value if isinstance(value, dict) else {}
+        project_dir = self._get_live_sticker_project_dir(project_id)
+        if not os.path.isdir(project_dir):
+            return None
+        value = self._read_yaml_file(self._get_live_sticker_project_info_path(project_id))
+        if not value:
+            return None
+        value = dict(value)
+        value["id"] = project_id
+        value["path"] = os.path.abspath(project_dir)
+        outputs = self._get_live_sticker_output_paths(project_id)
+        for key, field in (
+            ("bg", "bg_path"), ("fg_white", "fg_white_path"),
+            ("fg_alpha", "fg_alpha_path"), ("cover_raw", "cover_raw_path"),
+            ("cover", "cover_path"),
+        ):
+            configured = str(value.get(field) or "").strip()
+            if not configured and os.path.exists(outputs[key]):
+                value[field] = outputs[key]
+        # Early builds stored the green foreground under this fixed filename but
+        # omitted the YAML field. Preserve those production projects.
+        legacy_green = os.path.join(project_dir, "前景贴片_绿底.png")
+        if not str(value.get("fg_white_path") or "").strip() and os.path.exists(legacy_green):
+            value["fg_white_path"] = legacy_green
+        titles = value.get("room_titles")
+        if isinstance(titles, str):
+            titles = [item.strip() for item in titles.replace("，", ",").split(",") if item.strip()]
+        elif not isinstance(titles, list):
+            titles = []
+        title = str(value.get("room_title") or "").strip()
+        if title and title not in titles:
+            titles.insert(0, title)
+        value["room_titles"] = titles
+        value["room_title"] = title or (titles[0] if titles else "")
+        return value
 
     def _save_live_sticker_project(self, project_id, data):
         from datetime import datetime
-        import yaml
-        directory = Path(self._get_live_sticker_project_dir(project_id)); directory.mkdir(parents=True, exist_ok=True)
-        value = dict(data); value["id"] = project_id; value["updated_at"] = datetime.now().isoformat(timespec="seconds")
-        Path(self._get_live_sticker_project_info_path(project_id)).write_text(
-            yaml.safe_dump(value, allow_unicode=True, sort_keys=False), encoding="utf-8")
-        return value
+        directory = self._get_live_sticker_project_dir(project_id)
+        if not os.path.isdir(directory):
+            raise FileNotFoundError("贴片项目不存在")
+        current = self._read_yaml_file(self._get_live_sticker_project_info_path(project_id)) or {}
+        name = str(current.get("name") or data.get("name") or f"贴片项目-{project_id}").strip()
+        value = self._default_live_sticker_project_info(project_id, name)
+        value.update(current)
+        value.update(data)
+        value["id"] = project_id
+        value["name"] = str(value.get("name") or f"贴片项目-{project_id}").strip()
+        value["create_time"] = value.get("create_time") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        value["update_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        titles = value.get("room_titles")
+        if isinstance(titles, str):
+            titles = [item.strip() for item in titles.replace("，", ",").split(",") if item.strip()]
+        elif not isinstance(titles, list):
+            titles = []
+        value["room_titles"] = titles
+        value["room_title"] = str(value.get("room_title") or (titles[0] if titles else "")).strip()
+        self._write_yaml_file(self._get_live_sticker_project_info_path(project_id), value)
+        return self._load_live_sticker_project(project_id)
 
     def _live_sticker_image_ready(self, image_config):
         return bool(image_config) and all(Path(path).is_file() for path in image_config.values())
@@ -1821,57 +1882,82 @@ class Api(PluginInstallerApi):
 
     def _archive_live_sticker_outputs(self, project_id, info):
         from datetime import datetime
-        outputs = self._get_live_sticker_output_paths(project_id)
-        existing = [Path(path) for path in outputs.values() if Path(path).is_file()]
+        existing = [Path(str(info.get(key) or "").strip()) for key in
+                    ("bg_path", "fg_white_path", "fg_alpha_path", "cover_path")]
+        existing = [path for path in existing if str(path) not in ("", ".") and path.is_file()]
         if not existing: return
         history = Path(self._get_live_sticker_history_dir(project_id)) / datetime.now().strftime("%Y%m%d_%H%M%S")
         history.mkdir(parents=True, exist_ok=True)
         for path in existing: shutil.copy2(path, history / path.name)
 
     def _attach_live_sticker_previews(self, project):
-        import base64
-        value = dict(project); previews = {}
-        for key, path in self._get_live_sticker_output_paths(value["id"]).items():
-            file = Path(path)
-            if file.is_file(): previews[key] = "data:image/png;base64," + base64.b64encode(file.read_bytes()).decode("ascii")
-        value["previews"] = previews; return value
+        path = str(project.get("fg_white_path") or "").strip()
+        project["fg_white_preview_url"] = self._encode_preview_image(path)
+        titles = project.get("room_titles")
+        if not isinstance(titles, list):
+            titles = []
+        title = str(project.get("room_title") or "").strip()
+        if not titles and title:
+            titles = [title]
+        project["room_titles"] = titles
+        project["room_title"] = title or (titles[0] if titles else "")
+        return project
 
     def create_live_sticker_project(self, name):
         from uuid import uuid4
-        if not str(name).strip(): return {"status": "error", "message": "请输入项目名称"}
+        if not isinstance(name, str):
+            raise TypeError("name must be a str")
+        name = name.strip()
+        if not name: return {"error": "请输入项目名称"}
         try:
-            project_id = uuid4().hex; info = self._default_live_sticker_project_info(project_id, str(name).strip())
-            return {"status": "success", "project": self._save_live_sticker_project(project_id, info)}
-        except Exception as error: return {"status": "error", "message": f"创建贴片项目失败: {error}"}
+            project_id = str(uuid4())
+            os.makedirs(self._get_live_sticker_project_dir(project_id), exist_ok=True)
+            info = self._default_live_sticker_project_info(project_id, name)
+            self._write_yaml_file(self._get_live_sticker_project_info_path(project_id), info)
+            return {"status": "success", "project": self._attach_live_sticker_previews(
+                self._load_live_sticker_project(project_id))}
+        except Exception as error: return {"error": f"创建贴片项目失败: {error}"}
 
     def get_all_live_sticker_projects(self):
         try:
-            base = Path(self._get_live_sticker_base_dir()); projects = []
-            if base.is_dir():
-                for directory in base.iterdir():
-                    if directory.is_dir() and (directory / "project_info.yaml").is_file():
-                        info = self._load_live_sticker_project(directory.name)
-                        projects.append(self._build_live_sticker_project_summary(directory.name, info))
-            projects.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
+            base = self._get_live_sticker_base_dir(); os.makedirs(base, exist_ok=True); projects = []
+            for project_id in os.listdir(base):
+                if not os.path.isdir(os.path.join(base, project_id)):
+                    continue
+                info = self._read_yaml_file(self._get_live_sticker_project_info_path(project_id))
+                if info:
+                    projects.append(self._build_live_sticker_project_summary(project_id, info))
+            projects.sort(key=lambda item: item.get("update_time", ""), reverse=True)
             return {"status": "success", "projects": projects}
-        except Exception as error: return {"status": "error", "message": f"获取贴片项目列表失败: {error}"}
+        except Exception as error: return {"error": f"获取贴片项目列表失败: {error}"}
 
     def get_live_sticker_project(self, project_id):
-        try: return {"status": "success", "project": self._attach_live_sticker_previews(self._load_live_sticker_project(project_id))}
-        except Exception as error: return {"status": "error", "message": f"获取贴片项目失败: {error}"}
+        if not isinstance(project_id, str):
+            raise TypeError("project_id must be a str")
+        try:
+            project = self._load_live_sticker_project(project_id)
+            if not project: return {"error": "贴片项目不存在"}
+            return {"status": "success", "project": self._attach_live_sticker_previews(project)}
+        except Exception as error: return {"error": f"获取贴片项目失败: {error}"}
 
     def update_live_sticker_project(self, project_id, data):
+        if not isinstance(project_id, str):
+            raise TypeError("project_id must be a str")
+        if not isinstance(data, dict):
+            raise TypeError("data must be a dict")
         try:
-            info = self._load_live_sticker_project(project_id); info.update(data or {})
-            return {"status": "success", "project": self._save_live_sticker_project(project_id, info)}
-        except Exception as error: return {"status": "error", "message": f"保存贴片项目失败: {error}"}
+            project = self._save_live_sticker_project(project_id, data or {})
+            return {"status": "success", "project": self._attach_live_sticker_previews(project)}
+        except Exception as error: return {"error": f"保存贴片项目失败: {error}"}
 
     def delete_live_sticker_project(self, project_id):
+        if not isinstance(project_id, str):
+            raise TypeError("project_id must be a str")
         try:
             target = Path(self._get_live_sticker_project_dir(project_id))
-            if not target.is_dir(): raise FileNotFoundError("贴片项目不存在")
-            shutil.rmtree(target); return {"status": "success"}
-        except Exception as error: return {"status": "error", "message": f"删除贴片项目失败: {error}"}
+            if not target.is_dir(): return {"error": "贴片项目不存在"}
+            shutil.rmtree(target); return {"status": "success", "message": "删除成功"}
+        except Exception as error: return {"error": f"删除贴片项目失败: {error}"}
 
     def generate_live_sticker_prompts(self, data):
         from .live_sticker_prompts import build_prompt_pair
@@ -1893,23 +1979,36 @@ class Api(PluginInstallerApi):
         except Exception as error: return {"status": "error", "message": f"生成直播间标题失败: {error}"}
 
     def generate_live_sticker_images(self, data):
-        from .live_sticker_image_utils import compress_sticker_image, key_green, resize_cover_square
+        from .live_sticker_image_utils import (compress_sticker_image, image_size_label,
+                                                key_green, resize_cover_square)
         try:
             project_id = data["project_id"]; info = self._load_live_sticker_project(project_id)
             api_key = str(data.get("runninghub_api_key") or "").strip()
             if not api_key: raise ValueError("请填写 RunningHub API Key")
             self._archive_live_sticker_outputs(project_id, info); outputs = self._get_live_sticker_output_paths(project_id)
             config = {"api_key": api_key, **(data.get("image_config") or {})}
-            self._generate_live_sticker_image_file(image_config=config, prompt=data.get("background_prompt") or info["background_prompt"], dest=outputs["background"])
-            raw_foreground = str(Path(outputs["foreground"]).with_name("foreground_raw.png"))
-            self._generate_live_sticker_image_file(image_config=config, prompt=data.get("foreground_prompt") or info["foreground_prompt"], dest=raw_foreground)
-            key_green(raw_foreground, outputs["foreground"])
-            raw_cover = str(Path(outputs["cover"]).with_name("cover_raw.png"))
-            self._generate_live_sticker_image_file(image_config=config, prompt=data.get("cover_prompt") or info["cover_prompt"], dest=raw_cover, aspect_ratio="1:1")
-            resize_cover_square(raw_cover, outputs["cover"])
-            compress_sticker_image(outputs["background"], outputs["background"])
-            info["images"] = outputs; self._save_live_sticker_project(project_id, info)
-            return {"status": "success", "project": self._attach_live_sticker_previews(info)}
+            self._generate_live_sticker_image_file(
+                image_config=config, prompt=data.get("background_prompt") or info["background_prompt"],
+                dest=outputs["bg"])
+            self._generate_live_sticker_image_file(
+                image_config=config, prompt=data.get("foreground_prompt") or info["foreground_prompt"],
+                dest=outputs["fg_white"])
+            key_green(outputs["fg_white"], outputs["fg_alpha"])
+            self._generate_live_sticker_image_file(
+                image_config=config, prompt=data.get("cover_prompt") or info["cover_prompt"],
+                dest=outputs["cover_raw"], aspect_ratio="1:1")
+            resize_cover_square(outputs["cover_raw"], outputs["cover"])
+            compress_sticker_image(outputs["bg"], outputs["bg"])
+            info.update({
+                "bg_path": outputs["bg"], "fg_white_path": outputs["fg_white"],
+                "fg_alpha_path": outputs["fg_alpha"], "cover_raw_path": outputs["cover_raw"],
+                "cover_path": outputs["cover"], "bg_size": image_size_label(outputs["bg"]),
+                "fg_size": image_size_label(outputs["fg_alpha"]),
+                "cover_size": image_size_label(outputs["cover"]), "status": "success",
+                "last_error": "",
+            })
+            project = self._save_live_sticker_project(project_id, info)
+            return {"status": "success", "project": self._attach_live_sticker_previews(project)}
         except Exception as error: return {"status": "error", "message": f"生成贴片失败: {error}"}
 
     def _get_cloud_dh_base_dir(self):
