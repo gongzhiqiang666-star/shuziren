@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import argparse
+import hashlib
 import json
 from pathlib import Path, PureWindowsPath
 import re
@@ -145,5 +147,104 @@ def validate_manifest(data: dict[str, Any]) -> None:
         raise ReadinessError("a required platform gate must be approved")
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def sha256_tree(path: Path) -> tuple[str, int, int]:
+    root = Path(path)
+    digest = hashlib.sha256()
+    total_bytes = 0
+    count = 0
+    files = sorted(
+        (candidate for candidate in root.rglob("*") if candidate.is_file() and not candidate.is_symlink()),
+        key=lambda candidate: candidate.relative_to(root).as_posix(),
+    )
+    for candidate in files:
+        relative = candidate.relative_to(root).as_posix()
+        file_digest = sha256_file(candidate)
+        size = candidate.stat().st_size
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(file_digest.encode("ascii"))
+        digest.update(b"\n")
+        total_bytes += size
+        count += 1
+    return digest.hexdigest(), total_bytes, count
+
+
+def manifest_paths(data: dict[str, Any]) -> dict[str, Path]:
+    return {
+        f"{section}.{field}": Path(data[section][field])
+        for section, field in sorted(_PATH_FIELDS)
+    }
+
+
+def inventory_paths(paths: dict[str, Path]) -> list[dict[str, Any]]:
+    report = []
+    for label, raw_path in sorted(paths.items()):
+        path = Path(raw_path)
+        if path.is_symlink() or not path.exists():
+            report.append({
+                "label": label, "kind": "missing", "present": False,
+                "bytes": 0, "files": 0, "sha256": None,
+            })
+        elif path.is_file():
+            report.append({
+                "label": label, "kind": "file", "present": True,
+                "bytes": path.stat().st_size, "files": 1, "sha256": sha256_file(path),
+            })
+        elif path.is_dir():
+            digest, size, count = sha256_tree(path)
+            report.append({
+                "label": label, "kind": "directory", "present": True,
+                "bytes": size, "files": count, "sha256": digest,
+            })
+        else:
+            report.append({
+                "label": label, "kind": "unsupported", "present": False,
+                "bytes": 0, "files": 0, "sha256": None,
+            })
+    return report
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def check_assets(manifest_path: Path, output: Path) -> int:
+    try:
+        manifest = load_manifest(manifest_path)
+        validate_manifest(manifest)
+        assets = inventory_paths(manifest_paths(manifest))
+        payload = {"schema": 1, "ready": all(item["present"] for item in assets), "assets": assets}
+        _write_json(output, payload)
+    except ReadinessError as error:
+        _write_json(output, {"schema": 1, "ready": False, "error": str(error)})
+        print(f"INVALID manifest — {error}")
+        return 2
+    for item in assets:
+        print(("PASS" if item["present"] else "MISSING") + " " + item["label"])
+    print("Report: " + str(output))
+    return 0 if payload["ready"] else 1
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    assets = subparsers.add_parser("check-assets", help="Validate and inventory required local assets")
+    assets.add_argument("--manifest", required=True, type=Path)
+    assets.add_argument("--output", required=True, type=Path)
+    args = parser.parse_args(argv)
+    if args.command == "check-assets":
+        return check_assets(args.manifest, args.output)
+    raise AssertionError("unreachable command")
+
+
 if __name__ == "__main__":
-    raise SystemExit("CLI is added in the next implementation task")
+    raise SystemExit(main())
