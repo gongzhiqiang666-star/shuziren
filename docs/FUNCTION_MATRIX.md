@@ -26,7 +26,7 @@
 | SYS-005 | pywebview 主窗口及前后端 JS API | `main.main/_main/run_webview` | `main_webview.py`, `main.py` | 已分析 | Windows WebView2、生产/开发 URL、窗口关闭资源回收 |
 | SYS-006 | 登录 Token、管理员/OEM 信息与背景资源 | Token `0x1800644b0/0x180064620`, `0x180064dd0/0x180065090`, `0x180065880/0x1800659f0`; 管理员/OEM/背景/版本原生主体 | `main.py` | 静态验证通过 | Windows 原 `.pyd`、真实旧配置/OEM 包和前端登录流差分 |
 | SYS-007 | 本地资源枚举、预览与删除 | main wrapper/body `get_local_resources` `0x1800b9320/0x1800b9490`、`delete_model` `0x1800b7980/0x1800b7c40`、`delete_voice` `0x1800b8650/0x1800b8910`；CloneManager 枚举/信息写入/预览主体见 `rea-output/main-local-resources-notes.md` | `main.py`, `clone_manager.py` | 静态验证通过 | Windows 原 `.pyd` 响应差分、旧生产资源样本、文件占用/权限错误和删除后前端刷新 |
-| SYS-008 | 文件/目录选择及打开目录 | `open_file_dialog/open_directory` | `main.py` | 开发中 | Windows 对话框、中文/长路径、非法路径 |
+| SYS-008 | 文件/目录选择及打开目录 | `open_file_dialog/open_directory` wrapper/body `0x1800393c0/0x180039610`、`0x18003cb70/0x18003ce30`，见 `rea-output/main-file-dialog-notes.md` | `main.py` | 静态验证通过 | Windows 原 `.pyd` 响应差分、真实对话框、中文/长路径、Shell 关联程序及权限错误 |
 | SYS-009 | 缓存清理 | `Api.clear_cache` | `main.py`, `audio_cache.py` | 已分析 | 正在直播、文件占用、部分清理失败 |
 | SYS-010 | 应用更新状态、下载/启动更新器 | `get_update_status/start_app_update` | `main.py`, `update_integrity.py`, `update_text.py` | 已分析 | Windows 更新器、签名/完整性、失败回滚、进程退出 |
 | SYS-011 | 插件安装与 OBA Live 工具 | `PluginInstallerService`、`launch_oba_live_tool` | `main.py`, `main_plugins.py` | 已分析 | 安装权限、下载失败、已安装发现和启动 |
@@ -97,8 +97,8 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 41 |
-| 开发中 | 7 |
+| 静态验证通过 | 42 |
+| 开发中 | 6 |
 | 已分析 | 10 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |
