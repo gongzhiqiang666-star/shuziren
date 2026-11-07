@@ -69,6 +69,7 @@ class Api(PluginInstallerApi):
     def _initialize(self, runtime_dir, config):
         super().__init__(runtime_dir)
         self.runtime_dir = runtime_dir
+        self.base_dir = str(runtime_dir)
         self.config = {} if config is None else config
         self._digital_live_manager = LiveManager(self.config)
         self._record_live_manager = RecordLiveManager({} if config is None else config)
@@ -129,47 +130,80 @@ class Api(PluginInstallerApi):
         return _read_startup_admin_id()
 
     def get_admin_id(self):
-        return {"status": "success", "admin_id": self._read_admin_id()}
+        try:
+            path = self._find_asset("assets/web/id.txt")
+            if path.is_file():
+                value = path.read_text(encoding="utf-8").strip()
+                if value.isdigit():
+                    return {"status": "success", "admin_id": int(value)}
+            return {"status": "success", "admin_id": None}
+        except Exception as error:
+            print(f"获取管理员ID失败: {error}")
+            return {"error": str(error)}
 
     def get_token(self):
-        user = self._load_user_config()
-        return {"status": "success", "token": str(user.get("token") or self.config.get("token") or "")}
+        try:
+            return {"status": "success", "token": self.config.get("token", "") or ""}
+        except Exception as error:
+            print(f"获取Token时发生错误: {error}")
+            return {"error": str(error)}
 
     def save_token(self, token):
+        if not isinstance(token, str):
+            raise TypeError("token must be a str")
         try:
-            value = str(token or "").strip(); self._save_user_config({"token": value}); self.config["token"] = value
+            self._save_user_config({"token": token})
+            self.config["token"] = token
+            self._update_managers_config()
             return {"status": "success", "message": "Token已保存"}
-        except Exception as error: return {"status": "error", "message": f"保存Token失败: {error}"}
+        except Exception as error:
+            return {"error": str(error)}
 
     def clear_token(self):
-        result = self.save_token("")
-        if result["status"] == "success": result["message"] = "Token已清除"
-        return result
+        try:
+            self._save_user_config({"token": ""})
+            self.config["token"] = ""
+            self._update_managers_config()
+            return {"status": "success", "message": "Token已清除"}
+        except Exception as error:
+            return {"error": str(error)}
 
     def get_local_version(self):
-        return {"status": "success", "version": str(self.config.get("version") or "v122")}
+        try:
+            config_path = Path(self.base_dir) / "config" / "config.yaml"
+            if config_path.is_file():
+                config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+            else:
+                config = {}
+            version = str(config.get("version", "v000")).strip() or "v000"
+            return {"status": "success", "version": version}
+        except Exception as error:
+            return {"error": f"获取本地版本号失败: {error}"}
 
     def get_oem_config(self):
         try:
-            web = self._find_asset("assets/web")
-            def read(name, default=""):
-                path = web / name
-                try: return path.read_text(encoding="utf-8").strip()
-                except OSError: return default
-            return {"status": "success", "admin_id": self._read_admin_id(),
-                    "window_name": read("window_name.txt", "云创数字人直播"),
-                    "logo_path": str(web / "logo.png") if (web / "logo.png").is_file() else "",
-                    "background_path": str(web / "bg.png") if (web / "bg.png").is_file() else "",
-                    "vietnam_pack": self._read_admin_id() == 21}
-        except Exception as error: return {"status": "error", "message": str(error)}
+            path = self._find_asset("assets/web/oem_config.json")
+            if not path.is_file():
+                return {"status": "success", "config": {}}
+            import json
+            with path.open("r", encoding="utf-8") as source:
+                config = json.load(source)
+            if not isinstance(config, dict):
+                config = {}
+            return {"status": "success", "config": config}
+        except Exception as error:
+            return {"status": "error", "message": f"读取贴牌配置失败: {error}", "config": {}}
 
     def get_background_image(self):
         import base64
         try:
             path = self._find_asset("assets/web/bg.png")
-            if not path.is_file(): raise FileNotFoundError("登录背景图片不存在")
-            return {"status": "success", "image": "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode("ascii")}
-        except Exception as error: return {"status": "error", "message": str(error)}
+            if not path.is_file():
+                return {"error": "背景图片不存在"}
+            encoded_string = base64.b64encode(path.read_bytes()).decode("utf-8")
+            return {"status": "success", "image_data": "data:image/png;base64," + encoded_string}
+        except Exception as error:
+            return {"error": f"获取背景图片失败: {error}"}
 
     def get_local_resources(self):
         try:
