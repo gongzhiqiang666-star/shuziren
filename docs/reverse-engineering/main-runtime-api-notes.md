@@ -29,6 +29,23 @@
 向外传播已删除。空文本、语言别名、1200 字不分块、失败包络和包装体类型边界
 已有聚焦测试；完整门禁保持 `128/128 PASS`。
 
+## LLM 配置保存与连通性测试
+
+`save_llm_config` 包装体/主体为 `0x180068800/0x180068ac0`。原生实现不清洗
+字段，也不要求 endpoint/api_key/model 非空；它把调用方字典原样交给
+`self._save_user_config({"llm_config": data})`，同步写入
+`self.config["llm_config"]`，调用 `_update_managers_config()`，成功仅返回
+`status="success"` 和 `message="配置已保存到本地"`。异常返回单键 `error`。
+
+`test_llm_availability` 包装体/主体为 `0x180057640/0x180057900`。它读取
+`vendor/model/endpoint/api_key`，将 vendor 转小写；任一缺失时返回包含
+`status/message/is_available/is_recommended_provider/provider` 的固定失败结构。
+配置齐全时以关键字参数调用 `base_chat(question="回复一个字：好",
+sys_prompt="你是一个助手", chat_history=[], llm_config=config)`。非空且 strip 后
+有效的回复返回“大模型服务正常”，两个布尔值均为真；假值回复、调用异常和
+provider 回退均使用原生五字段协议。配置对象原样保存、管理器刷新、缺失字段、
+成功、空回复、异常和类型边界已有聚焦覆盖；完整门禁保持 `128/128 PASS`。
+
 Recovered in this pass:
 
 - User/private configuration delegation, atomic YAML persistence and recursive
