@@ -44,7 +44,7 @@
 | CNT-006 | IP Agent 项目创建、查询、更新、删除 | `Api.create/get/update/delete_ip_agent_project` | `main.py`, `ip_agent_post_process.py` | 静态验证通过 | 旧项目迁移、并发保存、损坏项目恢复 |
 | CNT-007 | IP 文案爆款拆解与多版本改写 | `rewrite_ip_script` 主体和常量表 | `main.py` | 静态验证通过 | Windows 原 `.pyd` 输出差分和真实 LLM 输出 |
 | CNT-008 | 抖音/IP 对标视频提取 | `extract_douyin_benchmark` | `main.py` | 已分析 | Windows 下载工具、登录/风控、失效链接和媒体格式 |
-| CNT-009 | IP 发布标题、简介、标签生成 | `generate_ip_agent_publish_meta` | `main.py` | 开发中 | 原提示词、标签格式、真实 LLM 输出 |
+| CNT-009 | IP 发布标题、简介、标签生成 | `generate_ip_agent_publish_meta` wrapper/body `0x180142690/0x180142a40` | `main.py`, `generate_title.py` | 静态验证通过 | Windows 原 `.pyd` 差分和真实 LLM 输出质量 |
 | CNT-010 | IP 一键成片流水线 | 音频→视频→字幕→精加工→发布 API | `main.py`, `ip_agent_post_process.py` | 开发中 | 全链真实媒体、断点恢复、失败清理和结果一致性 |
 | CNT-011 | IP 视频发布 | `publish_ip_agent_video` | `main.py` | 已分析 | 支持平台、账号登录、草稿/发布、失败重试 |
 | CNT-012 | 直播贴片项目管理 | `create/get/update/delete_live_sticker_project` | `main.py` | 开发中 | 历史归档、预览、旧项目兼容 |
@@ -97,8 +97,8 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 38 |
-| 开发中 | 10 |
+| 静态验证通过 | 39 |
+| 开发中 | 9 |
 | 已分析 | 10 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |
