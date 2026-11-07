@@ -4072,6 +4072,69 @@ def verify_main_local_resources_contract():
         else:raise AssertionError("native unicode wrapper contract was not enforced")
 
 
+def verify_main_file_dialog_contract():
+    from recovered.main import Api
+    from recovered import main as main_module
+
+    api=Api.__new__(Api);calls=[]
+    class Window:
+        def create_file_dialog(self,dialog_type):
+            calls.append(dialog_type)
+            return dialog_results.pop(0)
+    fake_webview=types.SimpleNamespace(
+        OPEN_DIALOG="open-kind",FOLDER_DIALOG="folder-kind",windows=[Window()],
+    )
+    previous_webview=sys.modules.get("webview");dialog_results=[("/tmp/a.txt","/tmp/b.txt"),[],None]
+    try:
+        sys.modules["webview"]=fake_webview
+        assert api.open_file_dialog()=={
+            "status":"success","files":("/tmp/a.txt","/tmp/b.txt"),
+        }
+        assert calls.pop()=="open-kind"
+        assert api.open_file_dialog(1)=={"status":"cancelled","files":[]}
+        assert calls.pop()=="folder-kind"
+        assert api.open_file_dialog("truthy")=={"status":"cancelled","files":[]}
+        assert calls.pop()=="folder-kind"
+        fake_webview.windows=[]
+        assert api.open_file_dialog()=={"error":"list index out of range"}
+    finally:
+        if previous_webview is None:sys.modules.pop("webview",None)
+        else:sys.modules["webview"]=previous_webview
+
+    original_exists=main_module.os.path.exists
+    original_popen=main_module.subprocess.Popen
+    original_platform=main_module.sys.platform
+    had_startfile=hasattr(main_module.os,"startfile")
+    original_startfile=getattr(main_module.os,"startfile",None)
+    launched=[]
+    try:
+        main_module.os.path.exists=lambda path:path!="missing"
+        main_module.subprocess.Popen=lambda command:launched.append(("popen",command))
+        main_module.os.startfile=lambda path:launched.append(("startfile",path))
+
+        assert api.open_directory("missing")=={"error":"目录不存在"}
+        main_module.sys.platform="win32"
+        assert api.open_directory("C:\\数字人\\素材")=={"status":"success"}
+        assert launched.pop()==("startfile","C:\\数字人\\素材")
+        main_module.sys.platform="darwin"
+        assert api.open_directory("/tmp/中文")=={"status":"success"}
+        assert launched.pop()==("popen",["open","/tmp/中文"])
+        main_module.sys.platform="linux"
+        assert api.open_directory("relative-file.txt")=={"status":"success"}
+        assert launched.pop()==("popen",["xdg-open","relative-file.txt"])
+        main_module.subprocess.Popen=lambda _command:(_ for _ in ()).throw(OSError("启动失败"))
+        assert api.open_directory("existing")=={"error":"启动失败"}
+        try:api.open_directory(Path("not-unicode"))
+        except TypeError as error:assert str(error)=="path must be a str"
+        else:raise AssertionError("open_directory accepted a non-string path")
+    finally:
+        main_module.os.path.exists=original_exists
+        main_module.subprocess.Popen=original_popen
+        main_module.sys.platform=original_platform
+        if had_startfile:main_module.os.startfile=original_startfile
+        else:delattr(main_module.os,"startfile")
+
+
 def verify_clone_manager_local_resources_contract():
     from recovered.clone_manager import CloneManager
     from recovered.product_kt_overlay import KT_BOARD_CACHE_NAME
@@ -5486,7 +5549,7 @@ def main():
     verify_audio_devices_contract()
     verify_audio_player_scan_contract()
     verify_live_sticker_prompt_contract()
-    verify_mapping(); verify_all_modules_importable(); verify_environment_manifests(); verify_voice_helpers(); verify_asr_temp_audio_lifecycle(); verify_audio_duration_fallbacks(); verify_title_fallback_parser(); verify_sentence_generalization_contract(); verify_short_video_language_routing(); verify_short_video_render_parameters(); verify_short_video_metadata_lifecycle(); verify_voice_v2_lifecycle(); verify_voice_v3_lifecycle(); verify_zipvoice_lifecycle(); verify_taobao_explain_cycle(); verify_taobao_action_dispatch(); verify_taobao_control_recovery(); verify_live_brain(); verify_face_hand_manager(); verify_face_hand_player_av_queue(); verify_language_and_live_helpers(); verify_video_player_stream_helpers(); verify_edit_audio_contract(); verify_cloud_avatar_prompt_contract(); verify_live_sticker_title_routing_contract(); verify_taobao_private_helpers(); verify_product_kt_geometry_helpers(); verify_product_image_pipeline(); verify_remaining_private_entrypoints(); verify_auto_live_action_spacing_contract(); verify_image_clone_resource_lifecycle(); verify_image_clone_save_frame_diagnostics(); verify_image_clone_model_assets(); verify_image_clone_generate_cleanup(); verify_pfld_ghostone_architecture(); verify_s3fd_architecture(); verify_kuaishou_message_protocol(); verify_text_special_variables(); verify_funasr_sentence_contract(); verify_get_srt_lifecycle(); verify_ip_agent_post_process_helpers(); verify_origin_video_ffmpeg_reader(); verify_ip_agent_real_media_pipeline(); verify_ip_agent_project_schema_contract(); verify_ip_agent_rewrite_contract(); verify_generate_script_contract(); verify_ip_agent_publish_meta_contract(); verify_main_system_identity_contract(); verify_main_local_resources_contract(); verify_clone_manager_local_resources_contract(); verify_main_translate_text_contract(); verify_main_llm_config_contract(); verify_record_live_start_lifecycle(); verify_barrage_port_cleanup(); verify_shopee_action_dispatch(); verify_shopee_page_states(); verify_controller_workers(); verify_v2_fade_curves(); verify_v2_queue_selection(); verify_keyword_contract_behaviors(); verify_core_method_coverage(); verify_all_binary_class_methods(); verify_binary_class_signature_arity(); verify_binary_module_signature_arity(); verify_public_name_inventory(); verify_binary_qualified_module_names(); asyncio.run(verify_live_protocols())
+    verify_mapping(); verify_all_modules_importable(); verify_environment_manifests(); verify_voice_helpers(); verify_asr_temp_audio_lifecycle(); verify_audio_duration_fallbacks(); verify_title_fallback_parser(); verify_sentence_generalization_contract(); verify_short_video_language_routing(); verify_short_video_render_parameters(); verify_short_video_metadata_lifecycle(); verify_voice_v2_lifecycle(); verify_voice_v3_lifecycle(); verify_zipvoice_lifecycle(); verify_taobao_explain_cycle(); verify_taobao_action_dispatch(); verify_taobao_control_recovery(); verify_live_brain(); verify_face_hand_manager(); verify_face_hand_player_av_queue(); verify_language_and_live_helpers(); verify_video_player_stream_helpers(); verify_edit_audio_contract(); verify_cloud_avatar_prompt_contract(); verify_live_sticker_title_routing_contract(); verify_taobao_private_helpers(); verify_product_kt_geometry_helpers(); verify_product_image_pipeline(); verify_remaining_private_entrypoints(); verify_auto_live_action_spacing_contract(); verify_image_clone_resource_lifecycle(); verify_image_clone_save_frame_diagnostics(); verify_image_clone_model_assets(); verify_image_clone_generate_cleanup(); verify_pfld_ghostone_architecture(); verify_s3fd_architecture(); verify_kuaishou_message_protocol(); verify_text_special_variables(); verify_funasr_sentence_contract(); verify_get_srt_lifecycle(); verify_ip_agent_post_process_helpers(); verify_origin_video_ffmpeg_reader(); verify_ip_agent_real_media_pipeline(); verify_ip_agent_project_schema_contract(); verify_ip_agent_rewrite_contract(); verify_generate_script_contract(); verify_ip_agent_publish_meta_contract(); verify_main_system_identity_contract(); verify_main_local_resources_contract(); verify_main_file_dialog_contract(); verify_clone_manager_local_resources_contract(); verify_main_translate_text_contract(); verify_main_llm_config_contract(); verify_record_live_start_lifecycle(); verify_barrage_port_cleanup(); verify_shopee_action_dispatch(); verify_shopee_page_states(); verify_controller_workers(); verify_v2_fade_curves(); verify_v2_queue_selection(); verify_keyword_contract_behaviors(); verify_core_method_coverage(); verify_all_binary_class_methods(); verify_binary_class_signature_arity(); verify_binary_module_signature_arity(); verify_public_name_inventory(); verify_binary_qualified_module_names(); asyncio.run(verify_live_protocols())
     print("PASS: 128/128 mappings/imports, public/private callable and binary class method inventories, signatures, core methods, live managers, protocols")
 
 
