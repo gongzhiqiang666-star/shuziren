@@ -1362,31 +1362,84 @@ class Api(PluginInstallerApi):
 
     def rewrite_ip_script(self, data):
         from .llm_base_chat import base_chat
+        from .ip_agent_post_process import infer_keywords_from_text
         try:
-            original = str(data.get("text") or data.get("script") or "").strip()
-            if not original: raise ValueError("请输入需要改写的口播文案")
-            custom = str(data.get("prompt") or data.get("custom_prompt") or "").strip()
-            system = ("你是一名擅长短视频口播IP的爆款编导和文案医生。先拆解原文的钩子、痛点、结构、节奏和可优化点，"
-                      "再输出可直接用于数字人口播的新文案。必须只输出 JSON，不要 Markdown，不要解释。"
-                      'JSON 格式：{"analysis":"分析","versions":[{"title":"版本名","script":"完整文案",'
-                      '"keywords":["关键词"]}]}')
-            question = f"原始文案：\n{original}"
-            if custom: question += f"\n额外要求：\n{custom}"
-            raw = base_chat(question, system, model_type="script", raise_on_failure=True,
-                            llm_config=data.get("llm_config"))
+            data = data or {}
+            original = str(data.get("text") or "").strip()
+            if not original:
+                return {"error": "请输入需要改写的文案"}
+            custom = str(data.get("prompt") or "").strip()
+            if not custom:
+                custom = "保留原意，强化开头钩子、信息密度、口语节奏和行动引导，避免夸张虚假和空洞套话。"
+            system = (
+                "你是一名擅长短视频口播IP的爆款编导和文案医生。你会先拆解原文的钩子、痛点、结构、节奏和可优化点，"
+                "再输出多个能直接给数字人口播的视频脚本版本。必须只输出 JSON，不要 Markdown，不要解释。"
+            )
+            output_schema = (
+                "输出 JSON 格式如下：\n"
+                "{\n"
+                '  "analysis": {"hook": "开头钩子判断", "pain_point": "用户痛点", "structure": ["结构点1", "结构点2"], '
+                '"rhythm": "节奏建议", "cta": "结尾引导", "risk_notes": "夸大、违规、低质表达风险"},\n'
+                '  "versions": [{"name": "强钩子版", "text": "完整口播稿"}, {"name": "信任感版", "text": "完整口播稿"}, '
+                '{"name": "短平快版", "text": "完整口播稿"}],\n'
+                '  "keywords": ["用于字幕高亮的关键词1", "关键词2"]\n'
+                "}\n"
+                "三个版本都要像真人讲话，不要写分镜说明，不要写标题。"
+            )
+            question = (
+                "请把下面文案做成「爆款拆解 + 成片口播稿」。\n\n【用户要求】\n"
+                f"{custom}\n\n【原始文案】\n{original}\n\n{output_schema}"
+            )
+            raw = base_chat(
+                question,
+                system,
+                model_type="script",
+                raise_on_failure=True,
+                llm_config=self.config.get("llm_config"),
+            )
             import json, re
-            match = re.search(r"\{[\s\S]*\}", raw); parsed = json.loads(match.group(0) if match else raw)
+            match = re.search(r"\{[\s\S]*\}", str(raw or ""))
+            parsed = json.loads(match.group(0) if match else str(raw or ""))
             versions = parsed.get("versions") or []
             normalized = []
             for index, item in enumerate(versions):
-                if not isinstance(item, dict) or not str(item.get("script") or "").strip(): continue
-                normalized.append({"title": str(item.get("title") or f"版本{index+1}"),
-                                   "script": str(item["script"]).strip(),
-                                   "keywords": self._normalize_keywords(item.get("keywords"))})
-            if not normalized: raise RuntimeError("LLM 未返回有效改写文案")
-            return {"status": "success", "analysis": str(parsed.get("analysis") or ""),
-                    "versions": normalized, "raw_output": raw}
-        except Exception as error: return {"status": "error", "message": f"改写文案失败: {error}"}
+                if isinstance(item, dict):
+                    text = str(item.get("text") or "").strip()
+                    name = str(item.get("name") or f"改写版本{index + 1}").strip()
+                else:
+                    text = str(item or "").strip()
+                    name = f"改写版本{index + 1}"
+                if text:
+                    normalized.append({"name": name, "text": text})
+            fallback_text = str(parsed.get("rewritten_text") or parsed.get("text") or "").strip()
+            if not normalized and fallback_text:
+                normalized.append({"name": "成片稿", "text": fallback_text})
+            if not normalized:
+                return {"error": "改写失败，未获得有效内容"}
+            rewritten_text = normalized[0]["text"]
+            keywords = self._normalize_keywords(parsed.get("keywords"))
+            if not keywords:
+                keywords = infer_keywords_from_text(rewritten_text)
+            result = {
+                "status": "success",
+                "rewritten_text": rewritten_text,
+                "analysis": parsed.get("analysis") or {},
+                "versions": normalized,
+                "keywords": keywords,
+            }
+            project_id = str(data.get("project_id") or "").strip()
+            if project_id and os.path.isdir(self._get_ip_agent_project_dir(project_id)):
+                result["project"] = self._save_ip_agent_project(project_id, {
+                    "original_script": original,
+                    "rewrite_prompt": custom,
+                    "rewritten_script": rewritten_text,
+                    "script_analysis": result["analysis"],
+                    "rewrite_versions": normalized,
+                    "highlight_keywords": keywords,
+                })
+            return result
+        except Exception as error:
+            return {"error": f"改写文案失败: {error}"}
 
     def _get_douyin_downloader_paths(self):
         directory = Path(self.runtime_dir) / "tools" / "douyin_video_download"
