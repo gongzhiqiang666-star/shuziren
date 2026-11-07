@@ -64,6 +64,35 @@ provider 回退均使用原生五字段协议。配置对象原样保存、管�
 工作应由独立成片/封面阶段负责。项目缺失、文案优先级、对标 URL 回退、保存增量、
 调用方覆盖隔离和异常包络已有聚焦回归。
 
+## 登录身份、OEM 和本地品牌资源
+
+Token 三个入口的包装体/主体分别为 `get_token`
+`0x1800644b0/0x180064620`、`save_token`
+`0x180064dd0/0x180065090`、`clear_token`
+`0x180065880/0x1800659f0`。读取只使用内存中的 `self.config.get("token", "")`
+并把假值回退为空字符串，不会在每次调用时重新读取用户配置。保存和清除都先调用
+`_save_user_config({"token": value})`，同步 `self.config["token"]`，再调用
+`_update_managers_config()`。保存参数由 Cython 包装体限制为字符串，原值（包括首尾
+空白）不会被清洗。成功消息分别为 `Token已保存` 和 `Token已清除`，所有异常均
+返回单键 `error`。
+
+其余入口的包装体/主体为：`get_admin_id`
+`0x1800590d0/0x180059240`、`get_oem_config`
+`0x18005ab10/0x18005ac80`、`get_background_image`
+`0x180050310/0x180050480`、`get_local_version`
+`0x18005c430/0x18005c5a0`。管理员 ID 来自 `assets/web/id.txt`，仅纯数字内容转为
+整数，否则成功返回 `None`。OEM 配置来自 `assets/web/oem_config.json`，文件缺失
+或根对象不是字典时成功返回空配置；读取/解析异常返回
+`status="error"`、固定前缀消息和空配置。
+
+登录背景来自 `assets/web/bg.png`，成功字段是 `image_data`，值为
+`data:image/png;base64,` 加 UTF-8 解码的 Base64；文件缺失和异常都使用单键
+`error`。本地版本从 `<base_dir>/config/config.yaml` 读取，经 `yaml.safe_load`
+后取 `version`，字符串化并 `strip()`，缺失或空值回退 `v000`；解析异常返回带
+固定前缀的单键 `error`。Token 空白保真、持久化与管理器刷新、管理员 ID 三种
+状态、OEM 缺失/有效/非字典/损坏、背景缺失/Base64 和版本缺失/有效/空值/损坏
+均已有聚焦回归。
+
 Recovered in this pass:
 
 - User/private configuration delegation, atomic YAML persistence and recursive
