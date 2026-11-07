@@ -16,6 +16,19 @@
 `生成脚本时发生错误：<异常>`。恢复源码、逐项失败/异常、跳过无 `content`
 商品、全部失败和外层异常均已加入回归；完整门禁保持 `128/128 PASS`。
 
+## 文本翻译入口
+
+`Api.translate_text` 的包装体/主体为 `0x18004f510/0x18004f8c0`。包装体要求
+`text` 和 `target_language` 都是字符串。主体不按 500 字切片，也不直接拼装
+`base_chat` 提示词；它保留非空原文（包括首尾空白），将空目标语言回退为
+`zh-CN`，经 `normalize_language_code` 规范化后，一次调用
+`translate_text_llm(text, language, raise_on_failure=True)` 并原样返回结果。
+
+翻译异常由该 API 捕获，打印 `翻译失败: <异常>`，并返回单键字典
+`{"error": "<异常>"}`。恢复版此前自创的 500 字固定分块、英文系统提示和异常
+向外传播已删除。空文本、语言别名、1200 字不分块、失败包络和包装体类型边界
+已有聚焦测试；完整门禁保持 `128/128 PASS`。
+
 Recovered in this pass:
 
 - User/private configuration delegation, atomic YAML persistence and recursive
