@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import compileall
 import contextlib
 import gzip
@@ -20,6 +21,7 @@ import time
 import types
 import tempfile
 import yaml
+from io import BytesIO
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -4116,6 +4118,17 @@ def verify_clone_manager_local_resources_contract():
             "sample_data":"data:audio/wav;base64,dm9pY2UtcHJldmlldw==",
             "provider":"voice","supported_versions":["v1","v3"],
         }]
+
+        from PIL import Image
+        preview_source=root/"large-preview.png"
+        Image.new("RGBA",(640,1200),(20,40,60,128)).save(preview_source)
+        preview=manager._build_model_preview(preview_source)
+        assert preview.startswith("data:image/jpeg;base64,")
+        preview_bytes=base64.b64decode(preview.split(",",1)[1])
+        with Image.open(BytesIO(preview_bytes)) as rendered:
+            assert rendered.format=="JPEG" and rendered.mode=="RGB"
+            assert rendered.size==(303,568)
+        assert manager._build_model_preview(preview_source)==preview
 
         manager.delete_model("model-a");manager.delete_voice("voice-a")
         assert not model_dir.exists() and not voice_dir.exists()
