@@ -3778,6 +3778,88 @@ def verify_ip_agent_project_schema_contract():
         assert api.delete_ip_agent_project("delete-me")=={"status":"success","message":"删除成功"}
         assert not target.exists()
 
+def verify_ip_agent_rewrite_contract():
+    from recovered.main import Api
+    from recovered import llm_base_chat, ip_agent_post_process
+
+    api=Api.__new__(Api);api.config={"llm_config":{"provider":"native-config"}}
+    calls=[];saved=[]
+    original_chat=llm_base_chat.base_chat
+    original_infer=ip_agent_post_process.infer_keywords_from_text
+    try:
+        llm_base_chat.base_chat=lambda *args,**kwargs:(
+            calls.append((args,kwargs)) or json.dumps({
+                "analysis":{"hook":"钩子弱","structure":["痛点","方案"]},
+                "versions":[
+                    {"name":"强钩子版","text":"三秒告诉你省钱方法"},
+                    {"text":"先讲真实体验"},
+                    "一句话快速版本",
+                    {"name":"空版本","text":""},
+                ],
+                "keywords":"省钱，方法 省钱",
+            },ensure_ascii=False)
+        )
+        ip_agent_post_process.infer_keywords_from_text=lambda text:["推断",text[:2]]
+        api._get_ip_agent_project_dir=lambda project_id:"/missing/"+project_id
+        result=api.rewrite_ip_script({"text":"  原始文案  ","prompt":"  更可信  ",
+                                      "llm_config":{"provider":"request-config"}})
+        assert result=={
+            "status":"success","rewritten_text":"三秒告诉你省钱方法",
+            "analysis":{"hook":"钩子弱","structure":["痛点","方案"]},
+            "versions":[
+                {"name":"强钩子版","text":"三秒告诉你省钱方法"},
+                {"name":"改写版本2","text":"先讲真实体验"},
+                {"name":"改写版本3","text":"一句话快速版本"},
+            ],
+            "keywords":["省钱","方法"],
+        }
+        args,kwargs=calls.pop()
+        assert args[1].startswith("你是一名擅长短视频口播IP的爆款编导和文案医生。")
+        assert "【用户要求】\n更可信" in args[0] and "【原始文案】\n原始文案" in args[0]
+        assert '"name": "强钩子版"' in args[0] and "不要写分镜说明" in args[0]
+        assert kwargs=={
+            "model_type":"script","raise_on_failure":True,
+            "llm_config":{"provider":"native-config"},
+        }
+        assert api.rewrite_ip_script({"script":"旧兼容字段"})=={
+            "error":"请输入需要改写的文案",
+        }
+        llm_base_chat.base_chat=lambda *_args,**_kwargs:'{"versions": [], "rewritten_text": "直接成片稿"}'
+        fallback=api.rewrite_ip_script({"text":"原文"})
+        assert fallback["versions"]==[{"name":"成片稿","text":"直接成片稿"}]
+        assert fallback["keywords"]==["推断","直接"]
+        llm_base_chat.base_chat=lambda *_args,**_kwargs:'{"versions": []}'
+        assert api.rewrite_ip_script({"text":"原文"})=={
+            "error":"改写失败，未获得有效内容",
+        }
+        llm_base_chat.base_chat=lambda *_args,**_kwargs:(_ for _ in ()).throw(RuntimeError("服务中断"))
+        assert api.rewrite_ip_script({"text":"原文"})=={
+            "error":"改写文案失败: 服务中断",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            project=Path(directory)/"p1";project.mkdir()
+            api._get_ip_agent_project_dir=lambda _project_id:str(project)
+            api._save_ip_agent_project=lambda project_id,data:(saved.append((project_id,data)) or {"id":project_id,**data})
+            llm_base_chat.base_chat=lambda *_args,**_kwargs:json.dumps({
+                "analysis":{"hook":"好"},"versions":[{"name":"成片","text":"最终稿"}],
+                "keywords":[],
+            },ensure_ascii=False)
+            stored=api.rewrite_ip_script({"text":"输入稿","prompt":"","project_id":"p1"})
+            assert stored["project"]["id"]=="p1"
+            project_id,data=saved.pop()
+            assert project_id=="p1"
+            assert data=={
+                "original_script":"输入稿",
+                "rewrite_prompt":"保留原意，强化开头钩子、信息密度、口语节奏和行动引导，避免夸张虚假和空洞套话。",
+                "rewritten_script":"最终稿","script_analysis":{"hook":"好"},
+                "rewrite_versions":[{"name":"成片","text":"最终稿"}],
+                "highlight_keywords":["推断","最终"],
+            }
+    finally:
+        llm_base_chat.base_chat=original_chat
+        ip_agent_post_process.infer_keywords_from_text=original_infer
+
+
 def verify_record_live_start_lifecycle():
     import contextlib
     import io
@@ -5036,7 +5118,7 @@ def main():
     verify_audio_devices_contract()
     verify_audio_player_scan_contract()
     verify_live_sticker_prompt_contract()
-    verify_mapping(); verify_all_modules_importable(); verify_environment_manifests(); verify_voice_helpers(); verify_asr_temp_audio_lifecycle(); verify_audio_duration_fallbacks(); verify_title_fallback_parser(); verify_sentence_generalization_contract(); verify_short_video_language_routing(); verify_short_video_render_parameters(); verify_short_video_metadata_lifecycle(); verify_voice_v2_lifecycle(); verify_voice_v3_lifecycle(); verify_zipvoice_lifecycle(); verify_taobao_explain_cycle(); verify_taobao_action_dispatch(); verify_taobao_control_recovery(); verify_live_brain(); verify_face_hand_manager(); verify_face_hand_player_av_queue(); verify_language_and_live_helpers(); verify_video_player_stream_helpers(); verify_edit_audio_contract(); verify_cloud_avatar_prompt_contract(); verify_live_sticker_title_routing_contract(); verify_taobao_private_helpers(); verify_product_kt_geometry_helpers(); verify_product_image_pipeline(); verify_remaining_private_entrypoints(); verify_auto_live_action_spacing_contract(); verify_image_clone_resource_lifecycle(); verify_image_clone_save_frame_diagnostics(); verify_image_clone_model_assets(); verify_image_clone_generate_cleanup(); verify_pfld_ghostone_architecture(); verify_s3fd_architecture(); verify_kuaishou_message_protocol(); verify_text_special_variables(); verify_funasr_sentence_contract(); verify_get_srt_lifecycle(); verify_ip_agent_post_process_helpers(); verify_origin_video_ffmpeg_reader(); verify_ip_agent_real_media_pipeline(); verify_ip_agent_project_schema_contract(); verify_record_live_start_lifecycle(); verify_barrage_port_cleanup(); verify_shopee_action_dispatch(); verify_shopee_page_states(); verify_controller_workers(); verify_v2_fade_curves(); verify_v2_queue_selection(); verify_keyword_contract_behaviors(); verify_core_method_coverage(); verify_all_binary_class_methods(); verify_binary_class_signature_arity(); verify_binary_module_signature_arity(); verify_public_name_inventory(); verify_binary_qualified_module_names(); asyncio.run(verify_live_protocols())
+    verify_mapping(); verify_all_modules_importable(); verify_environment_manifests(); verify_voice_helpers(); verify_asr_temp_audio_lifecycle(); verify_audio_duration_fallbacks(); verify_title_fallback_parser(); verify_sentence_generalization_contract(); verify_short_video_language_routing(); verify_short_video_render_parameters(); verify_short_video_metadata_lifecycle(); verify_voice_v2_lifecycle(); verify_voice_v3_lifecycle(); verify_zipvoice_lifecycle(); verify_taobao_explain_cycle(); verify_taobao_action_dispatch(); verify_taobao_control_recovery(); verify_live_brain(); verify_face_hand_manager(); verify_face_hand_player_av_queue(); verify_language_and_live_helpers(); verify_video_player_stream_helpers(); verify_edit_audio_contract(); verify_cloud_avatar_prompt_contract(); verify_live_sticker_title_routing_contract(); verify_taobao_private_helpers(); verify_product_kt_geometry_helpers(); verify_product_image_pipeline(); verify_remaining_private_entrypoints(); verify_auto_live_action_spacing_contract(); verify_image_clone_resource_lifecycle(); verify_image_clone_save_frame_diagnostics(); verify_image_clone_model_assets(); verify_image_clone_generate_cleanup(); verify_pfld_ghostone_architecture(); verify_s3fd_architecture(); verify_kuaishou_message_protocol(); verify_text_special_variables(); verify_funasr_sentence_contract(); verify_get_srt_lifecycle(); verify_ip_agent_post_process_helpers(); verify_origin_video_ffmpeg_reader(); verify_ip_agent_real_media_pipeline(); verify_ip_agent_project_schema_contract(); verify_ip_agent_rewrite_contract(); verify_record_live_start_lifecycle(); verify_barrage_port_cleanup(); verify_shopee_action_dispatch(); verify_shopee_page_states(); verify_controller_workers(); verify_v2_fade_curves(); verify_v2_queue_selection(); verify_keyword_contract_behaviors(); verify_core_method_coverage(); verify_all_binary_class_methods(); verify_binary_class_signature_arity(); verify_binary_module_signature_arity(); verify_public_name_inventory(); verify_binary_qualified_module_names(); asyncio.run(verify_live_protocols())
     print("PASS: 128/128 mappings/imports, public/private callable and binary class method inventories, signatures, core methods, live managers, protocols")
 
 
