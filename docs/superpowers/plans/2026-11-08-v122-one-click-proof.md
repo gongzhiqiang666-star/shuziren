@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a safe offline toolkit that lets a non-developer create the first v122 avatar from authorized video and voice material on an empty RTX 3060 Windows computer, generate fresh speech, drive the avatar with that exact WAV, and immediately review an MP4 and evidence report.
+**Goal:** Build a safe offline toolkit whose local webpage lets a non-developer record or select authorized person and voice material, create the first v122 avatar on an empty RTX 3060 Windows computer, generate fresh speech, drive the avatar with that exact WAV, and immediately review an MP4 and evidence report.
 
-**Architecture:** Keep redistributable orchestration code in this repository and keep the commercial runtime, weights, inputs, and outputs in an ignored transfer directory. A Python CLI owns validation, run state, subprocess ownership, evidence, and reports; thin CMD/PowerShell entry points provide the Windows menu and hardware checks. The v122 adapter is evidence-driven: discovery first records the real executable/module entry points, then the adapter invokes only confirmed commands without embedding proprietary code.
+**Architecture:** Keep redistributable orchestration code in this repository and keep the commercial runtime, weights, inputs, and outputs in an ignored transfer directory. A loopback-only Python service serves a dependency-free recording wizard and owns uploads, validation, run state, subprocess ownership, evidence, and reports; thin CMD/PowerShell entry points start or diagnose it. The v122 adapter is evidence-driven: discovery first records the real executable/module entry points, then the adapter invokes only confirmed commands without embedding proprietary code.
 
 **Tech Stack:** Python 3.11 standard library, PowerShell 5.1+, Windows CMD, ffmpeg/ffprobe, NVIDIA CLI, unittest, HTML5 audio/video.
 
@@ -13,9 +13,13 @@
 ## File map
 
 - `scripts/v122_proof.py`: portable CLI, config validation, material probing, run lifecycle, freshness/same-WAV checks, report generation.
+- `scripts/v122_proof_server.py`: loopback HTTP API, bounded media upload, run state, stage retry, and current-run deletion.
 - `scripts/v122_adapter.py`: confirmed v122 command construction and output contracts; no proprietary implementation.
 - `scripts/build_v122_proof.py`: safe Mac-side offline package builder and SHA-256 manifest writer.
 - `scripts/v122-proof/windows/`: fixed CMD menu and PowerShell hardware/process helpers copied into the package.
+- `scripts/v122-proof/web/index.html`: four-step recording and generation wizard.
+- `scripts/v122-proof/web/app.js`: camera/microphone MediaRecorder state machine and API client.
+- `scripts/v122-proof/web/style.css`: responsive local operator UI.
 - `scripts/v122-proof/web/report.html`: self-contained result template.
 - `scripts/test_v122_proof.py`: portable unit and contract tests.
 - `config/v122-proof.example.json`: secret-free schema example with relative package paths.
@@ -90,7 +94,114 @@ Expected: PASS.
 
 Commit: `feat: define v122 proof configuration`
 
-### Task 3: Build and verify the offline transfer package
+### Task 3: Build the loopback-only enrollment API
+
+**Files:**
+- Create: `scripts/v122_proof_server.py`
+- Modify: `scripts/test_v122_proof.py`
+
+- [ ] **Step 1: Write failing server contract tests**
+
+Start the server on an ephemeral port and assert: it binds `127.0.0.1`; `GET /api/state` creates or resumes one current run; `POST /api/materials/person` and `/api/materials/voice` accept bounded media bodies; `PUT /api/text` accepts only `reference_transcript` and `new_script`; `POST /api/materials/<kind>/confirm` records preview confirmation; `POST /api/generate` refuses incomplete inputs; `POST /api/stages/<stage>/retry` only retries a failed/blocked stage; `DELETE /api/current-run` requires `{"confirm":true}` and cannot escape the runs root.
+
+- [ ] **Step 2: Confirm failure**
+
+Run: `python3 -m unittest scripts.test_v122_proof.ServerTests -v`
+
+Expected: FAIL because the loopback service is missing.
+
+- [ ] **Step 3: Implement the fixed local API**
+
+Use `ThreadingHTTPServer` with an explicit `("127.0.0.1", port)` bind, fixed routes, JSON response envelopes, `Content-Length` limits, extension/MIME allowlists, generated server-side filenames, atomic state writes, and `Cache-Control: no-store`. Reject proxy-style absolute URLs, encoded traversal, unexpected fields, and requests whose `Origin` is not the service origin.
+
+- [ ] **Step 4: Implement persistent enrollment state**
+
+Persist only the active run ID, relative material paths, SHA-256 values, preview confirmations, text fields, and stage statuses. On refresh, return enough state to restore previews and progress without exposing arbitrary filesystem paths.
+
+- [ ] **Step 5: Run and commit**
+
+Run: `python3 -m unittest scripts.test_v122_proof.ServerTests -v`
+
+Expected: PASS.
+
+Commit: `feat: add local v122 enrollment API`
+
+### Task 4: Build the browser camera and microphone wizard
+
+**Files:**
+- Create: `scripts/v122-proof/web/index.html`
+- Create: `scripts/v122-proof/web/app.js`
+- Create: `scripts/v122-proof/web/style.css`
+- Modify: `scripts/test_v122_proof.py`
+
+- [ ] **Step 1: Write failing static UI contract tests**
+
+Require four visible steps, buttons `开始摄像头录制`, `选择已有视频`, `开始麦克风录音`, `选择已有WAV`, `检查并开始生成`, and `删除本次素材`; require video preview, audio preview, transcript and new-script fields, stage list, generated-WAV player, final-MP4 player, and confirmation dialog. Assert there are no CDN, remote URL, analytics, WebSocket, or arbitrary-command inputs.
+
+- [ ] **Step 2: Confirm failure**
+
+Run: `python3 -m unittest scripts.test_v122_proof.WebWizardTests -v`
+
+Expected: FAIL because the wizard assets are missing.
+
+- [ ] **Step 3: Implement person recording state**
+
+Use `navigator.mediaDevices.getUserMedia({video:true,audio:false})`, a three-second countdown, `MediaRecorder`, elapsed-time display, stop at 60 seconds, preview via object URL, explicit `重录` and `确认人物视频`, and file-input fallback. Do not request microphone permission during person recording.
+
+- [ ] **Step 4: Implement voice recording state**
+
+Use `getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false})`, `AudioContext` analyser for a local level meter, stop at 30 seconds, audio preview, explicit `重录` and `确认参考声音`, and WAV/audio file fallback. Stop every media track after recording or cancellation.
+
+- [ ] **Step 5: Implement text, progress, retry, and deletion flows**
+
+Enable generation only after both media previews are confirmed and both text fields are non-empty. Poll `GET /api/state` while stages run; show `pending/running/passed/failed/blocked`, fixed error code, and retry only on failed/blocked stages. Require a second click in a modal before calling `DELETE /api/current-run`.
+
+- [ ] **Step 6: Add browser-state tests without real devices**
+
+Extract recorder state transitions into pure functions exposed under `window.__v122Test`; test idle → countdown → recording → preview → confirmed, permission denial → file fallback, refresh restore, and delete reset using a dependency-free DOM harness.
+
+- [ ] **Step 7: Run and commit**
+
+Run: `python3 -m unittest scripts.test_v122_proof.WebWizardTests -v`
+
+Expected: PASS.
+
+Commit: `feat: add browser person and voice enrollment`
+
+### Task 5: Normalize browser recordings and validate all inputs
+
+**Files:**
+- Modify: `scripts/v122_proof.py`
+- Modify: `scripts/v122_proof_server.py`
+- Modify: `scripts/test_v122_proof.py`
+
+- [ ] **Step 1: Write failing normalization tests**
+
+With a fake ffmpeg/ffprobe runner, prove that uploaded or recorded person media becomes a fixed v122-compatible MP4 and voice media becomes mono 16-bit PCM WAV; originals remain under the run directory; conversion failure returns `MAT_CONVERT_VIDEO` or `MAT_CONVERT_AUDIO`; normalized outputs are probed again before confirmation.
+
+- [ ] **Step 2: Confirm failure**
+
+Run: `python3 -m unittest scripts.test_v122_proof.NormalizationTests -v`
+
+Expected: FAIL because normalization is missing.
+
+- [ ] **Step 3: Implement argument-array FFmpeg conversion**
+
+Never invoke a shell. Convert video with fixed codec/frame/pixel-format arguments derived from the audited v122 contract and voice to mono PCM WAV at the required sample rate. Write to a temporary filename, probe it, then atomically promote it to the normalized material path.
+
+- [ ] **Step 4: Implement material validation**
+
+Cover video duration 20–60 seconds, one video stream, minimum 720p, supported frame rate, and readable frames; cover WAV duration 10–30 seconds and non-empty PCM samples; reject empty transcript/new script and append a cryptographically random run marker to the new script. Return fixed errors prefixed `MAT_VIDEO_`, `MAT_AUDIO_`, or `MAT_TEXT_`; do not claim to determine authorization, face suitability, or transcript accuracy.
+
+- [ ] **Step 5: Run and commit**
+
+Run: `python3 -m unittest scripts.test_v122_proof.NormalizationTests -v`
+
+Expected: PASS.
+
+Commit: `feat: normalize and validate recorded proof media`
+
+### Task 6: Build and verify the offline transfer package
 
 **Files:**
 - Create: `scripts/build_v122_proof.py`
@@ -123,7 +234,7 @@ Expected: PASS.
 
 Commit: `feat: build safe v122 offline proof package`
 
-### Task 4: Validate video, voice, transcript, and new script before GPU work
+### Task 7: Validate selected files, transcript, and new script before GPU work
 
 **Files:**
 - Modify: `scripts/v122_proof.py`
@@ -151,7 +262,7 @@ Expected: PASS.
 
 Commit: `feat: validate v122 proof materials`
 
-### Task 5: Add Windows menu, environment preflight, and safe process ownership
+### Task 8: Add Windows startup, environment preflight, and safe process ownership
 
 **Files:**
 - Create: `scripts/v122-proof/windows/00_开始验证.cmd`
@@ -176,7 +287,7 @@ Expected: FAIL because entry points are missing.
 
 - [ ] **Step 3: Implement thin launchers and preflight**
 
-The menu invokes only fixed Python subcommands. `preflight.ps1` emits UTF-8 JSON with `pass`, `warning`, `blocked`, or `pending`; missing preprocessed character is `pending`. The stop helper terminates a process only when PID, executable path, creation time, and run ID match the owned-process registry.
+The primary launcher starts the loopback service, waits for `/api/state`, and opens the local wizard; the menu invokes only fixed Python subcommands for maintenance. `preflight.ps1` emits UTF-8 JSON with `pass`, `warning`, `blocked`, or `pending`; missing preprocessed character is `pending`. The stop helper terminates a process only when PID, executable path, creation time, and run ID match the owned-process registry.
 
 - [ ] **Step 4: Parse PowerShell when available and run tests**
 
@@ -190,7 +301,7 @@ Expected: PASS; if `pwsh` is absent on Mac, record parser check as pending for W
 
 Commit: `feat: add safe Windows v122 proof launcher`
 
-### Task 6: Orchestrate avatar creation, fresh TTS, same-WAV drive, and MP4 output
+### Task 9: Orchestrate avatar creation, fresh TTS, same-WAV drive, and MP4 output
 
 **Files:**
 - Create: `scripts/v122_adapter.py`
@@ -223,7 +334,7 @@ Expected: PASS using fakes; matrix status remains static-only until Windows real
 
 Commit: `feat: orchestrate v122 minimum proof chain`
 
-### Task 7: Generate and open a self-contained visual result
+### Task 10: Generate and display a self-contained visual result
 
 **Files:**
 - Create: `scripts/v122-proof/web/report.html`
@@ -242,7 +353,7 @@ Expected: FAIL because report rendering is missing.
 
 - [ ] **Step 3: Implement escaped report rendering**
 
-Use only local relative media links and HTML-escape all text. Write `reports/<run-id>/index.html`, copy it to `reports/latest/index.html`, then open the WAV after TTS and the report after MP4 without turning media-open failures into inference success.
+Use only local relative media links and HTML-escape all text. Write `reports/<run-id>/index.html`, copy it to `reports/latest/index.html`, and update the wizard so generated WAV and MP4 controls use fixed same-origin media routes without turning playback failures into inference success.
 
 - [ ] **Step 4: Run and commit**
 
@@ -252,7 +363,7 @@ Expected: PASS.
 
 Commit: `feat: render v122 proof result page`
 
-### Task 8: Document operator preparation and OBS handoff
+### Task 11: Document operator preparation and first-stage boundary
 
 **Files:**
 - Create: `docs/V122_PROOF_RUNBOOK.md`
@@ -262,7 +373,7 @@ Commit: `feat: render v122 proof result page`
 
 - [ ] **Step 1: Write a failing runbook contract test**
 
-Require a four-item preparation checklist, consent/authorization reminder, recommended video and WAV characteristics, exact package-build command, Windows copy and double-click flow, menu choices, expected artifacts, staged failure codes, administrator-only virtual-camera step, OBS audio/video recording check, and explicit statement that Windows evidence is still pending.
+Require a four-item preparation checklist, consent/authorization reminder, camera/microphone recording path, file-selection fallback, recommended video and WAV characteristics, exact package-build command, Windows copy and double-click flow, expected artifacts, staged failure codes, and explicit statements that first-stage acceptance ends at a reviewed local MP4 and Windows evidence is still pending.
 
 - [ ] **Step 2: Confirm failure**
 
@@ -282,7 +393,7 @@ Expected: PASS.
 
 Commit: `docs: add v122 proof operator runbook`
 
-### Task 9: Verify the redistributable toolkit on Mac without false completion claims
+### Task 12: Verify the redistributable toolkit on Mac without false completion claims
 
 **Files:**
 - Modify: `Makefile`
@@ -317,7 +428,7 @@ Mark portable toolkit rows `静态验证通过`; keep avatar creation, TTS, lip 
 
 Commit: `test: verify v122 offline proof toolkit`
 
-### Task 10: Execute the first RTX 3060 Windows proof
+### Task 13: Execute the first RTX 3060 Windows proof
 
 **Files:**
 - Modify after evidence collection: `docs/FUNCTION_MATRIX.md`
@@ -325,7 +436,7 @@ Commit: `test: verify v122 offline proof toolkit`
 
 - [ ] **Step 1: Prepare authorized inputs**
 
-Provide one 20–60 second front-facing person video, one 10–30 second clean reference WAV, its exact transcript, and one new test script. Keep all four outside Git.
+Use the webpage to record one 20–60 second front-facing person video and one 10–30 second clean reference recording, then provide its exact transcript and one new test script. If browser capture is unavailable, use the two file-selection fallbacks. Keep all four outside Git.
 
 - [ ] **Step 2: Copy and verify the package**
 
@@ -349,4 +460,4 @@ Promote only demonstrated rows to `Windows验证通过` or `端到端验证通�
 
 ## Completion gate
 
-The implementation phase is complete when Tasks 1–9 pass and produce a verified offline package. The minimum functional proof is complete only after Task 10 creates a fresh WAV and a playable same-WAV-driven MP4 from newly supplied person/voice material on the RTX 3060 Windows computer. OBS is a separate final gate and cannot mask a failed local MP4.
+The implementation phase is complete when Tasks 1–12 pass and produce a verified offline package. The first-stage functional proof is complete only after Task 13 records or selects new person/voice material in the local webpage, creates a fresh WAV, and produces a playable same-WAV-driven MP4 on the RTX 3060 Windows computer. OBS belongs to the later live-output stage and cannot mask a failed local MP4.
