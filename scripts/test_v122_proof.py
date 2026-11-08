@@ -265,6 +265,8 @@ class WindowsContractTests(unittest.TestCase):
         combined = (start + stop + helper).lower()
         self.assertIn("127.0.0.1:5157", start); self.assertIn("v122_proof_server.py", helper)
         self.assertNotIn("taskkill /im", combined); self.assertNotIn("invoke-expression", combined)
+        self.assertNotIn("executionpolicy", combined)
+        self.assertIn("quote-argument", helper.lower())
         self.assertIn("stop-owned.ps1", stop)
 
     def test_preflight_checks_gpu_cuda_media_and_disk(self):

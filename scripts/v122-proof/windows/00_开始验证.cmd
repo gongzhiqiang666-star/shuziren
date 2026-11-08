@@ -2,7 +2,7 @@
 setlocal
 chcp 65001 >nul
 set "ROOT=%~dp0"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%proof\windows\start-server.ps1" -PackageRoot "%ROOT%"
+powershell.exe -NoProfile -File "%ROOT%proof\windows\start-server.ps1" -PackageRoot "%ROOT%"
 if errorlevel 1 pause & exit /b 1
 start "" "http://127.0.0.1:5157/"
 echo.

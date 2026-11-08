@@ -9,7 +9,12 @@ if (!(Test-Path -LiteralPath $python) -or !(Test-Path -LiteralPath $server)) { t
 & (Join-Path $root 'proof\windows\preflight.ps1') -PackageRoot $root | Out-Host
 if ($LASTEXITCODE -ne 0) { throw '环境或离线包完整性检查未通过，请查看 reports\preflight' }
 New-Item -ItemType Directory -Force -Path (Split-Path $state) | Out-Null
-$process = Start-Process -FilePath $python -ArgumentList @($server,'--root',$root,'--web',$web,'--port','5157') -WorkingDirectory $root -PassThru -WindowStyle Hidden
+function Quote-Argument([string]$Value) {
+  if ($Value.Contains('"')) { throw '启动参数不能包含双引号' }
+  return '"' + $Value + '"'
+}
+$arguments = @($server,'--root',$root,'--web',$web,'--port','5157') | ForEach-Object { Quote-Argument $_ }
+$process = Start-Process -FilePath $python -ArgumentList ($arguments -join ' ') -WorkingDirectory $root -PassThru -WindowStyle Hidden
 $details = Get-CimInstance Win32_Process -Filter "ProcessId=$($process.Id)"
 @{ pid=$process.Id; executable=$python; created=$details.CreationDate } | ConvertTo-Json | Set-Content -LiteralPath $state -Encoding UTF8
 for ($i=0; $i -lt 40; $i++) { try { Invoke-RestMethod -Uri 'http://127.0.0.1:5157/api/state' -TimeoutSec 1 | Out-Null; exit 0 } catch { Start-Sleep -Milliseconds 250 } }
