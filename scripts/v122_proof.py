@@ -107,3 +107,40 @@ def select_environment(gpu_name):
     if re.search(r"rtx\s*50\d\d", value):
         return "env_50"
     return "env"
+
+
+def normalization_command(ffmpeg, source, target, kind):
+    base = [str(ffmpeg), "-nostdin", "-v", "error", "-y", "-i", str(source)]
+    if kind == "person":
+        return base + ["-map", "0:v:0", "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                       "-r", "25", "-movflags", "+faststart", str(target)]
+    if kind == "voice":
+        return base + ["-map", "0:a:0", "-vn", "-ac", "1", "-ar", "24000",
+                       "-c:a", "pcm_s16le", "-f", "wav", str(target)]
+    raise ProofError("unknown normalization kind")
+
+
+def validate_video_probe(probe):
+    duration = float(probe.get("duration") or 0)
+    if duration < 20 or duration > 60:
+        raise ProofError("MAT_VIDEO_DURATION")
+    if int(probe.get("video_streams") or 0) != 1:
+        raise ProofError("MAT_VIDEO_STREAMS")
+    width, height = int(probe.get("width") or 0), int(probe.get("height") or 0)
+    if min(width, height) < 720:
+        raise ProofError("MAT_VIDEO_RESOLUTION")
+    fps = float(probe.get("fps") or 0)
+    if fps < 20 or fps > 60:
+        raise ProofError("MAT_VIDEO_FPS")
+    return True
+
+
+def validate_audio_probe(probe):
+    duration = float(probe.get("duration") or 0)
+    if duration < 10 or duration > 30:
+        raise ProofError("MAT_AUDIO_DURATION")
+    if int(probe.get("channels") or 0) not in (1, 2):
+        raise ProofError("MAT_AUDIO_CHANNELS")
+    if not str(probe.get("codec") or "").startswith("pcm_"):
+        raise ProofError("MAT_AUDIO_CODEC")
+    return True

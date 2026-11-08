@@ -14,6 +14,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
+try:
+    from scripts.v122_adapter import V122Adapter
+    from scripts.v122_orchestrator import run_pipeline
+except ImportError:
+    from v122_adapter import V122Adapter
+    from v122_orchestrator import run_pipeline
+
 
 STAGES = ("materials", "avatar", "voice", "tts", "drive", "mp4")
 MIME_EXTENSIONS = {
@@ -121,6 +128,14 @@ def make_handler(store, web_root):
             try:
                 path = self._route()
                 if path == "/api/state": return self._json(200, store.state())
+                if path in ("/api/media/generated.wav", "/api/media/final.mp4"):
+                    state = store.state(); name = "generated.wav" if path.endswith(".wav") else "final.mp4"
+                    candidate = store.runs / state["run_id"] / "outputs" / name
+                    if not candidate.is_file(): return self._error(404, "media not ready")
+                    body = candidate.read_bytes(); self.send_response(200)
+                    self.send_header("Content-Type", "audio/wav" if name.endswith(".wav") else "video/mp4")
+                    self.send_header("Content-Length", str(len(body))); self.send_header("Cache-Control", "no-store")
+                    self.end_headers(); self.wfile.write(body); return
                 name = "index.html" if path == "/" else path.lstrip("/")
                 candidate = (web_root / name).resolve(); candidate.relative_to(web_root)
                 if not candidate.is_file(): return self._error(404, "not found")
@@ -158,9 +173,18 @@ def make_handler(store, web_root):
                     state = store.state()
                     ready = all(state["materials"].get(k, {}).get("confirmed") for k in ("person", "voice")) and all(state["text"].values())
                     if not ready: return self._error(409, "人物、声音和文字尚未全部确认")
-                    state["stages"]["materials"] = {"status": "passed", "error": ""}
-                    state["stages"]["avatar"] = {"status": "blocked", "error": "V122_WINDOWS_REQUIRED"}
-                    store.save(state); return self._json(202, state)
+                    if any(item["status"] == "running" for item in state["stages"].values()):
+                        return self._error(409, "生成任务正在运行")
+                    runtime = store.root / "runtime/yunchuang_v122"
+                    bridge = store.root / "proof/scripts/v122_runtime_bridge.py"
+                    ffmpeg = runtime / "_internal/env/ffmpeg/bin/ffmpeg.exe"
+                    if not runtime.is_dir() or not bridge.is_file() or not ffmpeg.is_file():
+                        state["stages"]["materials"] = {"status": "blocked", "error": "V122_RUNTIME_INCOMPLETE"}
+                        store.save(state); return self._json(409, state)
+                    adapter = V122Adapter(runtime, bridge)
+                    def work(): run_pipeline(store.root, state, adapter, ffmpeg, on_update=store.save)
+                    threading.Thread(target=work, name="v122-proof-" + state["run_id"], daemon=True).start()
+                    return self._json(202, state)
                 if method == "DELETE" and path == "/api/current-run":
                     if self._body_json() != {"confirm": True}: raise ValueError("删除需要明确确认")
                     store.delete_current(); return self._json(200, {"deleted": True})

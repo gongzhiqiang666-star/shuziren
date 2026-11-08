@@ -4,6 +4,7 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
+from unittest import mock
 from pathlib import Path
 
 try:
@@ -14,6 +15,18 @@ try:
     from scripts import v122_proof_server
 except ImportError:
     v122_proof_server = None
+try:
+    from scripts import build_v122_proof
+except ImportError:
+    build_v122_proof = None
+try:
+    from scripts import v122_adapter
+except ImportError:
+    v122_adapter = None
+try:
+    from scripts import v122_orchestrator
+except ImportError:
+    v122_orchestrator = None
 
 
 PROJECT = Path(__file__).resolve().parents[1]
@@ -135,6 +148,113 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, 400)
         status, _ = self.request("/api/current-run", "DELETE", {"confirm": True})
         self.assertEqual(status, 200)
+
+
+class NormalizationTests(unittest.TestCase):
+    def test_builds_fixed_argument_arrays_without_shell(self):
+        video = v122_proof.normalization_command("ffmpeg", "person.webm", "person.mp4", "person")
+        voice = v122_proof.normalization_command("ffmpeg", "voice.webm", "voice.wav", "voice")
+        self.assertEqual(video[0], "ffmpeg"); self.assertIn("libx264", video); self.assertIn("yuv420p", video)
+        self.assertEqual(voice[0], "ffmpeg"); self.assertIn("pcm_s16le", voice); self.assertIn("24000", voice)
+        self.assertNotIn("shell", " ".join(video + voice).lower())
+
+    def test_material_rules_reject_out_of_range_media(self):
+        with self.assertRaisesRegex(v122_proof.ProofError, "MAT_VIDEO_DURATION"):
+            v122_proof.validate_video_probe({"duration": 5, "width": 1920, "height": 1080, "fps": 25, "video_streams": 1})
+        with self.assertRaisesRegex(v122_proof.ProofError, "MAT_AUDIO_DURATION"):
+            v122_proof.validate_audio_probe({"duration": 4, "channels": 1, "codec": "pcm_s16le"})
+        self.assertTrue(v122_proof.validate_video_probe({"duration": 30, "width": 1080, "height": 1920, "fps": 25, "video_streams": 1}))
+        self.assertTrue(v122_proof.validate_audio_probe({"duration": 15, "channels": 1, "codec": "pcm_s16le"}))
+
+
+class BuilderTests(unittest.TestCase):
+    def test_builder_refuses_nonempty_destination_and_symlinks(self):
+        self.assertIsNotNone(build_v122_proof)
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw); source = root / "source"; source.mkdir(); (source / "required.txt").write_text("ok")
+            proof = root / "proof"; proof.mkdir(); (proof / "tool.py").write_text("ok")
+            destination = root / "destination"; destination.mkdir(); (destination / "keep.txt").write_text("mine")
+            with self.assertRaises(build_v122_proof.BuildError):
+                build_v122_proof.build_package(source, proof, destination, required=("required.txt",))
+            destination = root / "fresh"
+            (source / "link").symlink_to(source / "required.txt")
+            with self.assertRaises(build_v122_proof.BuildError):
+                build_v122_proof.build_package(source, proof, destination, required=("required.txt",))
+
+    def test_builder_writes_sorted_hash_manifest(self):
+        self.assertIsNotNone(build_v122_proof)
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw); source = root / "source"; source.mkdir(); (source / "required.txt").write_text("runtime")
+            proof = root / "proof"; proof.mkdir(); (proof / "tool.py").write_text("proof")
+            destination = root / "destination"
+            manifest = build_v122_proof.build_package(source, proof, destination, required=("required.txt",))
+            paths = [item["path"] for item in manifest["files"]]
+            self.assertEqual(paths, sorted(paths)); self.assertTrue(all(len(item["sha256"]) == 64 for item in manifest["files"]))
+
+    def test_release_manifest_includes_root_launchers(self):
+        source = Path(build_v122_proof.__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw); runtime = root / "runtime"
+            for name in ("数字人直播.exe", "_internal/start.py", "_internal/main.cp310-win_amd64.pyd",
+                         "_internal/live/clone_manager.cp310-win_amd64.pyd", "_internal/config/config.yaml",
+                         "_internal/env/python.exe", "_internal/env/ffmpeg/bin/ffmpeg.exe"):
+                path = runtime / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(b"x")
+            manifest = build_v122_proof.build_release(source, runtime, root / "release")
+            paths = {item["path"] for item in manifest["files"]}
+            self.assertIn("00_开始验证.cmd", paths); self.assertIn("99_停止验证.cmd", paths)
+
+
+class AdapterTests(unittest.TestCase):
+    def test_commands_use_runtime_python_and_argument_arrays(self):
+        self.assertIsNotNone(v122_adapter)
+        adapter = v122_adapter.V122Adapter(Path("C:/proof/runtime/yunchuang_v122"), Path("C:/proof/proof/scripts/v122_runtime_bridge.py"))
+        command = adapter.avatar_preprocess("in.mp4", "person", "person-id")
+        self.assertTrue(str(command[0]).endswith("_internal/env/python.exe"))
+        self.assertEqual(command[2], "avatar-preprocess"); self.assertNotIn("shell", " ".join(map(str, command)).lower())
+        voice = adapter.voice_create("ref.wav", "逐字稿", "voice", "voice-id")
+        self.assertIn("voice-create", voice); self.assertIn("逐字稿", voice)
+        drive = adapter.avatar_drive("person-id", "fresh.wav", "result-video.mp4")
+        self.assertIn("fresh.wav", drive); self.assertIn("result-video.mp4", drive)
+
+
+class WindowsContractTests(unittest.TestCase):
+    def test_launchers_open_local_page_and_never_kill_all_python(self):
+        root = PROJECT / "scripts/v122-proof/windows"
+        start = (root / "00_开始验证.cmd").read_text(encoding="utf-8")
+        stop = (root / "99_停止验证.cmd").read_text(encoding="utf-8")
+        helper = (root / "start-server.ps1").read_text(encoding="utf-8")
+        combined = (start + stop + helper).lower()
+        self.assertIn("127.0.0.1:5157", start); self.assertIn("v122_proof_server.py", helper)
+        self.assertNotIn("taskkill /im", combined); self.assertNotIn("invoke-expression", combined)
+        self.assertIn("stop-owned.ps1", stop)
+
+
+class OrchestrationTests(unittest.TestCase):
+    def test_pipeline_uses_fresh_wav_for_drive_and_creates_mp4(self):
+        self.assertIsNotNone(v122_orchestrator)
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw); run = root / "runs/r1"; materials = run / "materials"; materials.mkdir(parents=True)
+            (materials / "person.webm").write_bytes(b"person"); (materials / "voice.webm").write_bytes(b"voice")
+            calls = []
+            class FakeAdapter:
+                def avatar_preprocess(self, *args): return ["python", "bridge", "avatar-preprocess", *map(str,args)]
+                def voice_create(self, *args): return ["python", "bridge", "voice-create", *map(str,args)]
+                def speech_generate(self, *args): return ["python", "bridge", "speech-generate", *map(str,args)]
+                def avatar_drive(self, *args): return ["python", "bridge", "avatar-drive", *map(str,args)]
+            def fake_run(command, **kwargs):
+                calls.append(list(map(str, command))); action = command[2] if len(command)>2 and command[1]=="bridge" else "ffmpeg"
+                if action in ("speech-generate", "avatar-drive") or action == "ffmpeg":
+                    target = Path(command[-1]); target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(b"output-" + action.encode())
+                return mock.Mock(returncode=0, stdout="", stderr="")
+            state = {"run_id":"r1", "materials":{"person":{"path":"materials/person.webm"},"voice":{"path":"materials/voice.webm"}},
+                     "text":{"reference_transcript":"参考","new_script":"新话术"},
+                     "stages":{name:{"status":"pending","error":""} for name in v122_orchestrator.STAGES}, "outputs":{}}
+            result = v122_orchestrator.run_pipeline(root, state, FakeAdapter(), "ffmpeg", fake_run)
+            speech = next(call for call in calls if "speech-generate" in call)
+            drive = next(call for call in calls if "avatar-drive" in call)
+            self.assertEqual(speech[-1], drive[-2])
+            self.assertTrue((run / "outputs/final.mp4").is_file())
+            self.assertEqual(result["stages"]["mp4"]["status"], "passed")
 
 
 if __name__ == "__main__":

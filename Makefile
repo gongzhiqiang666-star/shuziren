@@ -1,4 +1,4 @@
-.PHONY: web build test test-workers test-browser test-live-readiness check-live-readiness-example doctor up down
+.PHONY: web build test test-workers test-browser test-live-readiness test-v122-proof build-v122-proof check-live-readiness-example doctor up down
 
 web:
 	cd web && npm ci && npm run build
@@ -19,6 +19,14 @@ test-browser:
 
 test-live-readiness:
 	python3 -m unittest scripts/test_live_readiness.py -v
+
+test-v122-proof:
+	python3 -m unittest scripts/test_v122_proof.py -v
+
+build-v122-proof:
+	@test -n "$(V122_RUNTIME_SOURCE)" || (echo "V122_RUNTIME_SOURCE is required"; exit 2)
+	@test -n "$(V122_PROOF_DESTINATION)" || (echo "V122_PROOF_DESTINATION is required"; exit 2)
+	python3 scripts/build_v122_proof.py --runtime-source "$(V122_RUNTIME_SOURCE)" --destination "$(V122_PROOF_DESTINATION)"
 
 check-live-readiness-example:
 	python3 scripts/live_readiness.py check-assets --manifest config/live-readiness.example.json --output test-results/live-readiness/example-assets.json
