@@ -67,23 +67,29 @@ def build_package(runtime_source, proof_source, destination, required=()):
     return manifest
 
 
+def _stage_tools(repository, staging):
+    repository = Path(repository).resolve(); staging = Path(staging)
+    (staging / "scripts").mkdir(parents=True); (staging / "web").mkdir(); (staging / "windows").mkdir()
+    for name in ("v122_proof.py", "v122_proof_server.py", "v122_adapter.py", "v122_orchestrator.py", "v122_runtime_bridge.py", "verify_v122_package.py"):
+        shutil.copy2(repository / "scripts" / name, staging / "scripts" / name)
+    shutil.copytree(repository / "scripts/v122-proof/web", staging / "web", dirs_exist_ok=True)
+    windows = repository / "scripts/v122-proof/windows"
+    for name in ("start-server.ps1", "stop-owned.ps1", "preflight.ps1"):
+        shutil.copy2(windows / name, staging / "windows" / name)
+    shutil.copy2(repository / "config/v122-proof.example.json", staging / "config.json")
+    return windows
+
+
 def build_release(repository, runtime_source, destination):
     repository = Path(repository).resolve(); destination = Path(destination).resolve()
     with tempfile.TemporaryDirectory(prefix="v122-proof-") as raw:
         staging = Path(raw)
-        (staging / "scripts").mkdir(); (staging / "web").mkdir(); (staging / "windows").mkdir()
-        for name in ("v122_proof.py", "v122_proof_server.py", "v122_adapter.py", "v122_orchestrator.py", "v122_runtime_bridge.py"):
-            shutil.copy2(repository / "scripts" / name, staging / "scripts" / name)
-        shutil.copytree(repository / "scripts/v122-proof/web", staging / "web", dirs_exist_ok=True)
-        windows = repository / "scripts/v122-proof/windows"
-        for name in ("start-server.ps1", "stop-owned.ps1"):
-            shutil.copy2(windows / name, staging / "windows" / name)
-        shutil.copy2(repository / "config/v122-proof.example.json", staging / "config.json")
+        windows = _stage_tools(repository, staging)
         required = ("数字人直播.exe", "_internal/start.py", "_internal/main.cp310-win_amd64.pyd",
                     "_internal/live/clone_manager.cp310-win_amd64.pyd", "_internal/config/config.yaml",
                     "_internal/env/python.exe", "_internal/env/ffmpeg/bin/ffmpeg.exe")
         manifest = build_package(runtime_source, staging, destination, required)
-        for name in ("00_开始验证.cmd", "99_停止验证.cmd"):
+        for name in ("00_开始验证.cmd", "01_环境检查.cmd", "99_停止验证.cmd"):
             target = destination / name; shutil.copy2(windows / name, target)
             manifest["files"].append({"path": name, "bytes": target.stat().st_size, "sha256": _sha256(target)})
         manifest["files"].sort(key=lambda item: item["path"])
@@ -92,11 +98,36 @@ def build_release(repository, runtime_source, destination):
         return manifest
 
 
+def refresh_release_tools(repository, destination):
+    repository = Path(repository).resolve(); destination = Path(destination).resolve()
+    manifest_path = destination / "proof/manifests/package.json"
+    if not manifest_path.is_file() or not (destination / "runtime/yunchuang_v122").is_dir():
+        raise BuildError("destination is not a built v122 proof package")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    runtime_records = [item for item in manifest.get("files", []) if str(item.get("path", "")).startswith("runtime/")]
+    with tempfile.TemporaryDirectory(prefix="v122-proof-refresh-") as raw:
+        staging = Path(raw); windows = _stage_tools(repository, staging); proof_records = []
+        for source, relative in _files(staging):
+            target = destination / "proof" / relative; target.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(source, target)
+            proof_records.append({"path": (Path("proof") / relative).as_posix(), "bytes": target.stat().st_size, "sha256": _sha256(target)})
+        for name in ("00_开始验证.cmd", "01_环境检查.cmd", "99_停止验证.cmd"):
+            target = destination / name; shutil.copy2(windows / name, target)
+            proof_records.append({"path": name, "bytes": target.stat().st_size, "sha256": _sha256(target)})
+    result = {"format": 1, "files": sorted(runtime_records + proof_records, key=lambda item: item["path"])}
+    manifest_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    return result
+
+
 def main(argv=None):
-    parser = argparse.ArgumentParser(); parser.add_argument("--runtime-source", required=True, type=Path)
-    parser.add_argument("--repository", default=Path(__file__).resolve().parents[1], type=Path); parser.add_argument("--destination", required=True, type=Path)
+    parser = argparse.ArgumentParser(); parser.add_argument("--runtime-source", type=Path)
+    parser.add_argument("--repository", default=Path(__file__).resolve().parents[1], type=Path); parser.add_argument("--destination", type=Path)
+    parser.add_argument("--refresh-existing", type=Path)
     args = parser.parse_args(argv)
-    manifest = build_release(args.repository, args.runtime_source, args.destination)
+    if args.refresh_existing:
+        manifest = refresh_release_tools(args.repository, args.refresh_existing)
+    else:
+        if not args.runtime_source or not args.destination: parser.error("--runtime-source and --destination are required for a full build")
+        manifest = build_release(args.repository, args.runtime_source, args.destination)
     print("verified files: %d" % len(manifest["files"]))
     return 0
 

@@ -144,3 +144,19 @@ def validate_audio_probe(probe):
     if not str(probe.get("codec") or "").startswith("pcm_"):
         raise ProofError("MAT_AUDIO_CODEC")
     return True
+
+
+def parse_ffprobe(data):
+    streams = data.get("streams") or []; videos = [item for item in streams if item.get("codec_type") == "video"]
+    audios = [item for item in streams if item.get("codec_type") == "audio"]
+    result = {"duration": float((data.get("format") or {}).get("duration") or 0),
+              "video_streams": len(videos), "audio_streams": len(audios),
+              "has_audio_video": bool(videos and audios)}
+    if videos:
+        item = videos[0]; rate = str(item.get("avg_frame_rate") or "0/1").split("/")
+        try: fps = float(rate[0]) / float(rate[1])
+        except (ValueError, ZeroDivisionError, IndexError): fps = 0
+        result.update(width=int(item.get("width") or 0), height=int(item.get("height") or 0), fps=fps)
+    if audios:
+        item = audios[0]; result.update(channels=int(item.get("channels") or 0), codec=str(item.get("codec_name") or ""))
+    return result

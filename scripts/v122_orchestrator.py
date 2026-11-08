@@ -1,15 +1,16 @@
 """Stage-by-stage first-proof orchestration with no shell invocation."""
 
 import hashlib
+import json
 import subprocess
 import time
 import uuid
 from pathlib import Path
 
 try:
-    from scripts.v122_proof import normalization_command
+    from scripts.v122_proof import normalization_command, parse_ffprobe, validate_audio_probe, validate_video_probe
 except ImportError:
-    from v122_proof import normalization_command
+    from v122_proof import normalization_command, parse_ffprobe, validate_audio_probe, validate_video_probe
 
 
 STAGES = ("materials", "avatar", "voice", "tts", "drive", "mp4")
@@ -36,6 +37,14 @@ def _execute(stage, command, runner):
     return round(time.time() - started, 3)
 
 
+def _probe(stage, ffprobe, path, runner):
+    command = [str(ffprobe), "-v", "error", "-show_streams", "-show_format", "-of", "json", str(path)]
+    result = runner(command, cwd=None, capture_output=True, text=True, shell=False)
+    if result.returncode: raise StageError(stage, "V122_FFPROBE_FAILED", str(result.stderr)[-1000:])
+    try: return parse_ffprobe(json.loads(result.stdout))
+    except (ValueError, TypeError) as error: raise StageError(stage, "V122_FFPROBE_INVALID", str(error))
+
+
 def run_pipeline(package_root, state, adapter, ffmpeg, runner=subprocess.run, on_update=None):
     root = Path(package_root).resolve(); run_dir = root / "runs" / Path(state["run_id"]).name
     outputs = run_dir / "outputs"; outputs.mkdir(parents=True, exist_ok=True)
@@ -52,6 +61,11 @@ def run_pipeline(package_root, state, adapter, ffmpeg, runner=subprocess.run, on
         _execute("materials", normalization_command(ffmpeg, person_source, person, "person"), runner)
         _execute("materials", normalization_command(ffmpeg, voice_source, voice, "voice"), runner)
         if not person.is_file() or not voice.is_file(): raise StageError("materials", "MAT_CONVERT_OUTPUT_MISSING")
+        ffprobe = Path(ffmpeg).with_name("ffprobe" + Path(ffmpeg).suffix)
+        try: validate_video_probe(_probe("materials", ffprobe, person, runner)); validate_audio_probe(_probe("materials", ffprobe, voice, runner))
+        except Exception as error:
+            if isinstance(error, StageError): raise
+            raise StageError("materials", str(error))
         update("materials", "passed")
         model_id = "person-" + uuid.uuid4().hex[:12]; voice_id = "voice-" + uuid.uuid4().hex[:12]
         update("avatar", "running"); seconds = _execute("avatar", adapter.avatar_preprocess(person, "第一阶段人物", model_id), runner); update("avatar", "passed", seconds=seconds)
@@ -71,6 +85,8 @@ def run_pipeline(package_root, state, adapter, ffmpeg, runner=subprocess.run, on
                "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-shortest", str(final)]
         seconds = _execute("mp4", mux, runner)
         if not final.is_file() or not final.stat().st_size: raise StageError("mp4", "V122_MP4_OUTPUT_MISSING")
+        if not _probe("mp4", ffprobe, final, runner).get("has_audio_video"):
+            raise StageError("mp4", "V122_MP4_STREAMS_MISSING")
         state["outputs"] = {"wav": "/api/media/generated.wav", "mp4": "/api/media/final.mp4",
                             "wav_sha256": wav_hash, "drive_wav_sha256": wav_hash,
                             "model_id": model_id, "voice_id": voice_id, "final_text": marked}

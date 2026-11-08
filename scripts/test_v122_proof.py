@@ -27,6 +27,10 @@ try:
     from scripts import v122_orchestrator
 except ImportError:
     v122_orchestrator = None
+try:
+    from scripts import verify_v122_package
+except ImportError:
+    verify_v122_package = None
 
 
 PROJECT = Path(__file__).resolve().parents[1]
@@ -166,6 +170,13 @@ class NormalizationTests(unittest.TestCase):
         self.assertTrue(v122_proof.validate_video_probe({"duration": 30, "width": 1080, "height": 1920, "fps": 25, "video_streams": 1}))
         self.assertTrue(v122_proof.validate_audio_probe({"duration": 15, "channels": 1, "codec": "pcm_s16le"}))
 
+    def test_parses_ffprobe_streams_for_video_audio_and_final_mp4(self):
+        video = v122_proof.parse_ffprobe({"format":{"duration":"30"},"streams":[{"codec_type":"video","width":1080,"height":1920,"avg_frame_rate":"25/1"}]})
+        audio = v122_proof.parse_ffprobe({"format":{"duration":"15"},"streams":[{"codec_type":"audio","channels":1,"codec_name":"pcm_s16le"}]})
+        final = v122_proof.parse_ffprobe({"format":{"duration":"15"},"streams":[{"codec_type":"video"},{"codec_type":"audio"}]})
+        self.assertEqual(video["video_streams"], 1); self.assertEqual(video["fps"], 25)
+        self.assertEqual(audio["codec"], "pcm_s16le"); self.assertTrue(final["has_audio_video"])
+
 
 class BuilderTests(unittest.TestCase):
     def test_builder_refuses_nonempty_destination_and_symlinks(self):
@@ -203,6 +214,34 @@ class BuilderTests(unittest.TestCase):
             paths = {item["path"] for item in manifest["files"]}
             self.assertIn("00_开始验证.cmd", paths); self.assertIn("99_停止验证.cmd", paths)
 
+    def test_verifier_detects_changed_and_missing_files(self):
+        self.assertIsNotNone(verify_v122_package)
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw); (root / "proof/manifests").mkdir(parents=True); item = root / "file.bin"; item.write_bytes(b"ok")
+            manifest = {"format": 1, "files": [{"path": "file.bin", "bytes": 2,
+                         "sha256": __import__("hashlib").sha256(b"ok").hexdigest()}]}
+            (root / "proof/manifests/package.json").write_text(json.dumps(manifest))
+            self.assertEqual(verify_v122_package.verify(root)["status"], "passed")
+            item.write_bytes(b"changed")
+            self.assertEqual(verify_v122_package.verify(root)["status"], "failed")
+            item.unlink()
+            result = verify_v122_package.verify(root)
+            self.assertEqual(result["missing"], ["file.bin"])
+
+    def test_refresh_tools_preserves_runtime_and_updates_proof_manifest(self):
+        source = Path(build_v122_proof.__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw); runtime = root / "runtime"
+            for name in ("数字人直播.exe", "_internal/start.py", "_internal/main.cp310-win_amd64.pyd",
+                         "_internal/live/clone_manager.cp310-win_amd64.pyd", "_internal/config/config.yaml",
+                         "_internal/env/python.exe", "_internal/env/ffmpeg/bin/ffmpeg.exe"):
+                path = runtime / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(b"x")
+            release = root / "release"; before = build_v122_proof.build_release(source, runtime, release)
+            runtime_records = [item for item in before["files"] if item["path"].startswith("runtime/")]
+            after = build_v122_proof.refresh_release_tools(source, release)
+            self.assertEqual(runtime_records, [item for item in after["files"] if item["path"].startswith("runtime/")])
+            self.assertEqual(verify_v122_package.verify(release)["status"], "passed")
+
 
 class AdapterTests(unittest.TestCase):
     def test_commands_use_runtime_python_and_argument_arrays(self):
@@ -228,6 +267,13 @@ class WindowsContractTests(unittest.TestCase):
         self.assertNotIn("taskkill /im", combined); self.assertNotIn("invoke-expression", combined)
         self.assertIn("stop-owned.ps1", stop)
 
+    def test_preflight_checks_gpu_cuda_media_and_disk(self):
+        root = PROJECT / "scripts/v122-proof/windows"
+        source = (root / "preflight.ps1").read_text(encoding="utf-8").lower()
+        for token in ("nvidia-smi", "torch.cuda.is_available", "onnxruntime", "ffmpeg.exe", "ffprobe.exe", "freespace", "package-integrity.json"):
+            self.assertIn(token, source)
+        self.assertNotIn("get-childitem env:", source)
+
 
 class OrchestrationTests(unittest.TestCase):
     def test_pipeline_uses_fresh_wav_for_drive_and_creates_mp4(self):
@@ -242,7 +288,13 @@ class OrchestrationTests(unittest.TestCase):
                 def speech_generate(self, *args): return ["python", "bridge", "speech-generate", *map(str,args)]
                 def avatar_drive(self, *args): return ["python", "bridge", "avatar-drive", *map(str,args)]
             def fake_run(command, **kwargs):
-                calls.append(list(map(str, command))); action = command[2] if len(command)>2 and command[1]=="bridge" else "ffmpeg"
+                calls.append(list(map(str, command)))
+                if Path(str(command[0])).name == "ffprobe":
+                    target = str(command[-1]); audio = target.endswith(".wav")
+                    streams = [{"codec_type":"audio","channels":1,"codec_name":"pcm_s16le"}] if audio else [{"codec_type":"video","width":1080,"height":1920,"avg_frame_rate":"25/1"}]
+                    if target.endswith("final.mp4"): streams.append({"codec_type":"audio","channels":1,"codec_name":"aac"})
+                    return mock.Mock(returncode=0, stdout=json.dumps({"format":{"duration":"30"},"streams":streams}), stderr="")
+                action = command[2] if len(command)>2 and command[1]=="bridge" else "ffmpeg"
                 if action in ("speech-generate", "avatar-drive") or action == "ffmpeg":
                     target = Path(command[-1]); target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(b"output-" + action.encode())
                 return mock.Mock(returncode=0, stdout="", stderr="")

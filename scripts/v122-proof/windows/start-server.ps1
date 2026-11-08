@@ -6,6 +6,8 @@ $server = Join-Path $root 'proof\scripts\v122_proof_server.py'
 $web = Join-Path $root 'proof\web'
 $state = Join-Path $root 'runs\tool-process.json'
 if (!(Test-Path -LiteralPath $python) -or !(Test-Path -LiteralPath $server)) { throw '验证运行环境不完整' }
+& (Join-Path $root 'proof\windows\preflight.ps1') -PackageRoot $root | Out-Host
+if ($LASTEXITCODE -ne 0) { throw '环境或离线包完整性检查未通过，请查看 reports\preflight' }
 New-Item -ItemType Directory -Force -Path (Split-Path $state) | Out-Null
 $process = Start-Process -FilePath $python -ArgumentList @($server,'--root',$root,'--web',$web,'--port','5157') -WorkingDirectory $root -PassThru -WindowStyle Hidden
 $details = Get-CimInstance Win32_Process -Filter "ProcessId=$($process.Id)"
