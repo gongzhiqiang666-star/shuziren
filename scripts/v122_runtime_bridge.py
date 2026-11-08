@@ -9,9 +9,17 @@ import sys
 from pathlib import Path
 
 
+def resolve_runtime(configured, executable, cwd):
+    if str(configured or "").strip():
+        return Path(configured).resolve()
+    executable = Path(executable)
+    if executable.name.lower() in {"python.exe", "pythonw.exe"} and executable.parent.name in {"env", "env_50"} and executable.parent.parent.name == "_internal":
+        return executable.parents[2]
+    return Path(cwd).resolve()
+
+
 def _runtime():
-    configured = os.environ.get("V122_RUNTIME_ROOT")
-    return Path(configured).resolve() if configured else Path.cwd().resolve()
+    return resolve_runtime(os.environ.get("V122_RUNTIME_ROOT"), sys.executable, Path.cwd())
 
 
 def _load():
@@ -38,6 +46,10 @@ def main(argv=None):
     elif args.action == "voice-create":
         manager.clone_voice_local(args.audio, args.name, args.id, "zh", False)
         result = internal / "assets/characters/voices" / args.id
+        normalized = result / "normalized_input.wav"
+        if not normalized.is_file():
+            raise RuntimeError("声音克隆未生成 normalized_input.wav")
+        shutil.copy2(normalized, result / "ref_audio.wav")
         (result / "ref_text.txt").write_text(args.transcript.strip(), encoding="utf-8")
     elif args.action == "speech-generate":
         from tools.generate_short_video.audio_synthesis import synthesize_text_to_audio

@@ -31,6 +31,10 @@ try:
     from scripts import verify_v122_package
 except ImportError:
     verify_v122_package = None
+try:
+    from scripts import v122_runtime_bridge
+except ImportError:
+    v122_runtime_bridge = None
 
 
 PROJECT = Path(__file__).resolve().parents[1]
@@ -91,7 +95,7 @@ class WebWizardTests(unittest.TestCase):
         html = (web / "index.html").read_text(encoding="utf-8")
         script = (web / "app.js").read_text(encoding="utf-8")
         for text in (
-            "开始摄像头录制", "选择已有视频", "开始麦克风录音", "选择已有WAV",
+            "开始摄像头录制", "选择已有视频", "开始麦克风录音", "选择已有音频",
             "检查并开始生成", "删除本次素材", "参考录音逐字稿", "新验证话术",
         ):
             self.assertIn(text, html)
@@ -105,6 +109,8 @@ class WebWizardTests(unittest.TestCase):
         script = (PROJECT / "scripts/v122-proof/web/app.js").read_text(encoding="utf-8")
         for state in ("idle", "countdown", "recording", "preview", "confirmed", "fallback"):
             self.assertIn(f"'{state}'", script)
+        self.assertIn("$('person-stop').disabled=enrollment.person!=='recording'", script)
+        self.assertIn("$('voice-stop').disabled=enrollment.voice!=='recording'", script)
 
 
 class ServerTests(unittest.TestCase):
@@ -153,6 +159,18 @@ class ServerTests(unittest.TestCase):
         status, _ = self.request("/api/current-run", "DELETE", {"confirm": True})
         self.assertEqual(status, 200)
 
+    def test_running_generation_cannot_be_claimed_twice_or_deleted(self):
+        store = v122_proof_server.ProofStore(Path(self.temp.name))
+        state = store.state()
+        state["materials"] = {"person": {"confirmed": True}, "voice": {"confirmed": True}}
+        state["text"] = {"reference_transcript": "参考", "new_script": "新话术"}
+        store.save(state)
+        store.claim_generation()
+        with self.assertRaisesRegex(RuntimeError, "正在运行"):
+            store.claim_generation()
+        with self.assertRaisesRegex(RuntimeError, "不能删除"):
+            store.delete_current()
+
 
 class NormalizationTests(unittest.TestCase):
     def test_builds_fixed_argument_arrays_without_shell(self):
@@ -167,6 +185,8 @@ class NormalizationTests(unittest.TestCase):
             v122_proof.validate_video_probe({"duration": 5, "width": 1920, "height": 1080, "fps": 25, "video_streams": 1})
         with self.assertRaisesRegex(v122_proof.ProofError, "MAT_AUDIO_DURATION"):
             v122_proof.validate_audio_probe({"duration": 4, "channels": 1, "codec": "pcm_s16le"})
+        with self.assertRaisesRegex(v122_proof.ProofError, "MAT_AUDIO_DURATION"):
+            v122_proof.validate_audio_probe({"duration": 16, "channels": 1, "codec": "pcm_s16le"})
         self.assertTrue(v122_proof.validate_video_probe({"duration": 30, "width": 1080, "height": 1920, "fps": 25, "video_streams": 1}))
         self.assertTrue(v122_proof.validate_audio_probe({"duration": 15, "channels": 1, "codec": "pcm_s16le"}))
 
@@ -255,6 +275,15 @@ class AdapterTests(unittest.TestCase):
         drive = adapter.avatar_drive("person-id", "fresh.wav", "result-video.mp4")
         self.assertIn("fresh.wav", drive); self.assertIn("result-video.mp4", drive)
 
+    def test_bridge_finds_runtime_from_bundled_python_and_preserves_exact_reference_pair(self):
+        self.assertIsNotNone(v122_runtime_bridge)
+        executable = Path("C:/proof/runtime/yunchuang_v122/_internal/env/python.exe")
+        self.assertEqual(v122_runtime_bridge.resolve_runtime("", executable, Path("C:/proof")),
+                         Path("C:/proof/runtime/yunchuang_v122"))
+        source = (PROJECT / "scripts/v122_runtime_bridge.py").read_text(encoding="utf-8")
+        self.assertIn('result / "normalized_input.wav"', source)
+        self.assertIn('result / "ref_audio.wav"', source)
+
 
 class WindowsContractTests(unittest.TestCase):
     def test_launchers_open_local_page_and_never_kill_all_python(self):
@@ -295,7 +324,8 @@ class OrchestrationTests(unittest.TestCase):
                     target = str(command[-1]); audio = target.endswith(".wav")
                     streams = [{"codec_type":"audio","channels":1,"codec_name":"pcm_s16le"}] if audio else [{"codec_type":"video","width":1080,"height":1920,"avg_frame_rate":"25/1"}]
                     if target.endswith("final.mp4"): streams.append({"codec_type":"audio","channels":1,"codec_name":"aac"})
-                    return mock.Mock(returncode=0, stdout=json.dumps({"format":{"duration":"30"},"streams":streams}), stderr="")
+                    duration = "15" if audio else "30"
+                    return mock.Mock(returncode=0, stdout=json.dumps({"format":{"duration":duration},"streams":streams}), stderr="")
                 action = command[2] if len(command)>2 and command[1]=="bridge" else "ffmpeg"
                 if action in ("speech-generate", "avatar-drive") or action == "ffmpeg":
                     target = Path(command[-1]); target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(b"output-" + action.encode())
@@ -309,6 +339,19 @@ class OrchestrationTests(unittest.TestCase):
             self.assertEqual(speech[-1], drive[-2])
             self.assertTrue((run / "outputs/final.mp4").is_file())
             self.assertEqual(result["stages"]["mp4"]["status"], "passed")
+
+    def test_unexpected_process_error_marks_current_stage_failed(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw); run = root / "runs/r2/materials"; run.mkdir(parents=True)
+            (run / "person.webm").write_bytes(b"person"); (run / "voice.webm").write_bytes(b"voice")
+            state = {"run_id":"r2", "materials":{"person":{"path":"materials/person.webm"},"voice":{"path":"materials/voice.webm"}},
+                     "text":{"reference_transcript":"参考","new_script":"话术"},
+                     "stages":{name:{"status":"pending","error":""} for name in v122_orchestrator.STAGES}, "outputs":{}}
+            class Adapter: pass
+            def broken(command, **kwargs): raise OSError("process unavailable")
+            result = v122_orchestrator.run_pipeline(root, state, Adapter(), "ffmpeg", broken)
+            self.assertEqual(result["stages"]["materials"]["status"], "failed")
+            self.assertEqual(result["stages"]["materials"]["error"], "V122_MATERIALS_UNEXPECTED")
 
 
 if __name__ == "__main__":

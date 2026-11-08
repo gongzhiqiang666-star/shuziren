@@ -191,7 +191,7 @@ Never invoke a shell. Convert video with fixed codec/frame/pixel-format argument
 
 - [ ] **Step 4: Implement material validation**
 
-Cover video duration 20–60 seconds, one video stream, minimum 720p, supported frame rate, and readable frames; cover WAV duration 10–30 seconds and non-empty PCM samples; reject empty transcript/new script and append a cryptographically random run marker to the new script. Return fixed errors prefixed `MAT_VIDEO_`, `MAT_AUDIO_`, or `MAT_TEXT_`; do not claim to determine authorization, face suitability, or transcript accuracy.
+Cover video duration 20–60 seconds, one video stream, minimum 720p, supported frame rate, and readable frames; cover WAV duration 10–15.5 seconds and non-empty PCM samples; reject empty transcript/new script and append a cryptographically random run marker to the new script. Return fixed errors prefixed `MAT_VIDEO_`, `MAT_AUDIO_`, or `MAT_TEXT_`; do not claim to determine authorization, face suitability, or transcript accuracy.
 
 - [ ] **Step 5: Run and commit**
 
@@ -242,7 +242,7 @@ Commit: `feat: build safe v122 offline proof package`
 
 - [ ] **Step 1: Write failing material tests**
 
-Mock `ffprobe` JSON and cover video duration 20–60 seconds, one video stream, minimum 720p, supported frame rate, and readable frames; cover WAV duration 10–30 seconds, mono/stereo PCM, no empty file; reject empty transcript/new script and append a cryptographically random run marker to the new script.
+Mock `ffprobe` JSON and cover video duration 20–60 seconds, one video stream, minimum 720p, supported frame rate, and readable frames; cover WAV duration 10–15.5 seconds, mono/stereo PCM, no empty file; reject empty transcript/new script and append a cryptographically random run marker to the new script.
 
 - [ ] **Step 2: Confirm failure**
 
@@ -436,7 +436,7 @@ Commit: `test: verify v122 offline proof toolkit`
 
 - [ ] **Step 1: Prepare authorized inputs**
 
-Use the webpage to record one 20–60 second front-facing person video and one 10–30 second clean reference recording, then provide its exact transcript and one new test script. If browser capture is unavailable, use the two file-selection fallbacks. Keep all four outside Git.
+Use the webpage to record one 20–60 second front-facing person video and one 10–15 second clean reference recording, then provide its exact transcript and one new test script. If browser capture is unavailable, use the two file-selection fallbacks. Keep all four outside Git.
 
 - [ ] **Step 2: Copy and verify the package**
 

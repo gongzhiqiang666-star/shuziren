@@ -70,6 +70,18 @@ class ProofStore:
             run_id = Path(str(state["run_id"])).name
             _atomic_json(self.runs / run_id / "state.json", state)
 
+    def claim_generation(self):
+        with self.lock:
+            state = self.state()
+            ready = all(state["materials"].get(k, {}).get("confirmed") for k in ("person", "voice")) and all(state["text"].values())
+            if not ready:
+                raise ValueError("人物、声音和文字尚未全部确认")
+            if any(item["status"] == "running" for item in state["stages"].values()):
+                raise RuntimeError("生成任务正在运行")
+            state["stages"]["materials"] = {"status": "running", "error": ""}
+            self.save(state)
+            return state
+
     def upload(self, kind, mime, stream, length):
         extension = MIME_EXTENSIONS.get(kind, {}).get(mime.split(";", 1)[0].lower())
         if extension is None:
@@ -92,6 +104,8 @@ class ProofStore:
     def delete_current(self):
         with self.lock:
             state = self.state(); target = self.runs / Path(state["run_id"]).name
+            if any(item["status"] == "running" for item in state["stages"].values()):
+                raise RuntimeError("生成任务运行中，不能删除")
             target.relative_to(self.runs); shutil.rmtree(target)
             self.current_path.unlink(missing_ok=True)
 
@@ -170,11 +184,8 @@ def make_handler(store, web_root):
                     state = store.state(); state["text"] = {k: v.strip() for k, v in data.items()}; store.save(state)
                     return self._json(200, state)
                 if method == "POST" and path == "/api/generate":
-                    state = store.state()
-                    ready = all(state["materials"].get(k, {}).get("confirmed") for k in ("person", "voice")) and all(state["text"].values())
-                    if not ready: return self._error(409, "人物、声音和文字尚未全部确认")
-                    if any(item["status"] == "running" for item in state["stages"].values()):
-                        return self._error(409, "生成任务正在运行")
+                    try: state = store.claim_generation()
+                    except (ValueError, RuntimeError) as error: return self._error(409, str(error))
                     runtime = store.root / "runtime/yunchuang_v122"
                     bridge = store.root / "proof/scripts/v122_runtime_bridge.py"
                     ffmpeg = runtime / "_internal/env/ffmpeg/bin/ffmpeg.exe"
@@ -187,7 +198,9 @@ def make_handler(store, web_root):
                     return self._json(202, state)
                 if method == "DELETE" and path == "/api/current-run":
                     if self._body_json() != {"confirm": True}: raise ValueError("删除需要明确确认")
-                    store.delete_current(); return self._json(200, {"deleted": True})
+                    try: store.delete_current()
+                    except RuntimeError as error: return self._error(409, str(error))
+                    return self._json(200, {"deleted": True})
                 return self._error(404, "not found")
             except (ValueError, OSError, json.JSONDecodeError) as error: self._error(400, str(error))
     return Handler

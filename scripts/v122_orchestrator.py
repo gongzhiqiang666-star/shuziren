@@ -30,7 +30,7 @@ def _sha256(path):
 
 def _execute(stage, command, runner):
     started = time.time()
-    result = runner(command, cwd=None, capture_output=True, text=True, shell=False)
+    result = runner(command, cwd=None, capture_output=True, text=True, shell=False, timeout=7200)
     if result.returncode:
         detail = str(getattr(result, "stderr", ""))[-1000:]
         raise StageError(stage, "V122_" + stage.upper() + "_FAILED", detail)
@@ -39,7 +39,7 @@ def _execute(stage, command, runner):
 
 def _probe(stage, ffprobe, path, runner):
     command = [str(ffprobe), "-v", "error", "-show_streams", "-show_format", "-of", "json", str(path)]
-    result = runner(command, cwd=None, capture_output=True, text=True, shell=False)
+    result = runner(command, cwd=None, capture_output=True, text=True, shell=False, timeout=60)
     if result.returncode: raise StageError(stage, "V122_FFPROBE_FAILED", str(result.stderr)[-1000:])
     try: return parse_ffprobe(json.loads(result.stdout))
     except (ValueError, TypeError) as error: raise StageError(stage, "V122_FFPROBE_INVALID", str(error))
@@ -53,6 +53,7 @@ def run_pipeline(package_root, state, adapter, ffmpeg, runner=subprocess.run, on
         if seconds is not None: value["seconds"] = seconds
         state["stages"][stage] = value
         if on_update: on_update(state)
+    current_stage = "materials"
     try:
         update("materials", "running")
         person_source = run_dir / state["materials"]["person"]["path"]
@@ -68,19 +69,19 @@ def run_pipeline(package_root, state, adapter, ffmpeg, runner=subprocess.run, on
             raise StageError("materials", str(error))
         update("materials", "passed")
         model_id = "person-" + uuid.uuid4().hex[:12]; voice_id = "voice-" + uuid.uuid4().hex[:12]
-        update("avatar", "running"); seconds = _execute("avatar", adapter.avatar_preprocess(person, "第一阶段人物", model_id), runner); update("avatar", "passed", seconds=seconds)
+        current_stage = "avatar"; update("avatar", "running"); seconds = _execute("avatar", adapter.avatar_preprocess(person, "第一阶段人物", model_id), runner); update("avatar", "passed", seconds=seconds)
         transcript = state["text"]["reference_transcript"]
-        update("voice", "running"); seconds = _execute("voice", adapter.voice_create(voice, transcript, "第一阶段音色", voice_id), runner); update("voice", "passed", seconds=seconds)
+        current_stage = "voice"; update("voice", "running"); seconds = _execute("voice", adapter.voice_create(voice, transcript, "第一阶段音色", voice_id), runner); update("voice", "passed", seconds=seconds)
         marked = state["text"]["new_script"].strip() + "。验证编号" + uuid.uuid4().hex[:6]
         wav = outputs / "generated.wav"; before = wav.stat().st_mtime_ns if wav.exists() else 0
-        update("tts", "running"); seconds = _execute("tts", adapter.speech_generate(voice_id, transcript, marked, wav), runner)
+        current_stage = "tts"; update("tts", "running"); seconds = _execute("tts", adapter.speech_generate(voice_id, transcript, marked, wav), runner)
         if not wav.is_file() or not wav.stat().st_size or wav.stat().st_mtime_ns <= before: raise StageError("tts", "V122_TTS_OUTPUT_NOT_FRESH")
         wav_hash = _sha256(wav); update("tts", "passed", seconds=seconds)
         raw_video = outputs / "avatar-video.mp4"
-        update("drive", "running"); seconds = _execute("drive", adapter.avatar_drive(model_id, wav, raw_video), runner)
+        current_stage = "drive"; update("drive", "running"); seconds = _execute("drive", adapter.avatar_drive(model_id, wav, raw_video), runner)
         if not raw_video.is_file() or not raw_video.stat().st_size: raise StageError("drive", "V122_DRIVE_OUTPUT_MISSING")
         update("drive", "passed", seconds=seconds)
-        final = outputs / "final.mp4"; update("mp4", "running")
+        current_stage = "mp4"; final = outputs / "final.mp4"; update("mp4", "running")
         mux = [str(ffmpeg), "-nostdin", "-v", "error", "-y", "-i", str(raw_video), "-i", str(wav),
                "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-shortest", str(final)]
         seconds = _execute("mp4", mux, runner)
@@ -93,3 +94,5 @@ def run_pipeline(package_root, state, adapter, ffmpeg, runner=subprocess.run, on
         update("mp4", "passed", seconds=seconds); return state
     except StageError as error:
         update(error.stage, "failed", error.code); return state
+    except Exception:
+        update(current_stage, "failed", "V122_" + current_stage.upper() + "_UNEXPECTED"); return state

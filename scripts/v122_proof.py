@@ -137,7 +137,7 @@ def validate_video_probe(probe):
 
 def validate_audio_probe(probe):
     duration = float(probe.get("duration") or 0)
-    if duration < 10 or duration > 30:
+    if duration < 10 or duration > 15.5:
         raise ProofError("MAT_AUDIO_DURATION")
     if int(probe.get("channels") or 0) not in (1, 2):
         raise ProofError("MAT_AUDIO_CHANNELS")
