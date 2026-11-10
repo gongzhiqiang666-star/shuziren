@@ -25,6 +25,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call('/api/taobao/start', {'live_id':'123456'})[0], 409)
         self.assertEqual(self.call('/api/taobao/login', {}, **{'X-Console-Token':'invalid'})[0], 403)
         self.assertEqual(self.call('/api/taobao/stop', {})[0], 200)
+        self.assertEqual(self.call('/api/taobao/reply', {'comment_id':1})[0], 400)
+        self.assertEqual(self.call('/api/taobao/reply', {'capture_id':'old', 'comment_id':1})[0], 409)
 
     def test_live_routes_reject_stale_or_unauthorized_actions(self):
         self.assertEqual(self.call('/api/live/state')[1], {'session': {'status': 'idle'}})

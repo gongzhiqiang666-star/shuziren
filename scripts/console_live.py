@@ -22,6 +22,7 @@ class ConsoleLive:
         self.cancel = threading.Event()
         self.status = {'status': 'idle'}
         self.rotation = None
+        self.reply_session = None
         self.completed = SimpleQueue()
 
     def state(self):
@@ -42,6 +43,7 @@ class ConsoleLive:
             session_id = uuid.uuid4().hex
             self.status = {'id': session_id, 'status': 'preparing', 'audio_device': audio_device, 'frames': 0}
             self.rotation = None
+            self.reply_session = None
             self.completed = SimpleQueue()
             self.thread = threading.Thread(target=self._run, args=(session_id, audio_device), name='console-live')
             self.thread.start()
@@ -168,6 +170,16 @@ class ConsoleLive:
                 raise Conflict(str(error)) from error
             return self.state()
 
+    def reply_context(self):
+        with self.lock:
+            if self.status['status'] != 'running' or self.session is None:
+                raise Conflict('请先启动本机场次')
+            control = self.session.control_state()
+            if control['manual']:
+                raise Conflict('手动接管中，暂不播报评论回复')
+            return (self.status['id'], control['control_revision'], self.ingress.context['voice_id'],
+                    self.tts.products.get(self.ingress.context['product_id']))
+
     def configure_rotation(self, session_id, product_ids):
         with self.lock:
             if self.status.get('id') != session_id or self.status['status'] != 'running' or self.session is None:
@@ -195,7 +207,7 @@ class ConsoleLive:
                 self._record_completed()
                 rotation = self.rotation
                 control = self.session.control_state()
-                if pending is None and (not rotation or rotation['task_id'] or control['manual'] or self.session.queue_full()):
+                if pending is None and (not rotation or rotation['task_id'] or control['manual'] or self.reply_session or self.session.queue_full()):
                     continue
                 try:
                     state = self.tts.state()
@@ -227,13 +239,18 @@ class ConsoleLive:
                     self.status.update(rotation_products=[], rotation_error=str(error))
                     pending = None
 
-    def enqueue(self, session_id, task_id, *, priority=False, manual_revision=None, rotation_item=None):
+    def enqueue(self, session_id, task_id, *, priority=False, manual_revision=None, rotation_item=None, reply_guard=None):
         with self.lock:
             if self.status.get('id') != session_id or self.status['status'] != 'running' or self.session is None:
                 raise Conflict('场次已变化或尚未就绪')
             if self.session.queue_full(manual_revision):
                 raise Conflict('待播队列已满')
             control = self.session.control_state()
+            if reply_guard is not None and (reply_guard[0].is_set() or reply_guard[1] != control['control_revision']):
+                raise Conflict('评论回复已失效')
+            task = self.tts.state()
+            if task and task['id'] == task_id and task.get('kind') == 'reply' and reply_guard is None:
+                raise Conflict('评论回复只在原场次安排播报')
             if manual_revision is None and control['manual']:
                 raise Conflict('手动接管中，请使用手动口播')
             if manual_revision is not None and (not control['manual'] or manual_revision != control['control_revision']):
@@ -243,7 +260,7 @@ class ConsoleLive:
             while utterance is None:
                 utterance = self.assembler.push(self.ingress.take(timeout=2))
             try:
-                self.session.submit(utterance, priority=priority, manual_revision=manual_revision)
+                self.session.submit(utterance, priority=priority, manual_revision=manual_revision, reply_guard=reply_guard)
             except Full:
                 utterance.path.unlink(missing_ok=True)
                 raise Conflict('待播队列已满') from None

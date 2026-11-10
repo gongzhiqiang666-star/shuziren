@@ -19,6 +19,7 @@ from scripts.voice_store import VoiceStore, VoiceError
 from scripts.avatar_store import AvatarStore, AvatarError
 from scripts.console_live import ConsoleLive
 from scripts.console_taobao import ConsoleTaobao
+from scripts.console_comment_reply import ConsoleCommentReply
 
 WEB = Path(__file__).parent / "local-console"
 
@@ -80,6 +81,7 @@ def create_server(store, port=None):
     render_manager = None
     live_manager = None
     taobao = ConsoleTaobao(store.directory)
+    replies = ConsoleCommentReply()
     tasks_closed = False
     def live_label():
         status = live_manager.state()['status'] if live_manager else 'idle'
@@ -97,6 +99,7 @@ def create_server(store, port=None):
         nonlocal tasks_closed
         with lock:
             tasks_closed = True
+            replies.close()
             taobao.close()
             if live_manager is not None: live_manager.close()
             if task_manager is not None: task_manager.close()
@@ -189,7 +192,7 @@ def create_server(store, port=None):
                 if path == '/api/live/state':
                     return self.respond(200, {'session': live_manager.state() if live_manager else {'status': 'idle'}})
                 if path == '/api/taobao/state':
-                    return self.respond(200, {'capture': taobao.state()})
+                    return self.respond(200, {'capture': taobao.state(), 'reply': replies.state()})
                 if path == '/api/live/devices':
                     try:
                         import sounddevice
@@ -284,6 +287,12 @@ def create_server(store, port=None):
                     raise ConfigError("请求必须为对象")
                 path = urlsplit(self.path).path
                 with lock:
+                    if path == '/api/taobao/reply':
+                        if set(value) != {'capture_id', 'comment_id'} or not isinstance(value['capture_id'], str) or type(value['comment_id']) is not int or value['comment_id'] < 1:
+                            raise ProductError('请选择有效评论')
+                        if live_manager is None:
+                            raise Conflict('请先启动本机场次')
+                        return self.respond(202, {'reply': replies.start(taobao, live_manager, value['capture_id'], value['comment_id'])})
                     if path in {'/api/taobao/login', '/api/taobao/start', '/api/taobao/stop'}:
                         if path.endswith('/start'):
                             if set(value) != {'live_id'}:

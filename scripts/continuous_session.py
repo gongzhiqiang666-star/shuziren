@@ -24,7 +24,7 @@ class ContinuousSession:
         self.frames_written=0;self.started=threading.Event();self.finished=threading.Event();self.consumer_thread=None
         self.submit_costs=deque(maxlen=64)
 
-    def submit(self,utterance,*,priority=False,manual_revision=None):
+    def submit(self,utterance,*,priority=False,manual_revision=None,reply_guard=None):
         if not isinstance(utterance,Utterance) or utterance.session_id!=self.session_id or utterance.path.resolve().parent!=self.root:
             raise ValueError('Owned utterance for this session required')
         with self.lease_lock:
@@ -40,6 +40,7 @@ class ContinuousSession:
             self.ready.put_nowait((rank,self.submission_order,utterance))
             self.submission_order+=1
             self.leases[utterance.task_id]={'path':utterance.path,'model':False,'audio':False}
+            if reply_guard is not None:self.leases[utterance.task_id]['reply_guard']=reply_guard
 
     def control_state(self):
         with self.lease_lock:
@@ -86,15 +87,22 @@ class ContinuousSession:
 
     def _next_utterance(self):
         with self.lease_lock:
-            try:
+            while not self.ready.empty():
                 entry=self.ready.get_nowait()
                 self.ready.task_done()
-            except queue.Empty:
-                return None
-            if self.manual and entry[0]!=-1:
-                self.ready.put_nowait(entry)
-                return None
-            return entry[2]
+                lease=self.leases[entry[2].task_id]
+                guard=lease.get('reply_guard')
+                if guard is not None:
+                    cancelled,revision,deadline=guard
+                    if cancelled.is_set() or revision!=self.control_revision or time.monotonic()>=deadline:
+                        lease['path'].unlink(missing_ok=True)
+                        del self.leases[entry[2].task_id]
+                        continue
+                if self.manual and entry[0]!=-1:
+                    self.ready.put_nowait(entry)
+                    break
+                return entry[2]
+            return None
 
     def _release(self,source_id,part):
         with self.lease_lock:

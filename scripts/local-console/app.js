@@ -481,17 +481,26 @@ function renderTaobao() {
 async function loadTaobao() {
   clearTimeout(taobaoTimer);
   if (consoleClosed) return;
-  taobaoState = (await request('/api/taobao/state')).capture;
+  const {capture, reply} = await request('/api/taobao/state');
+  taobaoState = capture;
   const labels = {idle:'等待登录或采集',login:'请在浏览器完成登录',signed_in:'登录状态已保存',connecting:'正在连接场次',capturing:`已采集 ${taobaoState.count} 条新评论`,stopping:'正在停止',stopped:'已停止',failed:'操作失败',login_required:'请重新登录'};
   $('taobao-status').textContent = labels[taobaoState.status];
   $('taobao-error').textContent = taobaoState.error || '';
+  const replyLabels = {generating:'正在生成回复',synthesizing:'正在合成回复语音',queued:'回复已加入优先队列',cancelled:'回复已取消',failed:'回复失败'};
+  $('taobao-reply').textContent = [replyLabels[reply.status], reply.text || reply.error].filter(Boolean).join(' · ');
   $('taobao-comments').replaceChildren(...taobaoState.comments.map(comment => {
     const item = document.createElement('li');
     item.textContent = `${comment.nickname} ${comment.time} · ${comment.content}`;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = '生成并播报';
+    button.disabled = taobaoState.status !== 'capturing' || ['generating','synthesizing'].includes(reply.status);
+    button.addEventListener('click', () => taobaoAction('/api/taobao/reply', {capture_id:capture.capture_id,comment_id:comment.id}));
+    item.append(' ', button);
     return item;
   }));
   renderTaobao();
-  if (['login','connecting','capturing','stopping'].includes(taobaoState.status)) {
+  if (['login','connecting','capturing','stopping'].includes(taobaoState.status) || ['generating','synthesizing'].includes(reply.status)) {
     taobaoTimer = setTimeout(() => loadTaobao().catch(error => {$('taobao-error').textContent = error.message;}), 1000);
   }
 }

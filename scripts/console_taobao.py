@@ -3,6 +3,7 @@ from collections import deque
 import logging
 from pathlib import Path
 import threading
+import uuid
 
 from recovered.taobao_control_capture import TaobaoControlDanmuCapture
 from recovered.taobao_live_control import TaobaoLiveControl, TaobaoLoginRequired, taobao_storage_path
@@ -19,13 +20,14 @@ class ConsoleTaobao:
         self.status = 'idle'
         self.error = None
         self.live_id = None
+        self.capture_id = None
         self.count = 0
         self.comments = deque(maxlen=50)
         self.closed = False
 
     def state(self):
         with self.lock:
-            return {'status': self.status, 'error': self.error, 'live_id': self.live_id,
+            return {'status': self.status, 'error': self.error, 'live_id': self.live_id, 'capture_id': self.capture_id,
                     'saved_login': self.storage.is_file(), 'count': self.count,
                     'comments': list(self.comments)}
 
@@ -43,8 +45,9 @@ class ConsoleTaobao:
                 raise Conflict('请先等待当前淘宝操作结束')
             if live_id is not None and not self.storage.is_file():
                 raise Conflict('请先登录淘宝')
-            self.cancel.clear()
+            self.cancel = threading.Event()
             self.live_id = live_id
+            self.capture_id = uuid.uuid4().hex if live_id is not None else None
             self.count = 0
             self.comments.clear()
             self.error = None
@@ -97,6 +100,16 @@ class ConsoleTaobao:
                 self.capture = None
                 self.status = 'stopped' if self.cancel.is_set() and error is None else final
                 self.error = error
+                self.cancel.set()
+
+    def reply_context(self, capture_id, comment_id):
+        with self.lock:
+            if self.status != 'capturing' or self.cancel.is_set() or self.capture_id != capture_id:
+                raise Conflict('评论采集已停止')
+            comment = next((item for item in self.comments if item['id'] == comment_id), None)
+            if comment is None:
+                raise Conflict('评论已离开当前采集列表')
+            return dict(comment), self.cancel
 
     def stop(self):
         with self.lock:

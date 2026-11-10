@@ -35,7 +35,7 @@ class TTSTasks:
                     product=self.products.get(self.task['product_id'])
                     voice=self.voices.get(self.task['voice_id'])
                     valid=(product['version']==self.task['product_version']
-                        and self.products.selected_script(product['id'])==self.task['script_id']
+                        and (self.task.get('kind')=='reply' or self.products.selected_script(product['id'])==self.task['script_id'])
                         and self.voices.selected()==voice['id']
                         and voice['audio_sha256']==self.task['voice_audio_sha256']
                         and voice['text_sha256']==self.task['voice_text_sha256'])
@@ -122,17 +122,32 @@ class TTSTasks:
             if type(speed) not in (int,float) or not .5<=speed<=2 or type(use_cache) is not bool:
                 raise ProductError('语速或缓存参数无效')
             if not isinstance(language,str) or not language: raise ProductError('请选择语言')
-            process=self._start_worker()
-            self.task={'id':str(uuid.uuid4()),'status':'running','product_id':product_id,
-                'product_version':product['version'],'script_id':script_id,'voice_id':voice_id}
-            self.task.update(voice_audio_sha256=voice['audio_sha256'],voice_text_sha256=voice['text_sha256'])
-            self.task.update(product_title=product['title'],speed=speed,language=language,use_cache=use_cache)
-            self._save()
-            request={'voice_id':voice_id,'text':script['text'],'speed':speed,'language':language,'use_cache':use_cache}
-            task_id=self.task['id']
-            self.monitor=threading.Thread(target=self._run,args=(process,request,product,voice,task_id),daemon=True)
-            self.monitor.start()
-            return dict(self.task)
+            return self._submit(product, script_id, voice, script['text'], speed, language, use_cache)
+
+    def start_reply(self, product, voice_id, text):
+        with self.lock:
+            if self.closed or (self.task and self.task['status']=='running'):
+                raise Conflict('语音合成正在占用，请稍后重试')
+            if self.products.get(product['id']) != product or self.voices.selected() != voice_id:
+                raise Conflict('回复所用商品或音色已变化')
+            if not isinstance(text,str) or not 1<=len(text.strip())<=240:
+                raise ProductError('回复长度须为1至240字')
+            voice=self.voices.get(voice_id)
+            return self._submit(product, 'reply-'+uuid.uuid4().hex, voice, text, 1., 'zh-CN', False, kind='reply')
+
+    def _submit(self, product, script_id, voice, text, speed, language, use_cache, *, kind=None):
+        process=self._start_worker()
+        self.task={'id':str(uuid.uuid4()),'status':'running','product_id':product['id'],
+            'product_version':product['version'],'script_id':script_id,'voice_id':voice['id']}
+        if kind:self.task['kind']=kind
+        self.task.update(voice_audio_sha256=voice['audio_sha256'],voice_text_sha256=voice['text_sha256'])
+        self.task.update(product_title=product['title'],speed=speed,language=language,use_cache=use_cache)
+        self._save()
+        request={'voice_id':voice['id'],'text':text,'speed':speed,'language':language,'use_cache':use_cache}
+        task_id=self.task['id']
+        self.monitor=threading.Thread(target=self._run,args=(process,request,product,voice,task_id),daemon=True)
+        self.monitor.start()
+        return dict(self.task)
 
     def _run(self,process,request,product,voice,task_id):
         timer=threading.Timer(180,self._expire,args=(task_id,));timer.daemon=True;timer.start()
@@ -148,7 +163,7 @@ class TTSTasks:
             with self.lock:
                 if self.task['id']!=task_id or self.task['status']!='running' or self.closed: return
                 if (self.products.get(product['id'])!=product
-                    or self.products.selected_script(product['id'])!=self.task['script_id']
+                    or (self.task.get('kind')!='reply' and self.products.selected_script(product['id'])!=self.task['script_id'])
                     or self.voices.get(voice['id'])!=voice or self.voices.selected()!=voice['id']):
                     raise Conflict('商品、选用稿或音色已变化，旧音频不再作为当前结果')
                 output=Path(result['output']).resolve()
