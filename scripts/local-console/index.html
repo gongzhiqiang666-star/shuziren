@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>数字人工作台</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body><main><header><span>数字人工作台</span><small>本地控制台</small></header>
+<section><h1>启动准备</h1><p>先配置本机资源，再检查运行所需文件。</p><div class="status">直播状态：<strong id="live-status">正在读取</strong></div>
+<form id="settings"><label for="runtime-root">运行资源目录</label><input id="runtime-root" placeholder="选择已有运行包的完整路径" autocomplete="off"><p class="hint">填写 yunchuang_v122 或其 _internal 目录的绝对路径。仅检查文件，不修改原包。</p>
+<label for="port">控制台端口</label><input id="port" type="number" min="1024" max="65535" required><p class="hint">修改端口后，下次启动生效。</p>
+<div class="actions"><button type="submit">保存配置</button><button id="preflight" type="button" class="secondary">检查资源</button><button id="reload" type="button" class="secondary">重新读取</button></div></form>
+<p id="message" role="status" aria-live="polite"></p><p id="error" role="alert"></p></section>
+<section><h2>检查结果</h2><p id="scope">尚未检查资源。</p><ul id="checks"></ul></section>
+<footer><p id="data-directory"></p><p>日志保存在配置目录的 console.log。当前入口用于启动准备；直播能力按后续任务接入。</p></footer></main></body></html>
