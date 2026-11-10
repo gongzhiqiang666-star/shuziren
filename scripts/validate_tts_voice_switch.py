@@ -17,6 +17,7 @@ def main():
     parser.add_argument('--second-reference', required=True, type=Path)
     parser.add_argument('--report-directory', required=True, type=Path)
     args = parser.parse_args()
+    args.second_reference = args.second_reference.resolve()
     root = (args.report_directory / ('run-' + uuid.uuid4().hex)).resolve()
     root.mkdir(parents=True)
     report = {'status': 'failed', 'outputs': [], 'listening_verified': False,
