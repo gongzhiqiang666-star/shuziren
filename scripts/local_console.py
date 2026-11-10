@@ -108,19 +108,31 @@ def create_server(store, port=None):
         configured_port = 5158  # Serve the visible error; never overwrite corrupt settings.
 
     class Handler(BaseHTTPRequestHandler):
+        def handle(self):
+            try:
+                super().handle()
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                self.close_connection = True
+                logging.info('HTTP客户端已断开，请求已结束')
+
         def log_message(self, fmt, *args):
             logging.info("HTTP %s", fmt % args)
 
         def respond(self, status, body, content_type="application/json; charset=utf-8"):
             content = json.dumps(body, ensure_ascii=False).encode("utf-8") if isinstance(body, dict) else body
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(content)))
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'")
-            self.end_headers()
-            self.wfile.write(content)
+            try:
+                self.send_response(status)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(content)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'")
+                self.end_headers()
+                self.wfile.write(content)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                # Navigation/exit can cancel a preview while its hashes are checked.
+                # Do not reinterpret a disconnected client as a media error or reply twice.
+                logging.info('HTTP客户端已断开，响应已停止')
 
         def trusted_host(self):
             return self.headers.get("Host") == "127.0.0.1:%d" % self.server.server_port

@@ -31,3 +31,5 @@
 保留TensorRT关于INT64转换和FP16小权重的精度警告。短片整链总耗时仍超过音频时长，不能宣称实时25fps；一次模型推理耗时也不代表直播吞吐。TRT本次缓存启动总耗时未优于CUDA短片基线，当前不切换产品默认后端。后续需常驻预热、持续音频、编码/输出全链测量，且在50条语料前冻结画质/延迟验收方法。不会反复跑同一短片代替开发。
 
 独立安装和依赖许可仍按V09处理。本机资产、引擎缓存、权重、媒体、profiling与配置均不提交Git。
+
+退出回归补充：浏览器取消预览请求时，Windows连接中止曾触发响应二次报错；另一次真实RST实验定位到请求行读取阶段的连接重置。现仅对明确的BrokenPipe/ConnectionReset/ConnectionAborted处理正常断连，业务/素材错误仍显式返回。14项HTTP回归通过；补充真实socket强制RST后下一请求成功、无Traceback、服务线程正常关闭，见`logs/validation/v04-avatar-console/disconnect-audit.json`。
