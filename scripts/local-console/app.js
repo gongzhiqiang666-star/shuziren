@@ -407,7 +407,10 @@ function renderLiveButtons() {
   const active = ['preparing','running','stopping'].includes(liveSession.status);
   $('live-start').disabled = consoleClosed || liveBusy || active || !$('live-audio').value;
   $('live-stop').disabled = consoleClosed || liveBusy || !['preparing','running'].includes(liveSession.status);
-  $('live-enqueue').disabled = consoleClosed || liveBusy || liveSession.status !== 'running';
+  $('live-control').disabled = consoleClosed || liveBusy || liveSession.status !== 'running';
+  $('live-control').textContent = liveSession.manual ? '恢复自动调度' : '手动接管';
+  $('live-speak').disabled = $('live-control').disabled || !liveSession.manual;
+  $('live-enqueue').disabled = $('live-control').disabled || !!liveSession.manual;
   $('live-insert').disabled = $('live-enqueue').disabled;
   $('live-audio').disabled = active || liveBusy;
 }
@@ -442,9 +445,15 @@ $('live-stop').addEventListener('click', () => liveAction(() => request('/api/li
 async function enqueueLive(path) {
   requireSavedProduct();
   if (ttsState?.status !== 'succeeded' || ttsState.id !== ttsPreviewTask) throw new Error('请先合成当前话术的语音');
-  await request(path,{session_id:liveSession.id,task_id:ttsState.id});
+  const value = {session_id:liveSession.id,task_id:ttsState.id};
+  if (path === '/api/live/speak') value.revision = liveSession.control_revision;
+  await request(path,value);
 }
 $('live-enqueue').addEventListener('click', () => liveAction(() => enqueueLive('/api/live/enqueue')));
 $('live-insert').addEventListener('click', () => liveAction(() => enqueueLive('/api/live/insert')));
+$('live-speak').addEventListener('click', () => liveAction(() => enqueueLive('/api/live/speak')));
+$('live-control').addEventListener('click', () => liveAction(() => request('/api/live/control', {
+  session_id:liveSession.id, manual:!liveSession.manual, revision:liveSession.control_revision
+})));
 window.addEventListener('pagehide', () => clearTimeout(liveTimer));
 action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender);await loadLive(); });

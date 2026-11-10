@@ -12,6 +12,38 @@ from scripts.speech_assembler import Utterance
 
 
 class SessionLifecycleTests(unittest.TestCase):
+    def test_takeover_reserves_space_and_discards_unclaimed_manual_work_on_resume(self):
+        for cycle in range(20):
+            with self.subTest(cycle=cycle), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                session = ContinuousSession('s', Mock(), Mock(), Mock(), root)
+
+                def utterance(task_id):
+                    path = root / (task_id + '.wav')
+                    path.touch()
+                    return Utterance('s', task_id, 'script', path, 960, 'wav', 'pcm')
+
+                for index in range(4):
+                    session.submit(utterance(str(index)))
+                session.set_manual(True, 0)
+                self.assertIsNone(session._next_utterance())
+                with self.assertRaises(ValueError):
+                    session.submit(utterance('late-auto'), priority=True)
+                manual = utterance('manual')
+                session.submit(manual, manual_revision=1)
+                self.assertEqual(session._next_utterance(), manual)
+                pending = utterance('pending-manual')
+                session.submit(pending, manual_revision=1)
+                session.set_manual(False, 1)
+                self.assertFalse(pending.path.exists())
+                self.assertTrue(manual.path.exists())
+                with self.assertRaises(ValueError):
+                    session.submit(utterance('late-manual'), manual_revision=1)
+                with self.assertRaises(ValueError):
+                    session.set_manual(True, 1)
+                self.assertEqual([session._next_utterance().task_id for _ in range(4)], ['0', '1', '2', '3'])
+                session.stop()
+
     def test_priority_utterances_run_after_current_and_before_waiting_fifo(self):
         expected = ['current', 'urgent-1', 'urgent-2', 'normal-1', 'normal-2']
         for cycle in range(20):

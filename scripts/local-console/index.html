@@ -10,6 +10,8 @@
 <section id="live-panel"><h2>本机场次</h2><label for="live-audio">音频输出设备</label><select id="live-audio"><option value="">请选择设备</option></select>
 <div class="actions"><button id="live-devices" class="secondary" type="button">读取设备</button><button id="live-start" type="button" disabled>启动输出</button><button id="live-enqueue" type="button" disabled>加入已合成语音</button><button id="live-stop" class="secondary" type="button" disabled>停止输出</button></div>
 <button id="live-insert" type="button" disabled>优先播报已合成语音</button><p class="hint">优先播报在当前处理的语音之后开始。</p>
+<div class="actions"><button id="live-control" type="button" disabled>手动接管</button><button id="live-speak" type="button" disabled>手动播报已合成语音</button></div>
+<p class="hint">接管后暂停调度普通待播语音。恢复时继续普通队列，并取消尚未开始的手动播报。</p>
 <p id="live-detail" role="status"></p><p id="live-error" role="alert"></p></section>
 <section id="products-panel"><h2>商品与话术</h2><p>商品编号用于兼容原项目，不代表排列顺序。保存话术前请先保存商品修改。</p>
 <label for="product-list">已保存商品</label><select id="product-list"><option value="">请选择商品</option></select>

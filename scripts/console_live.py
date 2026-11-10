@@ -26,7 +26,7 @@ class ConsoleLive:
         with self.lock:
             state = dict(self.status)
             if self.session is not None:
-                state['pending'] = self.session.ready.qsize()
+                state.update(self.session.control_state())
             return state
 
     def start(self, audio_device):
@@ -132,18 +132,33 @@ class ConsoleLive:
             with self.lock:
                 self.status.update(status='failed' if error else 'stopped', error=error)
 
-    def enqueue(self, session_id, task_id, *, priority=False):
+    def set_manual(self, session_id, enabled, revision):
         with self.lock:
             if self.status.get('id') != session_id or self.status['status'] != 'running' or self.session is None:
                 raise Conflict('场次已变化或尚未就绪')
-            if self.session.ready.full():
+            try:
+                self.session.set_manual(enabled, revision)
+            except ValueError as error:
+                raise Conflict(str(error)) from error
+            return self.state()
+
+    def enqueue(self, session_id, task_id, *, priority=False, manual_revision=None):
+        with self.lock:
+            if self.status.get('id') != session_id or self.status['status'] != 'running' or self.session is None:
+                raise Conflict('场次已变化或尚未就绪')
+            if self.session.queue_full(manual_revision):
                 raise Conflict('待播队列已满')
+            control = self.session.control_state()
+            if manual_revision is None and control['manual']:
+                raise Conflict('手动接管中，请使用手动口播')
+            if manual_revision is not None and (not control['manual'] or manual_revision != control['control_revision']):
+                raise Conflict('手动接管状态已变化，请刷新')
             self.ingress.capture(task_id)
             utterance = None
             while utterance is None:
                 utterance = self.assembler.push(self.ingress.take(timeout=2))
             try:
-                self.session.submit(utterance, priority=priority)
+                self.session.submit(utterance, priority=priority, manual_revision=manual_revision)
             except Full:
                 utterance.path.unlink(missing_ok=True)
                 raise Conflict('待播队列已满') from None

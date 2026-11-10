@@ -16,23 +16,68 @@ class ContinuousSession:
     def __init__(self,session_id,client,receiver,sink,source_directory,on_source_complete=None,on_present=None,on_started=None):
         self.session_id=session_id;self.client=client;self.receiver=receiver;self.sink=sink
         self.root=Path(source_directory).resolve();self.clock=SampleTimeline(session_id)
-        self.ready=queue.PriorityQueue(maxsize=4);self.submission_order=0
+        self.ready=queue.PriorityQueue(maxsize=5);self.submission_order=0
+        self.manual=False;self.control_revision=0
         self.stop_event=threading.Event();self.producer=None;self.pacer=None;self.errors=[]
         self.on_source_complete=on_source_complete;self.on_present=on_present;self.on_started=on_started
         self.leases={};self.lease_lock=threading.RLock();self.pcm=PCMTimeline(session_id,self._audio_done)
         self.frames_written=0;self.started=threading.Event();self.finished=threading.Event();self.consumer_thread=None
         self.submit_costs=deque(maxlen=64)
 
-    def submit(self,utterance,*,priority=False):
+    def submit(self,utterance,*,priority=False,manual_revision=None):
         if not isinstance(utterance,Utterance) or utterance.session_id!=self.session_id or utterance.path.resolve().parent!=self.root:
             raise ValueError('Owned utterance for this session required')
         with self.lease_lock:
             if self.stop_event.is_set():raise RuntimeError('Continuous session stopped')
             if utterance.task_id in self.leases:raise ValueError('Utterance already pending')
             if type(priority) is not bool:raise ValueError('Priority must be a boolean')
-            self.ready.put_nowait((0 if priority else 1,self.submission_order,utterance))
+            if manual_revision is not None and (not self.manual or manual_revision!=self.control_revision):
+                raise ValueError('手动接管状态已变化')
+            if manual_revision is None and self.manual:
+                raise ValueError('手动接管中，请使用手动口播')
+            if self.queue_full(manual_revision):raise queue.Full
+            rank = -1 if manual_revision is not None else 0 if priority else 1
+            self.ready.put_nowait((rank,self.submission_order,utterance))
             self.submission_order+=1
             self.leases[utterance.task_id]={'path':utterance.path,'model':False,'audio':False}
+
+    def control_state(self):
+        with self.lease_lock:
+            return {'manual':self.manual,'control_revision':self.control_revision,'pending':self.ready.qsize()}
+
+    def queue_full(self, manual_revision=None):
+        return self.ready.qsize() >= (5 if manual_revision is not None else 4)
+
+    def set_manual(self, enabled, revision):
+        with self.lease_lock:
+            if self.stop_event.is_set() or revision!=self.control_revision:
+                raise ValueError('场次控制状态已变化，请刷新')
+            if self.manual==enabled:
+                return
+            if not enabled:
+                # Manual utterances sort first. Release only work not yet claimed.
+                while not self.ready.empty():
+                    entry=self.ready.get_nowait()
+                    self.ready.task_done()
+                    if entry[0]!=-1:
+                        self.ready.put_nowait(entry)
+                        break
+                    self.leases[entry[2].task_id]['path'].unlink(missing_ok=True)
+                    del self.leases[entry[2].task_id]
+            self.manual=enabled
+            self.control_revision+=1
+
+    def _next_utterance(self):
+        with self.lease_lock:
+            try:
+                entry=self.ready.get_nowait()
+                self.ready.task_done()
+            except queue.Empty:
+                return None
+            if self.manual and entry[0]!=-1:
+                self.ready.put_nowait(entry)
+                return None
+            return entry[2]
 
     def _release(self,source_id,part):
         with self.lease_lock:
@@ -49,8 +94,7 @@ class ContinuousSession:
     def _produce(self):
         try:
             while not self.stop_event.is_set():
-                try:_,_,utterance=self.ready.get_nowait()
-                except queue.Empty:utterance=None
+                utterance=self._next_utterance()
                 if utterance:
                     span=self.clock.reserve(self.session_id,utterance.samples);timing=asdict(span)
                     self.pcm.append(timing,utterance.task_id,utterance.path,utterance.pcm_sha256)
