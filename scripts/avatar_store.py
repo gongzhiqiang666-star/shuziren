@@ -165,10 +165,14 @@ class AvatarStore:
             db.execute('INSERT OR REPLACE INTO selection VALUES(1,?)', (avatar_id,))
 
     def selected(self):
+        avatar_id=self.selected_id()
+        if avatar_id:self.get(avatar_id)
+        return avatar_id
+
+    def selected_id(self):
+        """Selection metadata only; callers must validate assets with get before use."""
         with sqlite3.connect(self.path) as db:
             row = db.execute('SELECT avatar_id FROM selection WHERE singleton=1').fetchone()
-        if row:
-            self.get(row[0])
         return row[0] if row else None
 
     def directory(self, avatar_id):

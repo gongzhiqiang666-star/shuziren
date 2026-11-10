@@ -17,6 +17,15 @@ from scripts.local_console_config import ConfigStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_render_endpoints_require_inputs_and_valid_session(self):
+        self.assertEqual(self.call('/api/render/state')[1],{'task':None})
+        self.assertEqual(self.call('/api/render/start',{})[0],400)
+        request={'tts_task_id':'absent','avatar_id':'absent'}
+        self.assertEqual(self.call('/api/render/start',request)[0],400)
+        self.assertEqual(self.call('/api/render/start',request,**{'X-Console-Token':'bad'})[0],403)
+        self.assertEqual(self.call('/api/render/cancel',{'task_id':0})[0],400)
+        self.assertEqual(self.call('/api/render/video')[0],400)
+
     def test_avatar_preparation_requires_config_and_valid_fields(self):
         self.assertEqual(self.call('/api/avatar-preparation/state')[1],{'task':None})
         self.assertEqual(self.call('/api/avatar-preparation/start',{})[0],400)

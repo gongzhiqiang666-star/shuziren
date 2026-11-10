@@ -75,6 +75,7 @@ def create_server(store, port=None):
     task_manager = None
     tts_manager = None
     avatar_manager = None
+    render_manager = None
     tasks_closed = False
     def tasks():
         nonlocal task_manager
@@ -89,6 +90,7 @@ def create_server(store, port=None):
         with lock:
             tasks_closed = True
             if task_manager is not None: task_manager.close()
+            if render_manager is not None: render_manager.close()
             if tts_manager is not None: tts_manager.close()
             if avatar_manager is not None: avatar_manager.close()
     def preparation():
@@ -115,6 +117,18 @@ def create_server(store, port=None):
             elif Path(root).resolve()!=tts_manager.runtime:
                 raise Conflict('运行资源目录已修改，请重启控制台后合成')
             return tts_manager
+    def renders():
+        nonlocal render_manager
+        with lock:
+            if tasks_closed: raise ProductError('控制台正在退出')
+            root=preflight(store.load())['runtime_root']
+            if not root: raise ProductError('请先配置视频合成运行资源目录')
+            if render_manager is None:
+                from scripts.render_tasks import RenderTasks
+                render_manager=RenderTasks(root,store.directory,tts())
+            elif Path(root).resolve()!=render_manager.runtime:
+                raise Conflict('运行资源目录已修改，请重启控制台后合成视频')
+            return render_manager
     try:
         settings = store.load()
         configured_port = settings["port"]
@@ -180,6 +194,16 @@ def create_server(store, port=None):
                     return self.respond(200,AvatarStore(store.directory).sample(ids[0]),'image/jpeg')
                 if path == '/api/tts/state':
                     return self.respond(200,{'task':tts().state()})
+                if path == '/api/render/state':
+                    task=(render_manager.state() if render_manager is not None else
+                          renders().state() if preflight(store.load())['runtime_root'] else None)
+                    return self.respond(200,{'task':task})
+                if path == '/api/render/video':
+                    ids=parse_qs(urlsplit(self.path).query).get('task_id',[])
+                    if len(ids)!=1: raise ProductError('请选择有效视频任务')
+                    manager=render_manager if render_manager is not None else renders()
+                    from scripts.media_http import serve_file
+                    return serve_file(self,manager.video_path(ids[0]),'video/mp4')
                 if path == '/api/tts/audio':
                     ids=parse_qs(urlsplit(self.path).query).get('task_id',[])
                     if len(ids)!=1: raise ProductError('音频任务参数无效')
@@ -256,6 +280,8 @@ def create_server(store, port=None):
                             raise AvatarError('视频制作字段无效')
                         if tts_manager is not None and (tts_manager.state() or {}).get('status')=='running':
                             raise Conflict('正在合成语音，请完成或取消后再制作形象')
+                        if render_manager is not None and (render_manager.state() or {}).get('status')=='running':
+                            raise Conflict('正在合成视频，请完成或取消后再制作形象')
                         return self.respond(202,{'task':preparation().start(**value)})
                     if path == '/api/avatar-preparation/cancel':
                         if set(value)!={'task_id'} or not isinstance(value['task_id'],str):
@@ -294,7 +320,20 @@ def create_server(store, port=None):
                             raise ProductError('TTS输入ID无效')
                         if avatar_manager is not None and (avatar_manager.state() or {}).get('status')=='running':
                             raise Conflict('正在制作形象，请完成或取消后再合成语音')
+                        if render_manager is not None and (render_manager.state() or {}).get('status')=='running':
+                            raise Conflict('正在合成视频，请完成或取消后再合成语音')
                         return self.respond(202,{'task':tts().start(**value)})
+                    if path == '/api/render/start':
+                        if set(value)!={'tts_task_id','avatar_id'}:
+                            raise ProductError('视频合成字段无效')
+                        if avatar_manager is not None and (avatar_manager.state() or {}).get('status')=='running':
+                            raise Conflict('正在制作形象，请完成或取消后再合成视频')
+                        return self.respond(202,{'task':renders().start(**value)})
+                    if path == '/api/render/cancel':
+                        if set(value)!={'task_id'} or not isinstance(value['task_id'],str):
+                            raise ProductError('视频取消字段无效')
+                        manager=render_manager if render_manager is not None else renders()
+                        return self.respond(200,{'task':manager.cancel(value['task_id'])})
                     if path == '/api/tts/cancel':
                         if set(value)!={'task_id'} or not isinstance(value['task_id'],str): raise ProductError('TTS取消字段无效')
                         return self.respond(200,{'task':tts().cancel(value['task_id'])})

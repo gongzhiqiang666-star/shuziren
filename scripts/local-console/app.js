@@ -16,7 +16,7 @@ async function action(work) {
   $('error').textContent = ''; $('message').textContent = '';
   document.querySelectorAll('button').forEach(b => b.disabled = true);
   try { await work(); } catch(error) { $('error').textContent = error.message || '无法连接本地服务'; }
-  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); renderRecordingButtons(); renderTTSButtons(); renderAvatarVideoButtons(); }
+  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); renderRecordingButtons(); renderTTSButtons(); renderAvatarVideoButtons(); renderVideoButtons(); }
 }
 async function load() {
   clearChecks();
@@ -44,6 +44,7 @@ $('shutdown').addEventListener('click', () => action(async () => {
   consoleClosed = true; clearTimeout(taskTimer);
   recorder.discard();
   clearTimeout(ttsTimer);clearTTSPreview();$('tts-panel').hidden=true;
+  clearTimeout(renderTimer);clearRenderPreview();$('render-panel').hidden=true;
   clearTimeout(avatarVideoTimer);$('avatar-preview').removeAttribute('src');$('avatar-panel').hidden=true;
   $('live-status').textContent = '控制台已退出';
   $('message').textContent = '本地服务已收到退出请求，可以关闭本页。';
@@ -55,6 +56,7 @@ let currentProduct = null;
 let savedProducts = [];
 let currentScriptId=null;
 let ttsTimer=null,ttsState=null,ttsPreviewTask=null;
+let renderState=null,renderTimer=null,renderPreviewTask=null,renderBusy=false,renderStarting=false,renderCancelRequested=false,renderGeneration=0;
 let parentScriptId = null;
 let currentTask = null;
 let taskTimer = null;
@@ -223,6 +225,7 @@ $('record-save').addEventListener('click',()=>voiceAction(async()=>{
 window.addEventListener('pagehide',()=>recorder.discard());
 renderRecordingButtons();
 function clearTTSPreview() {
+  clearRenderPreview();
   $('tts-preview').pause();$('tts-preview').removeAttribute('src');$('tts-preview').load();ttsPreviewTask=null;
 }
 function renderTTSButtons() {
@@ -268,6 +271,7 @@ window.addEventListener('pagehide',()=>{clearTimeout(ttsTimer);clearTTSPreview()
 renderTTSButtons();
 let avatarRecords=[],avatarBusy=false;
 function showAvatar(id) {
+  clearRenderPreview();
   const avatar=avatarRecords.find(item=>item.id===id);
   $('avatar-preview').hidden=!avatar;
   $('avatar-preview').removeAttribute('src');
@@ -339,4 +343,61 @@ $('avatar-video-refresh').addEventListener('click',()=>avatarVideoAction(loadAva
 window.addEventListener('pagehide',()=>clearTimeout(avatarVideoTimer));
 renderAvatarVideoButtons();
 
-action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo); });
+function clearRenderPreview() {
+  $('render-preview').pause();$('render-preview').removeAttribute('src');$('render-preview').load();renderPreviewTask=null;
+}
+function renderVideoButtons() {
+  $('render-generate').disabled=consoleClosed || renderBusy || renderState?.status==='running';
+  $('render-cancel').disabled=consoleClosed || (!renderStarting && (renderBusy || renderState?.status!=='running'));
+}
+async function loadRender() {
+  clearTimeout(renderTimer);if(consoleClosed) return;
+  const generation=++renderGeneration;let response;
+  try {response=await request('/api/render/state');}
+  catch(error) {if(generation!==renderGeneration || consoleClosed) return;throw error;}
+  if(consoleClosed || generation!==renderGeneration) return;
+  renderState=response.task;
+  const labels={running:'正在生成视频',succeeded:'视频已生成',cancelled:'视频生成已取消',interrupted:'上次视频生成已中断',failed:'视频不可用'};
+  $('render-status').textContent=renderState ? (labels[renderState.status] || renderState.status)+' · '+renderState.product_title+' · '+renderState.avatar_name+(renderState.error ? '：'+renderState.error : '') : '暂无视频生成任务';
+  const saved=currentProduct && $('product-title').value===currentProduct.title && $('product-content').value===currentProduct.content && $('product-index').value===String(currentProduct.product_index);
+  const matches=renderState?.status==='succeeded' && saved && renderState.product_id===currentProduct.id && renderState.script_id===currentScriptId && renderState.tts_task_id===ttsState?.id && renderState.tts_task_id===ttsPreviewTask && renderState.avatar_id===$('avatar-list').value;
+  if(matches) {
+    if(renderPreviewTask!==renderState.id) {$('render-preview').src='/api/render/video?task_id='+encodeURIComponent(renderState.id);$('render-preview').load();renderPreviewTask=renderState.id;}
+  } else if(renderPreviewTask) clearRenderPreview();
+  renderVideoButtons();
+  if(['running','succeeded'].includes(renderState?.status)) renderTimer=setTimeout(()=>loadRender().catch(error=>{$('render-error').textContent=error.message;clearRenderPreview();}),1000);
+}
+async function renderAction(work) {
+  if(renderBusy || consoleClosed) return;renderBusy=true;renderVideoButtons();$('render-error').textContent='';
+  try {await work();} catch(error) {$('render-error').textContent=error.message || '视频服务无法连接';clearRenderPreview();}
+  finally {renderBusy=false;renderVideoButtons();}
+}
+$('render-generate').addEventListener('click',()=>renderAction(async()=>{
+  requireSavedProduct();
+  if(ttsState?.status!=='succeeded' || !ttsPreviewTask || ttsPreviewTask!==ttsState.id) throw new Error('请先完成当前话术和音色的语音合成');
+  if(!$('avatar-list').value) throw new Error('请先选择数字人形象');
+  clearTimeout(renderTimer);++renderGeneration;
+  clearRenderPreview();renderStarting=true;renderCancelRequested=false;renderVideoButtons();
+  $('render-status').textContent='正在检查语音与形象，可以取消…';
+  try {
+    const result=await request('/api/render/start',{tts_task_id:ttsState.id,avatar_id:$('avatar-list').value});renderState=result.task;
+    if(renderCancelRequested) await request('/api/render/cancel',{task_id:renderState.id});
+    await loadRender();
+  } finally {renderStarting=false;renderCancelRequested=false;}
+}));
+$('render-cancel').addEventListener('click',()=>{
+  if(renderStarting) {renderCancelRequested=true;$('render-status').textContent='正在取消，请稍候…';return;}
+  renderAction(async()=>{
+  if(!renderState) throw new Error('暂无视频任务');
+  clearTimeout(renderTimer);++renderGeneration;
+  await request('/api/render/cancel',{task_id:renderState.id});clearRenderPreview();await loadRender();
+  });
+});
+$('render-refresh').addEventListener('click',()=>renderAction(loadRender));
+$('render-preview').addEventListener('error',()=>{
+  if($('render-preview').getAttribute('src')) {$('render-error').textContent='视频已失效或无法加载，请刷新视频状态。';clearRenderPreview();}
+});
+window.addEventListener('pagehide',()=>{clearTimeout(renderTimer);clearRenderPreview();});
+renderVideoButtons();
+
+action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender); });
