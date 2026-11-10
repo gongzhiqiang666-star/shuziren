@@ -12,6 +12,7 @@ import psutil
 
 from scripts.avatar_store import AvatarStore, AvatarError, digest
 from scripts.product_store import Conflict
+from scripts.media_runtime import runtime_python
 
 
 class AvatarTasks:
@@ -70,7 +71,7 @@ class AvatarTasks:
             work.mkdir()
             task = {'id':task_id, 'status':'running', 'name':name.strip(), 'source':str(source),
                     'source_sha256':digest(source), 'resolution':resolution}
-            python = self.runtime/'_internal/env/python.exe'
+            python = runtime_python(self.runtime)
             if not python.is_file():
                 raise AvatarError('缺少形象制作运行解释器')
             log = (work/'worker.log').open('wb')

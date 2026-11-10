@@ -8,6 +8,7 @@ import threading
 import uuid
 
 from scripts.product_store import Conflict, ProductError, ProductStore
+from scripts.media_runtime import runtime_python
 from scripts.voice_store import VoiceStore
 
 
@@ -49,7 +50,7 @@ class TTSTasks:
     def _start_worker(self):
         if self.process and self.process.poll() is None and self.worker_usable: return self.process
         self._stop_worker()
-        python=self.runtime/'_internal/env/python.exe'
+        python=runtime_python(self.runtime)
         if not python.is_file(): raise ProductError('缺少TTS运行解释器')
         self.log=(self.data/'tts-worker.log').open('a',encoding='utf-8')
         try:

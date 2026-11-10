@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from scripts.local_console_config import ConfigError, ConfigStore, preflight, validate
 from scripts.v122_package_policy import REQUIRED_RUNTIME_FILES
+from scripts.media_runtime import INDEPENDENT, MANIFEST_NAME, MEDIA_FILES, MODEL_FILES, PROVIDER_FILES, runtime_python
 
 
 class ConsoleConfigTests(unittest.TestCase):
@@ -68,6 +69,21 @@ class ConsoleConfigTests(unittest.TestCase):
         self.assertFalse(report["inference_verified"])
         target.unlink()
         self.assertFalse(preflight(config)["ready"])
+
+    def test_independent_runtime_uses_venv_and_does_not_require_reference_app(self):
+        runtime = self.root / 'media'
+        runtime.mkdir()
+        (runtime / MANIFEST_NAME).write_text(json.dumps(INDEPENDENT), encoding='utf-8')
+        for relative in (*MEDIA_FILES, *MODEL_FILES, *PROVIDER_FILES):
+            target = runtime / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b'test fixture')
+        config = {'version':1, 'runtime_root':str(runtime), 'port':5158}
+        self.assertTrue(preflight(config)['ready'])
+        self.assertEqual(runtime_python(runtime), runtime / MEDIA_FILES[0])
+        self.assertFalse(preflight(config)['inference_verified'])
+        (runtime / MODEL_FILES[0]).unlink()
+        self.assertFalse(preflight(config)['ready'])
 
 
 if __name__ == "__main__":

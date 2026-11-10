@@ -12,6 +12,7 @@ from scripts.avatar_store import AvatarStore,digest
 from scripts.avatar_tasks import AvatarTasks
 from scripts.product_store import Conflict,ProductError
 from scripts.render_profiles import PROFILES,result_matches
+from scripts.media_runtime import runtime_python
 
 
 class RenderTasks:
@@ -79,7 +80,7 @@ class RenderTasks:
             if self.process is not None or (self.monitor and self.monitor.is_alive()):
                 raise Conflict('已有视频合成任务，请等待或取消')
             binding,content,audio,avatar=self._inputs(tts_task_id,avatar_id)
-            python=self.runtime/'_internal/env/python.exe'
+            python=runtime_python(self.runtime)
             if not python.is_file():raise ProductError('缺少视频合成运行解释器')
             task_id=str(uuid.uuid4());work=self.jobs/task_id;work.mkdir()
             self.task={'id':task_id,'status':'running',**binding,'product_title':audio['product_title'],

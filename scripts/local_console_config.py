@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 
 from scripts.v122_package_policy import REQUIRED_RUNTIME_FILES
+from scripts.media_runtime import independent_runtime, inspect_runtime
 
 
 class ConfigError(ValueError):
@@ -83,6 +84,9 @@ def preflight(value):
     checks = []
     if root is not None and root.name == "_internal":
         root = root.parent
+    if root is not None and independent_runtime(root):
+        return {**inspect_runtime(root), 'scope': 'independent-required-file-presence-only',
+                'runtime_root': str(root), 'inference_verified': False, 'integrity_verified': False}
     for relative in REQUIRED_RUNTIME_FILES:
         try:
             present = root is not None and (root / relative).is_file()

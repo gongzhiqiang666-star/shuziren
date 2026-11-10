@@ -7,6 +7,7 @@ import threading
 
 from scripts.avatar_tasks import AvatarTasks
 from scripts.avatar_store import digest
+from scripts.media_runtime import runtime_python
 
 
 class LiveAvatarClient:
@@ -15,7 +16,7 @@ class LiveAvatarClient:
         self.log=(data/'live-avatar-worker.log').open('ab');self.closed=False;self.busy=False;self.reader=None
         self.calls=threading.Lock();self.guard=threading.RLock()
         try:
-            self.process=subprocess.Popen([str(runtime/'_internal/env/python.exe'),'-X','utf8','-m','scripts.live_avatar_worker',
+            self.process=subprocess.Popen([str(runtime_python(runtime)),'-X','utf8','-m','scripts.live_avatar_worker',
                 '--runtime-root',str(runtime),'--avatar-directory',str(avatar),'--engine-cache',str(Path(cache).resolve() if cache else data/'live-avatar-cache')],
                 stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=self.log,text=True,encoding='utf-8',bufsize=1,
                 cwd=Path(__file__).resolve().parents[1],creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
