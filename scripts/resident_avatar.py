@@ -40,7 +40,7 @@ class ResidentAvatar:
         return features,fingerprint.hexdigest()
 
     def prepare(self):
-        if self.prepared:return {**self.prepare_result,'reused':True}
+        if self.prepared:return {**self.prepare_result,'reused':True,'frame_offset':self.frame_offset,'sample_offset':self.sample_offset}
         started=time.perf_counter()
         position=(self.synth.current_frame_position,self.synth.is_forward,self.frame_offset,self.sample_offset)
         # Scratch is private and short-lived; prewarming never writes audible media.
@@ -65,9 +65,10 @@ class ResidentAvatar:
             'frame_offset':self.frame_offset,'sample_offset':self.sample_offset,'output_generated':False}
         self.prepared=True;return {**self.prepare_result,'reused':False}
 
-    def render(self,session,task_id,audio,output,pcm_sha256,progress=None,timing=None):
+    def render(self,session,task_id,audio,output,pcm_sha256,progress=None,timing=None,frame_channel=None):
         if session!=self.session:raise ValueError('Stale avatar session')
-        audio=Path(audio).resolve(strict=True);output=Path(output).resolve()
+        if frame_channel is not None and not self.prepared:raise ValueError('Prepare avatar models before streaming frames')
+        audio=Path(audio).resolve(strict=True);output=Path(output).resolve() if frame_channel is None else None
         value=hashlib.sha256()
         with wave.open(str(audio),'rb') as source:
             if (source.getframerate(),source.getnchannels(),source.getsampwidth())!=(24000,1,2):raise ValueError('Expected 24kHz mono PCM16')
@@ -78,8 +79,13 @@ class ResidentAvatar:
         if self.timed_mode is not None and mode!=self.timed_mode:raise ValueError('Cannot mix legacy and timed rendering in one session')
         span=parse_span(timing) if mode else None
         if span and (span.session_id!=session or span.samples!=samples or span.sample_start!=self.sample_offset or span.frame_start!=self.frame_offset):raise ValueError('Audio clock/input boundary mismatch')
-        if span and not span.frames:raise ValueError('Audio-only span requires the continuous output sink, not a standalone MP4')
+        if span and not span.frames and frame_channel is None:raise ValueError('Audio-only span requires the continuous output sink, not a standalone MP4')
         self.timed_mode=mode
+        if span and not span.frames:
+            self.sample_offset+=samples
+            return {'session_id':session,'task_id':task_id,'pcm_sha256':pcm_sha256,'audio_sha256':digest(audio),
+                'output':None,'output_sha256':None,'output_mode':'raw-frame-stream','frames':0,'raw_frames_sent':0,
+                'audio_data_sent':False,'audio_only':True,'frame_offset':self.frame_offset,'next_frame_offset':self.frame_offset,'timing':timing}
         started=time.perf_counter();features,feature_sha=self.features(audio)
         native_count=len(features);indices=feature_indices(native_count,span.frames if span else native_count)
         features=[features[index] for index in indices]
@@ -89,7 +95,7 @@ class ResidentAvatar:
         feature_seconds=time.perf_counter()-started
         sequence=self.synth._generate_frame_sequence(len(features));first,_=self.synth._load_single_frame(sequence[0])
         from scripts.raw_video_writer import RawVideoWriter
-        writer=RawVideoWriter(self.internal/'env/ffmpeg/bin/ffmpeg.exe',output,audio,first.shape[1],first.shape[0])
+        writer=RawVideoWriter(self.internal/'env/ffmpeg/bin/ffmpeg.exe',output,audio,first.shape[1],first.shape[0]) if frame_channel is None else None
         offset=self.frame_offset;written=0;peak=0
         try:
             for start in range(0,len(features),self.synth.batch_size):
@@ -99,18 +105,25 @@ class ResidentAvatar:
                 if len(frames)!=len(indices):raise RuntimeError('Synthesizer dropped frames')
                 peak=max(peak,len(frames))
                 for frame in frames:
-                    writer.write(frame);written+=1
-                    if written==1 and progress:progress({'event':'first_frame_written','session_id':session,'task_id':task_id,'frame_index':offset,'source_index':sequence[0]})
-            writer.release()
+                    if writer:writer.write(frame)
+                    else:frame_channel.send(session,task_id,offset+written,frame)
+                    written+=1
+                    if written==1 and progress:progress({'event':'first_frame_written' if writer else 'first_frame_sent','session_id':session,'task_id':task_id,'frame_index':offset,'source_index':sequence[0]})
+            if writer:writer.release()
         except BaseException:
-            writer.abort();raise
+            if writer:writer.abort()
+            else:frame_channel.close()
+            raise
         self.frame_offset+=written
         self.sample_offset+=samples
-        try:media=verify_media(audio,output,self.internal/'env/ffmpeg/bin/ffmpeg.exe')
-        except BaseException:
-            output.unlink(missing_ok=True);raise
-        return {**media,'session_id':session,'task_id':task_id,'output':str(output),
-            'pcm_sha256':pcm_sha256,'audio_sha256':digest(audio),'output_sha256':digest(output),
+        if writer:
+            try:media=verify_media(audio,output,self.internal/'env/ffmpeg/bin/ffmpeg.exe')
+            except BaseException:
+                output.unlink(missing_ok=True);raise
+        else:media={'frames':written,'width':first.shape[1],'height':first.shape[0],'raw_frames_sent':written,'audio_data_sent':False}
+        return {**media,'session_id':session,'task_id':task_id,'output':str(output) if writer else None,
+            'pcm_sha256':pcm_sha256,'audio_sha256':digest(audio),'output_sha256':digest(output) if writer else None,
+            'output_mode':'mp4' if writer else 'raw-frame-stream',
             'timing':timing,'native_feature_frames':native_count,'render_feature_frames':len(features),
             'frame_offset':offset,'next_frame_offset':self.frame_offset,
             'source_first':sequence[0],'source_last':sequence[-1],

@@ -83,6 +83,8 @@ class ResidentTests(unittest.TestCase):
         self.assertTrue(again['reused']);self.assertEqual(again['wenet_load_count'],1)
         self.assertEqual((self.provider.frame_offset,self.provider.sample_offset),(31,30000))
         self.assertEqual((self.provider.synth.current_frame_position,self.provider.synth.is_forward),(5,False))
+        self.provider.frame_offset=44;self.provider.sample_offset=42000
+        current=self.provider.prepare();self.assertEqual((current['frame_offset'],current['sample_offset']),(44,42000))
 
     def test_failed_warmup_never_declares_ready(self):
         original=self.provider.synth._process_batch
@@ -93,3 +95,21 @@ class ResidentTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'warmup fixture'):self.provider.prepare()
         self.assertFalse(self.provider.prepared);self.assertIsNone(self.provider.prepare_result)
         self.assertEqual((self.provider.frame_offset,self.provider.sample_offset),(0,0))
+
+    def test_stream_delivers_raw_frames_without_intermediate_media(self):
+        audio,sha=self.audio(5);sent=[]
+        sink=SimpleNamespace(send=lambda session,task,index,image:sent.append((index,int(image[0,0,0]))),close=lambda:None)
+        with self.assertRaisesRegex(ValueError,'Prepare'):self.provider.render('session','one',audio,None,sha,frame_channel=sink)
+        self.provider.prepared=True
+        result=self.provider.render('session','one',audio,None,sha,frame_channel=sink)
+        self.assertEqual(sent,[(0,0),(1,1),(2,2),(3,3),(4,4)])
+        self.assertEqual(result['raw_frames_sent'],5);self.assertIsNone(result['output']);self.assertFalse(result['audio_data_sent'])
+        self.verify.assert_not_called();self.assertEqual(self.written,[])
+
+    def test_audio_only_span_preserves_samples_without_fabricated_frame(self):
+        audio=self.root/'tiny.wav';pcm=bytes(200)
+        with wave.open(str(audio),'wb') as output:output.setparams((1,2,24000,0,'NONE','not compressed'));output.writeframes(pcm)
+        self.provider.prepared=True;span=SampleTimeline('session').reserve('session',100)
+        sink=SimpleNamespace(send=lambda *_:self.fail('Unexpected video frame'),close=lambda:None)
+        result=self.provider.render('session','tiny',audio,None,hashlib.sha256(pcm).hexdigest(),timing=asdict(span),frame_channel=sink)
+        self.assertEqual(result['frames'],0);self.assertTrue(result['audio_only']);self.assertEqual(self.provider.sample_offset,100)
