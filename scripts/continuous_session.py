@@ -48,6 +48,23 @@ class ContinuousSession:
     def queue_full(self, manual_revision=None):
         return self.ready.qsize() >= (5 if manual_revision is not None else 4)
 
+    def discard_pending(self, task_id):
+        """Discard an owned item only if the producer has not claimed it."""
+        with self.lease_lock:
+            retained=[]
+            discarded=False
+            while not self.ready.empty():
+                entry=self.ready.get_nowait()
+                self.ready.task_done()
+                if entry[2].task_id==task_id:
+                    discarded=True
+                else:
+                    retained.append(entry)
+            for entry in retained:self.ready.put_nowait(entry)
+            if discarded:
+                self.leases[task_id]['path'].unlink(missing_ok=True)
+                del self.leases[task_id]
+
     def set_manual(self, enabled, revision):
         with self.lease_lock:
             if self.stop_event.is_set() or revision!=self.control_revision:

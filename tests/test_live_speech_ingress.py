@@ -63,6 +63,19 @@ class IngressTests(unittest.TestCase):
         another,_,_=self.complete(1200);self.ingress.capture(another)
         self.assertEqual(self.ingress.take().origin.task_id,another)
 
+    def test_rotation_requires_explicit_product_version_and_script_binding(self):
+        original = self.product['id']
+        self.product = self.products.save(title='另一件商品', content='轮播', product_index=2)
+        task, _, script = self.complete(1200)
+        item = {'product_id':self.product['id'], 'product_version':1, 'script_id':script}
+        with self.assertRaises(Conflict):
+            self.ingress.capture(task)
+        with self.assertRaises(Conflict):
+            self.ingress.capture(task, rotation_item={**item, 'script_id':'stale'})
+        self.ingress.capture(task, rotation_item=item)
+        self.assertEqual(self.ingress.take().origin.task_id, task)
+        self.assertEqual(self.products.selected(), original)
+
     def test_long_audio_backpressure_and_new_task_after_snapshot(self):
         task,path,_=self.complete(6501);self.ingress.capture(task)
         self.assertEqual(self.ingress.state()['queued_items'],1);self.assertEqual(self.ingress.state()['pending_task_id'],task)

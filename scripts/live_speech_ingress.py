@@ -53,7 +53,7 @@ class LiveSpeechIngress:
         except (ValueError,OSError) as error:
             self.error=str(error);self.stop();raise Conflict('交接输入已变化，旧场次已停止') from error
 
-    def capture(self,task_id):
+    def capture(self,task_id,*,rotation_item=None):
         if not isinstance(task_id,str) or not task_id:raise ProductError('语音任务ID无效')
         with self.lock:
             self._validate()
@@ -65,7 +65,9 @@ class LiveSpeechIngress:
                 state=self.tts.snapshot_audio(task_id,path)
                 owned=True
                 self._validate()
-                if any(state.get(key)!=self.context[key] for key in ['product_id','product_version','voice_id']):
+                expected=self.context if rotation_item is None else rotation_item
+                keys=['product_id','product_version'] if rotation_item is None else ['product_id','product_version','script_id']
+                if state.get('voice_id')!=self.context['voice_id'] or any(state.get(key)!=expected[key] for key in keys):
                     raise Conflict('语音不属于本场次商品版本或音色')
                 iterator=iter_wav_file_chunks(path,self.queue.max_utterance_samples);chunk=next(iterator)
                 if chunk.source_sha256!=state['result']['sha256']:raise Conflict('交接快照指纹不符')

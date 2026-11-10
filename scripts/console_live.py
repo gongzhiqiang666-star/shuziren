@@ -21,6 +21,7 @@ class ConsoleLive:
         self.client = None
         self.cancel = threading.Event()
         self.status = {'status': 'idle'}
+        self.rotation = None
 
     def state(self):
         with self.lock:
@@ -38,6 +39,7 @@ class ConsoleLive:
             self.cancel.clear()
             session_id = uuid.uuid4().hex
             self.status = {'id': session_id, 'status': 'preparing', 'audio_device': audio_device, 'frames': 0}
+            self.rotation = None
             self.thread = threading.Thread(target=self._run, args=(session_id, audio_device), name='console-live')
             self.thread.start()
             return self.state()
@@ -45,6 +47,8 @@ class ConsoleLive:
     def _run(self, session_id, audio_device):
         client = receiver = sink = ingress = assembler = None
         ole32 = None
+        rotation_thread = None
+        rotation_stop = threading.Event()
         error = None
         try:
             if sys.platform == 'win32':
@@ -100,6 +104,12 @@ class ConsoleLive:
                 if not source_id.startswith('idle-'):
                     with self.lock:
                         self.status['last_completed_task_id'] = source_id
+                        if self.rotation and self.rotation['task_id'] == source_id:
+                            item = self.rotation['items'][self.rotation['index']]
+                            self.status['last_rotation_product_id'] = item['product_id']
+                            self.status['rotation_completed'] += 1
+                            self.rotation['index'] = (self.rotation['index'] + 1) % len(self.rotation['items'])
+                            self.rotation['task_id'] = None
 
             session = ContinuousSession(binding.id, client, receiver, sink, assembler.root,
                                         on_started=started, on_present=presented,
@@ -109,16 +119,21 @@ class ConsoleLive:
                 self.ingress = ingress
                 self.assembler = assembler
             if not self.cancel.is_set():
+                rotation_thread = threading.Thread(target=self._rotate, args=(session_id, rotation_stop), name='live-rotation')
+                rotation_thread.start()
                 session.run()
         except Exception as exc:
             if not self.cancel.is_set():
                 logging.exception('本地场次失败')
                 error = str(exc)
         finally:
+            rotation_stop.set()
             with self.lock:
                 self.session = None
                 self.client = None
                 self.status.update(status='stopping')
+            if rotation_thread is not None:
+                rotation_thread.join()
             for resource, method in [(sink, 'abort'), (receiver, 'close'), (client, 'close'),
                                      (assembler, 'close'), (ingress, 'stop')]:
                 if resource is not None:
@@ -142,7 +157,65 @@ class ConsoleLive:
                 raise Conflict(str(error)) from error
             return self.state()
 
-    def enqueue(self, session_id, task_id, *, priority=False, manual_revision=None):
+    def configure_rotation(self, session_id, product_ids):
+        with self.lock:
+            if self.status.get('id') != session_id or self.status['status'] != 'running' or self.session is None:
+                raise Conflict('场次已变化或尚未就绪')
+            items = []
+            for product_id in product_ids:
+                product = self.tts.products.get(product_id)
+                script_id = self.tts.products.selected_script(product_id)
+                if not script_id:
+                    raise Conflict(f'请先为商品「{product["title"]}」选用话术')
+                items.append({'product_id': product_id, 'product_version': product['version'], 'script_id': script_id})
+            if self.rotation and self.rotation['task_id']:
+                self.session.discard_pending(self.rotation['task_id'])
+            self.rotation = {'items': items, 'index': 0, 'task_id': None} if items else None
+            self.status.update(rotation_products=list(product_ids), rotation_completed=0, rotation_error=None)
+            self.status.pop('last_rotation_product_id', None)
+            return self.state()
+
+    def _rotate(self, session_id, stop):
+        pending = None
+        while not stop.wait(.15):
+            with self.lock:
+                if self.cancel.is_set() or self.status['status'] != 'running' or self.session is None:
+                    continue
+                rotation = self.rotation
+                control = self.session.control_state()
+                if pending is None and (not rotation or rotation['task_id'] or control['manual'] or self.session.queue_full()):
+                    continue
+                try:
+                    state = self.tts.state()
+                    if pending:
+                        task_id, origin, revision = pending
+                        stale = origin is not rotation or revision != control['control_revision']
+                        if stale or not state or state['id'] != task_id:
+                            pending = None
+                        elif state['status'] == 'succeeded' and not self.session.queue_full():
+                            item = rotation['items'][rotation['index']]
+                            self.enqueue(session_id, task_id, rotation_item=item)
+                            rotation['task_id'] = task_id
+                            pending = None
+                        elif state['status'] not in {'running', 'succeeded'}:
+                            raise ProductError(state.get('error') or '轮播语音合成失败')
+                    elif not state or state['status'] != 'running':
+                        item = rotation['items'][rotation['index']]
+                        if self.tts.products.get(item['product_id'])['version'] != item['product_version']:
+                            raise Conflict('轮播商品已修改，请重新设置轮播')
+                        with self.tts.lock:
+                            current = self.tts.state()
+                            if current and current['status'] == 'running':
+                                continue
+                            task = self.tts.start(item['product_id'], item['script_id'], self.ingress.context['voice_id'], use_cache=True)
+                        pending = (task['id'], rotation, control['control_revision'])
+                except (ValueError, OSError, RuntimeError) as error:
+                    logging.exception('商品轮播失败')
+                    self.rotation = None
+                    self.status.update(rotation_products=[], rotation_error=str(error))
+                    pending = None
+
+    def enqueue(self, session_id, task_id, *, priority=False, manual_revision=None, rotation_item=None):
         with self.lock:
             if self.status.get('id') != session_id or self.status['status'] != 'running' or self.session is None:
                 raise Conflict('场次已变化或尚未就绪')
@@ -153,7 +226,7 @@ class ConsoleLive:
                 raise Conflict('手动接管中，请使用手动口播')
             if manual_revision is not None and (not control['manual'] or manual_revision != control['control_revision']):
                 raise Conflict('手动接管状态已变化，请刷新')
-            self.ingress.capture(task_id)
+            self.ingress.capture(task_id, rotation_item=rotation_item)
             utterance = None
             while utterance is None:
                 utterance = self.assembler.push(self.ingress.take(timeout=2))

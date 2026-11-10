@@ -122,6 +122,9 @@ async function showScripts() {
 }
 async function loadProducts() {
   const result = await request('/api/products'); savedProducts = result.products;
+  const selectedRotation = new Set(Array.from($('live-products').selectedOptions, option => option.value));
+  $('live-products').replaceChildren(...savedProducts.map(product =>
+    new Option(`${product.product_index} · ${product.title}`, product.id, false, selectedRotation.has(product.id))));
   const empty = document.createElement('option'); empty.value = ''; empty.textContent = '请选择商品';
   $('product-list').replaceChildren(empty, ...savedProducts.map(product => {
     const option = document.createElement('option'); option.value = product.id;
@@ -410,6 +413,8 @@ function renderLiveButtons() {
   $('live-control').disabled = consoleClosed || liveBusy || liveSession.status !== 'running';
   $('live-control').textContent = liveSession.manual ? '恢复自动调度' : '手动接管';
   $('live-speak').disabled = $('live-control').disabled || !liveSession.manual;
+  $('live-rotation-start').disabled = $('live-control').disabled || !$('live-products').selectedOptions.length;
+  $('live-rotation-stop').disabled = $('live-control').disabled || !liveSession.rotation_products?.length;
   $('live-enqueue').disabled = $('live-control').disabled || !!liveSession.manual;
   $('live-insert').disabled = $('live-enqueue').disabled;
   $('live-audio').disabled = active || liveBusy;
@@ -420,6 +425,8 @@ async function loadLive() {
   liveSession = (await request('/api/live/state')).session;
   $('live-status').textContent = liveLabels[liveSession.status];
   $('live-detail').textContent = liveSession.frames ? `已提交 ${liveSession.frames} 帧，待播 ${liveSession.pending ?? 0} 条` : '';
+  $('live-rotation-status').textContent = liveSession.rotation_error || (liveSession.rotation_products?.length ?
+    `${liveSession.manual ? '轮播暂停' : '轮播中'} · ${liveSession.rotation_products.length} 个商品 · 已播 ${liveSession.rotation_completed} 条` : '');
   if (liveSession.error) $('live-error').textContent = liveSession.error;
   renderLiveButtons();
   if (['preparing','running','stopping'].includes(liveSession.status)) {
@@ -434,6 +441,13 @@ async function liveAction(work) {
   finally { liveBusy = false; renderLiveButtons(); }
 }
 $('live-audio').addEventListener('change', renderLiveButtons);
+$('live-products').addEventListener('change', renderLiveButtons);
+$('live-rotation-start').addEventListener('click', () => liveAction(() => request('/api/live/rotation', {
+  session_id:liveSession.id, product_ids:Array.from($('live-products').selectedOptions, option => option.value)
+})));
+$('live-rotation-stop').addEventListener('click', () => liveAction(() => request('/api/live/rotation', {
+  session_id:liveSession.id, product_ids:[]
+})));
 $('live-devices').addEventListener('click', () => liveAction(async () => {
   const {devices} = await request('/api/live/devices');
   const selected = $('live-audio').value;

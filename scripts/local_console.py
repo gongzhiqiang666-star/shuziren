@@ -292,6 +292,15 @@ def create_server(store, port=None):
                         if live_manager is None:
                             live_manager = ConsoleLive(tts(), store.directory)
                         return self.respond(202, {'session': live_manager.start(value['audio_device'])})
+                    if path == '/api/live/rotation':
+                        if set(value) != {'session_id', 'product_ids'} or not isinstance(value['session_id'], str):
+                            raise ProductError('商品轮播字段无效')
+                        ids = value['product_ids']
+                        if not isinstance(ids, list) or len(ids) > 20 or not all(isinstance(item, str) and item for item in ids) or len(set(ids)) != len(ids):
+                            raise ProductError('请选择最多20个不同商品')
+                        if live_manager is None:
+                            raise Conflict('暂无场次')
+                        return self.respond(200, {'session': live_manager.configure_rotation(value['session_id'], ids)})
                     if path == '/api/live/control':
                         if set(value) != {'session_id', 'manual', 'revision'} or not isinstance(value['session_id'], str) or type(value['manual']) is not bool or type(value['revision']) is not int:
                             raise ProductError('场次控制字段无效')
