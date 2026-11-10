@@ -89,7 +89,7 @@
 | LIV-013 | 实拍报时公告生成和插播 | `prepare_record_announcement` 调用链 | `record_live_manager.py`, `generate_broadcast_time_video.py` | 静态验证通过 | 真实 TTS/视频、取消竞态和临时文件所有权 |
 | LIV-014 | 人脸人手直播与商品素材调度 | `FaceHandLiveManager`；2026-11-10 Windows原生切片对照见 `evidence/v00-baseline.md` | `face_hand_live_manager.py`, `face_hand_player.py`, `face_hand_vad_split.py` | 开发中 | Windows切片路径已修复；原版manifest v2/返回结构/默认参数存在待对齐差异，随后验证淘宝、长稳及商品切换 |
 | LIV-015 | AI 互动回复和人工接管 | 互动 LLM/控制提交链 | `face_hand_live_manager.py`, `llm_reply.py` | 静态验证通过 | 真实弹幕、超时、审核、回退和接管恢复 |
-| LIV-016 | 虚拟摄像头输出 | `virtual_cam.pyd` | `virtual_cam.py`、`scripts/live_device_output.py` | 开发中 | V05-04a本机720×1280/25fps经OBS后端发送、C920实际接收25帧/24种标记（启动重复1帧）；驱动安装、平台客户端、其他分辨率、连续场次及音画同步仍待验证，见evidence/v05-device-loopback.md |
+| LIV-016 | 虚拟摄像头输出 | `virtual_cam.pyd` | `virtual_cam.py`、`scripts/live_device_output.py`、`scripts/live_av_device_sink.py` | 开发中 | V05-04a经OBS发送/C920实际接收标记（启动重复1帧）；04b真实20秒新语音场次500帧音频消费/摄像头发送、欠载0及回收通过，接收端缺标记导致同步仍失败。驱动安装、平台客户端、其他分辨率及长稳待验，见evidence/v05-combined-devices.md |
 | LIV-017 | SRS 本地流媒体服务和推流地址 | `assets/srs/srs-live.bat`、`get_stream_urls` | `main.py` | 已分析 | Windows 启停、端口冲突、异常退出和推流拉流 |
 | LIV-018 | 输出分辨率五档及画面适配 | `output_resolution.pyd` | `output_resolution.py`, `image_position_compat.py` | 静态验证通过 | 各档真实输出、横竖屏、旋转和播放器兼容 |
 

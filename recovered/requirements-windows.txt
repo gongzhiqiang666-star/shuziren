@@ -1,6 +1,8 @@
 # Windows I/O and desktop integrations recovered from the packaged environment.
 PyAudio==0.2.14
 pyvirtualcam==0.12.1
+# Rebuilt V05 WASAPI callback output (explicit virtual audio routing).
+sounddevice==0.5.1
 pywebview==5.4
 pyautogui==0.9.54
 pyperclip==1.9.0

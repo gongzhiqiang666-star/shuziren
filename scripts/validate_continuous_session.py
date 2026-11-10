@@ -13,6 +13,7 @@ import numpy as np
 from scripts.avatar_render import verify_media
 from scripts.avatar_store import AvatarStore
 from scripts.continuous_av_sink import ContinuousAVSink
+from scripts.live_av_device_sink import AVDeviceSink
 from scripts.continuous_session import ContinuousSession
 from scripts.live_avatar_client import LiveAvatarClient
 from scripts.live_frame_channel import FrameReceiver
@@ -27,10 +28,12 @@ from scripts.voice_store import VoiceStore
 def main():
     parser=argparse.ArgumentParser()
     for name in ['runtime-root','source-voice-data','source-avatar-directory','report-directory','seed-cache']:parser.add_argument('--'+name,required=True,type=Path)
-    parser.add_argument('--seconds',type=int,default=20);args=parser.parse_args()
+    parser.add_argument('--seconds',type=int,default=20)
+    parser.add_argument('--device-audio-output',type=int)
+    parser.add_argument('--video-delay-ms',type=float,default=0);args=parser.parse_args()
     root=(args.report_directory/('run-'+uuid.uuid4().hex)).resolve();root.mkdir(parents=True)
     report={'status':'failed','phase':'preparing','checks':{},'physical_device_tested':False,'platform_tested':False};tts=client=receiver=sink=session=ingress=assembler=injector=None
-    completed=[];expected={};errors=[];presented=[];offsets=[];submit_costs=[]
+    completed=[];expected={};errors=[];presented=[];offsets=[];submit_costs=[];device_trace=[]
     def save():(root/'result.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     try:
         ffmpeg=args.runtime_root/'_internal/env/ffmpeg/bin/ffmpeg.exe'
@@ -46,11 +49,14 @@ def main():
         shutil.copytree(args.seed_cache,root/'engine-cache');client=LiveAvatarClient(args.runtime_root,avatars.directory(avatar['id']),root,root/'engine-cache')
         client.request('start',session_id=speech_session.id);report['avatar_prepare']=client.request('prepare');save()
         receiver=FrameReceiver(speech_session.id,avatar['width'],avatar['height']);client.request('attach_frames',channel=receiver.descriptor())
-        sink=ContinuousAVSink(ffmpeg,root/'live.ts',avatar['width'],avatar['height'])
+        sink=(AVDeviceSink(avatar['width'],avatar['height'],args.device_audio_output,on_present=device_trace.append,video_delay_ms=args.video_delay_ms)
+            if args.device_audio_output is not None else ContinuousAVSink(ffmpeg,root/'live.ts',avatar['width'],avatar['height']))
         trace=(root/'presented.jsonl').open('w',encoding='utf-8')
         def on_present(row):
-            trace.write(json.dumps(row)+'\n');presented.append(row['late_ns']/1000000)
-            offsets.append(row['offset_ns']/1000000);submit_costs.append(row['submit_ns']/1000000)
+            trace.write(json.dumps(row)+'\n')
+            if 'late_ns' in row:
+                presented.append(row['late_ns']/1000000);offsets.append(row['offset_ns']/1000000)
+            submit_costs.append(row['submit_ns']/1000000)
         session=ContinuousSession(speech_session.id,client,receiver,sink,root/'assembled',on_source_complete=completed.append,on_present=on_present)
         def inject():
             try:
@@ -88,6 +94,16 @@ def main():
             if total>sink.samples:raise RuntimeError('PCM completion accounting overflow')
             tail=bytes((sink.samples-total)*2);output.writeframesraw(tail);fingerprint.update(tail)
         if fingerprint.hexdigest()!=sink.pcm_hash.hexdigest():raise RuntimeError('Idle/speech PCM timeline differs from encoder input')
+        if args.device_audio_output is not None:
+            (root/'device-presented.json').write_text(json.dumps(device_trace),encoding='utf-8')
+            if sink.presented!=args.seconds*25 or sink.camera.frames!=sink.presented:raise RuntimeError('Device output incomplete')
+            report.update(status='passed',phase='completed',output_mode='virtual_devices',expected_sources=expected,
+                completed_speech=done,frames_written=session.frames_written,device_audio_frames=sink.presented,
+                device_video_frames=sink.camera.frames,device_queue_peak=sink.peak,underflows=sink.underflows,
+                output_closed=sink.closed,avatar_closed=client.process.poll() is not None,video_delay_ms=args.video_delay_ms,
+                timing_acceptance=False,receiver_sync_tested=False)
+            report['checks'].update(two_new_utterances_during_output=True,source_pcm_exact=True,device_callbacks_complete=True)
+            return 0
         subprocess.run([str(ffmpeg),'-nostdin','-y','-v','error','-i',str(root/'live.ts'),'-map','0:v:0','-map','0:a:0','-c','copy',str(root/'audit.mp4')],capture_output=True,check=True,timeout=60)
         media=verify_media(reference_path,root/'audit.mp4',ffmpeg)
         if media['frames']!=args.seconds*25 or sink.samples!=args.seconds*24000:raise RuntimeError('Continuous frame/sample count mismatch')
@@ -111,7 +127,12 @@ def main():
         if assembler:assembler.close()
         if ingress:ingress.stop()
         if sink and not sink.closed:sink.abort()
+        if args.device_audio_output is not None:
+            (root/'device-presented.json').write_text(json.dumps(device_trace),encoding='utf-8')
+            report['device_error']=getattr(sink,'error',None)
         save()
+        if args.device_audio_output is not None:
+            print(json.dumps({'status':report['status'],'report':str(root/'result.json'),'error':report.get('error')},ensure_ascii=False),flush=True)
     print(json.dumps({'status':report['status'],'report':str(root/'result.json'),'error':report.get('error')},ensure_ascii=False),flush=True)
     return 0 if report['status']=='passed' else 1
 

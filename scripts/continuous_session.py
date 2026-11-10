@@ -85,7 +85,9 @@ class ContinuousSession:
                 # explicitly startup preroll, not steady deadline measurements.
                 for index in range(8):self._write(index)
                 origin=time.perf_counter_ns()-8*40000000
-                self.pacer=FramePacer(self.session_id,origin,start_frame=8);self.started.set()
+                audio_clock=getattr(self.sink,'clock_mode',None)=='audio'
+                if not audio_clock:self.pacer=FramePacer(self.session_id,origin,start_frame=8)
+                self.started.set()
                 if self.on_started:self.on_started()
                 index=8
                 while not self.stop_event.is_set() and (frames is None or index<frames):
@@ -97,11 +99,13 @@ class ContinuousSession:
                     # Compensate measured synchronous submit cost, without moving
                     # the canonical PTS/deadline or hiding early completion.
                     lead=min(20000000,int(statistics.median(self.submit_costs))) if self.submit_costs else 0
-                    deadline=self.pacer.wait_for(self.session_id,index,submit_lead_ns=lead)
+                    deadline=None if audio_clock else self.pacer.wait_for(self.session_id,index,submit_lead_ns=lead)
                     if self.stop_event.is_set():break
                     submit_started=time.perf_counter_ns()
                     sink_timing=self.sink.submit(index,frame.image,pcm);self.frames_written+=1
-                    stamp=self.pacer.presented(deadline)
+                    stamp=({'frame_index':index,'pts_ns':index*40000000,'presented_ns':time.perf_counter_ns(),
+                        'event':'device_queue_submission'}
+                        if audio_clock else self.pacer.presented(deadline))
                     self.submit_costs.append(stamp['presented_ns']-submit_started)
                     if self.on_present:self.on_present({**stamp,'task_id':frame.task_id,
                         'receive_ns':received-receive_started,'pcm_read_ns':pcm_ready-received,
@@ -113,6 +117,9 @@ class ContinuousSession:
         finally:
             self.stop_event.set()
             if self.pacer:self.pacer.stop()
+            if getattr(self.sink,'clock_mode',None)=='audio':
+                if success:self.sink.finish_input()
+                else:self.sink.abort()
             self.receiver.close();self.client.close();self.pcm.close()
             if self.producer:self.producer.join(timeout=10)
             if self.producer and self.producer.is_alive():success=False
@@ -128,6 +135,7 @@ class ContinuousSession:
     def stop(self):
         self.stop_event.set()
         if self.pacer:self.pacer.stop()
+        if getattr(self.sink,'clock_mode',None)=='audio':self.sink.abort()
         self.receiver.close();self.client.close();self.pcm.close()
         if self.consumer_thread is None:
             self.sink.abort()
