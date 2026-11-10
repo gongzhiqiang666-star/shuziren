@@ -56,3 +56,18 @@ $env:PATH = "$runtime\_internal\env\ffmpeg\bin;" + $env:PATH
 ## 源码集成边界
 
 从80282eb逐文件引入4个加速脚本、一键验证工具/网页/Windows启动器、配置示例及必要说明；未整分支覆盖recovered、AGENTS或58项矩阵。另一分支Go/Vue/PostgreSQL应用已有代码，保留为V01复用评估对象，不把此前“尚无界面”的推断当事实。
+
+## V00-04 严格原包完整性结果：失败
+
+已执行现有 `scripts/verify_v122_package.py --root D:\TEMP\v122-minimum-proof-ready --output logs/validation/v00-package-integrity.json`。原manifest包含205495文件、52143432469字节；程序完整结束，退出1，checked=205493、missing=2、changed=109。报告和命令日志留本机，严格结果未改写。
+
+| 差异 | 数量 | 具体范围 |
+| --- | --- | --- |
+| 缺失 | 2 | image_infer_v2/trt_cache_full内旧FP16 engine和profile |
+| 变化 | 107 | Python/Numba生成缓存（__pycache__、.pyc、.nbc、.nbi） |
+| 变化 | 1 | 该TensorRT缓存目录gpu_info.txt |
+| 变化 | 1 | _internal/temp/audio_cache_index.txt |
+
+本报告未列出这些类别之外的源码或模型权重差异，但整个原始归档仍严格失败。现有构建器把完整运行目录所有文件纳入同一个不可变清单，和正常运行会修改缓存的行为冲突；不能删除原失败项或更新哈希冒充原包一致。
+
+下一任务V00-04b：明确并实现发布不可变文件与生成缓存/临时数据的边界，保留严格归档核验，给运行健康检查独立且明确的语义。V00-04c必须验证源码/模型/配置/必需程序缺失或改动仍失败、缓存变化只按明确策略报告、路径异常仍失败。未验证前V00不放行，不启动V01。
