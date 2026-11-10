@@ -9,13 +9,15 @@ import wave
 import numpy as np
 from recovered.image_clone_video_synthesizer import VideoSynthesizer
 from scripts.resident_avatar import ResidentAvatar
+from scripts.sample_timeline import SampleTimeline
+from dataclasses import asdict
 
 
 class ResidentTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.root=Path(self.temp.name)
         provider=object.__new__(ResidentAvatar);self.provider=provider
-        provider.internal=self.root;provider.sessions=[object()];provider.frame_offset=0;provider.wenet_loads=0;provider.session='session'
+        provider.internal=self.root;provider.sessions=[object()];provider.frame_offset=0;provider.sample_offset=0;provider.timed_mode=None;provider.wenet_loads=0;provider.session='session'
         synth=object.__new__(VideoSynthesizer);provider.synth=synth
         synth._closed=False;synth.executor=None;synth.batch_size=4;synth.total_frames=7;synth.current_frame_position=0;synth.is_forward=True;synth.wenet_model=None
         synth.engine=SimpleNamespace(perf_stats={'frames':0,'batches':0,'inference_ms':[],'prepare_ms':[],'paste_ms':[]})
@@ -60,3 +62,15 @@ class ResidentTests(unittest.TestCase):
         self.verify.side_effect=RuntimeError('invalid encoded media')
         with self.assertRaises(RuntimeError):self.provider.render('session','one',audio,output,sha)
         self.assertFalse(output.exists())
+
+    def test_clock_carry_changes_frame_budget_and_rejects_mode_switch(self):
+        path=self.root/'fractional.wav';pcm=bytes(5000*2)
+        with wave.open(str(path),'wb') as audio:audio.setparams((1,2,24000,0,'NONE','not compressed'));audio.writeframes(pcm)
+        sha=hashlib.sha256(pcm).hexdigest();clock=SampleTimeline('session');results=[]
+        for index in range(3):
+            span=clock.reserve('session',5000)
+            results.append(self.provider.render('session',str(index),path,self.root/f'{index}.mp4',sha,timing=asdict(span)))
+        self.assertEqual([result['frames'] for result in results],[5,5,6])
+        self.assertEqual(self.provider.sample_offset,15000);self.assertEqual(self.provider.frame_offset,16)
+        with self.assertRaisesRegex(ValueError,'mix legacy'):
+            self.provider.render('session','legacy',path,self.root/'legacy.mp4',sha)

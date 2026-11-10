@@ -27,7 +27,7 @@ def main():
                     # Preserve structured progress on stdout while model prints go to stderr.
                     stdout=sys.stdout
                     def progress(value):stdout.write(json.dumps(value)+'\n');stdout.flush()
-                    with redirect_stdout(sys.stderr):result=engine.render(request['session_id'],request['task_id'],request['audio'],request['output'],request['pcm_sha256'],progress)
+                    with redirect_stdout(sys.stderr):result=engine.render(request['session_id'],request['task_id'],request['audio'],request['output'],request['pcm_sha256'],progress,timing=request.get('timing'))
                 else:raise ValueError('Unknown worker operation')
                 emit({'ok':True,'result':result})
             except Exception as error:
