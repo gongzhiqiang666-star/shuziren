@@ -44,5 +44,62 @@ $('shutdown').addEventListener('click', () => action(async () => {
   $('live-status').textContent = '控制台已退出';
   $('message').textContent = '本地服务已收到退出请求，可以关闭本页。';
   $('settings').hidden = true; $('shutdown').hidden = true;
+  $('products-panel').hidden = true;
 }));
-action(load);
+let currentProduct = null;
+let savedProducts = [];
+async function productAction(work) {
+  $('product-error').textContent = ''; $('product-message').textContent = '';
+  $('products-panel').querySelectorAll('button,select').forEach(b => b.disabled = true);
+  try { await work(); } catch(error) { $('product-error').textContent = error.message || '商品服务连接失败'; }
+  finally { $('products-panel').querySelectorAll('button,select').forEach(b => b.disabled = false); }
+}
+function showProduct(product) {
+  currentProduct = product;
+  $('product-index').value = product?.product_index ?? '';
+  $('product-title').value = product?.title ?? '';
+  $('product-content').value = product?.content ?? '';
+  $('product-version').textContent = product ? '当前商品：' + product.title + ' · 版本 ' + product.version : '正在新增商品';
+  $('script-text').value = ''; $('scripts-list').replaceChildren();
+}
+async function showScripts() {
+  if (!currentProduct) return;
+  const result = await request('/api/scripts?product_id=' + encodeURIComponent(currentProduct.id));
+  $('scripts-list').replaceChildren(...result.scripts.map(script => {
+    const item = document.createElement('li');
+    item.textContent = '版本 ' + script.product_version + (script.product_version === currentProduct.version ? ' · 当前' : ' · 历史') + '：' + script.text;
+    return item;
+  }));
+}
+async function loadProducts() {
+  const result = await request('/api/products'); savedProducts = result.products;
+  const empty = document.createElement('option'); empty.value = ''; empty.textContent = '请选择商品';
+  $('product-list').replaceChildren(empty, ...savedProducts.map(product => {
+    const option = document.createElement('option'); option.value = product.id;
+    option.textContent = product.product_index + ' · ' + product.title; return option;
+  }));
+  const selected = savedProducts.find(p => p.id === result.selected) || null;
+  $('product-list').value = selected?.id || ''; showProduct(selected); await showScripts();
+}
+$('new-product').addEventListener('click', () => { $('product-list').value = ''; showProduct(null); });
+$('reload-products').addEventListener('click', () => productAction(loadProducts));
+$('product-list').addEventListener('change', () => productAction(async () => {
+  const selected = savedProducts.find(p => p.id === $('product-list').value);
+  if (!selected) { showProduct(null); return; }
+  await request('/api/products/select', {product_id:selected.id}); showProduct(selected); await showScripts();
+}));
+$('product-form').addEventListener('submit', event => { event.preventDefault(); productAction(async () => {
+  const value = {title:$('product-title').value, content:$('product-content').value, product_index:$('product-index').value};
+  if (currentProduct) Object.assign(value, {product_id:currentProduct.id,version:currentProduct.version});
+  const result = await request('/api/products', value);
+  await request('/api/products/select', {product_id:result.product.id});
+  await loadProducts(); $('product-message').textContent = '商品已保存';
+}); });
+$('script-form').addEventListener('submit', event => { event.preventDefault(); productAction(async () => {
+  if (!currentProduct) throw new Error('请先保存或选择商品');
+  if ($('product-title').value !== currentProduct.title || $('product-content').value !== currentProduct.content || $('product-index').value !== String(currentProduct.product_index))
+    throw new Error('商品有未保存修改，请先保存商品');
+  await request('/api/scripts', {snapshot:currentProduct,text:$('script-text').value});
+  await showScripts(); $('script-text').value = ''; $('product-message').textContent = '话术已保存';
+}); });
+action(async () => { await load(); await productAction(loadProducts); });

@@ -7,4 +7,12 @@
 <div class="actions"><button type="submit">保存配置</button><button id="preflight" type="button" class="secondary">检查资源</button><button id="reload" type="button" class="secondary">重新读取</button></div></form>
 <p id="message" role="status" aria-live="polite"></p><p id="error" role="alert"></p></section>
 <section><h2>检查结果</h2><p id="scope">尚未检查资源。</p><ul id="checks"></ul></section>
+<section id="products-panel"><h2>商品与话术</h2><p>商品编号用于兼容原项目，不代表排列顺序。保存话术前请先保存商品修改。</p>
+<label for="product-list">已保存商品</label><select id="product-list"><option value="">请选择商品</option></select>
+<div class="actions"><button id="new-product" type="button" class="secondary">新增商品</button><button id="reload-products" type="button" class="secondary">重读商品</button></div>
+<p id="product-version"></p><form id="product-form"><label for="product-index">商品编号</label><input id="product-index" required>
+<label for="product-title">商品名称</label><input id="product-title" required maxlength="200">
+<label for="product-content">商品信息</label><textarea id="product-content" required maxlength="50000" rows="5"></textarea><div class="actions"><button type="submit">保存商品</button></div></form>
+<form id="script-form"><label for="script-text">人工话术</label><textarea id="script-text" required maxlength="100000" rows="4"></textarea><div class="actions"><button type="submit">保存话术</button></div></form>
+<h3>该商品的话术记录</h3><ul id="scripts-list"></ul><p id="product-message" role="status" aria-live="polite"></p><p id="product-error" role="alert"></p></section>
 <footer><p id="data-directory"></p><p>日志保存在配置目录的 console.log。当前入口用于启动准备；直播能力按后续任务接入。</p><button id="shutdown" class="secondary" type="button">退出控制台</button></footer></main></body></html>

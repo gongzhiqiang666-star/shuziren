@@ -96,6 +96,29 @@ class ConsoleHTTPTests(unittest.TestCase):
             create_server(self.store, port=self.server.server_port)
         self.assertEqual(self.call('/api/state')[0], 200)
 
+    def test_product_edit_selection_scripts_and_conflict(self):
+        def create(index, name):
+            status, value = self.call('/api/products', {'title': name, 'content': name + '商品信息', 'product_index': index})
+            self.assertEqual(status, 200)
+            return value['product']
+        a, b = create('008', '茶杯'), create(3, '毛巾')
+        self.assertEqual(self.call('/api/products/select', {'product_id':a['id']})[0], 200)
+        self.assertEqual(self.call('/api/products')[1]['selected'], a['id'])
+        self.assertEqual(self.call('/api/scripts', {'snapshot':a, 'text':'茶杯话术'})[0], 201)
+        self.assertEqual(self.call('/api/scripts?product_id=' + b['id'])[1]['scripts'], [])
+        update = {'product_id':a['id'], 'version':a['version'], 'title':a['title'],
+                  'content':'容量更新', 'product_index':a['product_index']}
+        self.assertEqual(self.call('/api/products', update)[0], 200)
+        self.assertEqual(self.call('/api/products', update)[0], 409)
+        self.assertEqual(self.call('/api/scripts', {'snapshot':a, 'text':'过期话术'})[0], 409)
+        self.assertEqual(len(self.call('/api/scripts?product_id=' + a['id'])[1]['scripts']), 1)
+
+    def test_invalid_product_requests_visible(self):
+        for path, value in [('/api/products', {}), ('/api/products/select', {}), ('/api/scripts', {}),
+                            ('/api/products', {'title':'', 'content':'x', 'product_index':1})]:
+            self.assertEqual(self.call(path, value)[0], 400)
+        self.assertEqual(self.call('/api/scripts')[0], 400)
+
 
 if __name__ == '__main__':
     unittest.main()

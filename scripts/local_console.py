@@ -7,10 +7,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import secrets
 import socket
+import sqlite3
 import threading
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
 
 from scripts.local_console_config import ConfigError, ConfigStore, preflight
+from scripts.product_store import ProductStore, Conflict, ProductError
 
 WEB = Path(__file__).parent / "local-console"
 
@@ -59,6 +61,8 @@ class InstanceLock:
 def create_server(store, port=None):
     token = secrets.token_urlsafe(32)
     lock = threading.RLock()
+    def products():
+        return ProductStore(store.directory)
     try:
         settings = store.load()
         configured_port = settings["port"]
@@ -96,12 +100,23 @@ def create_server(store, port=None):
                                               "live_status": "未启动", "data_directory": str(store.directory.resolve())})
                 if path == "/api/session":
                     return self.respond(200, {"token": token})
+                if path == "/api/products":
+                    data = products()
+                    return self.respond(200, {"products": data.list(), "selected": data.selected()})
+                if path == "/api/scripts":
+                    query = parse_qs(urlsplit(self.path).query)
+                    ids = query.get("product_id", [])
+                    if len(ids) != 1:
+                        raise ProductError("请选择商品")
+                    return self.respond(200, {"scripts": products().scripts(ids[0])})
                 filename = {"/": "index.html", "/app.js": "app.js", "/style.css": "style.css"}.get(path)
                 if filename:
                     mime = {"index.html": "text/html", "app.js": "text/javascript", "style.css": "text/css"}[filename]
                     return self.respond(200, (WEB / filename).read_bytes(), mime + "; charset=utf-8")
                 return self.respond(404, {"error": "页面不存在"})
-            except (ConfigError, OSError) as error:
+            except sqlite3.Error:
+                self.respond(503, {"error": "商品数据库无法读取，请检查文件与权限；原数据未重置"})
+            except (ConfigError, ProductError, OSError) as error:
                 self.respond(400, {"error": str(error)})
 
         def do_POST(self):
@@ -113,9 +128,11 @@ def create_server(store, port=None):
                 if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
                     raise ConfigError("需要JSON请求")
                 length = int(self.headers.get("Content-Length", "0"))
-                if not 0 < length <= 16384:
+                if not 0 < length <= 1048576:
                     raise ConfigError("请求长度无效")
                 value = json.loads(self.rfile.read(length).decode("utf-8"))
+                if not isinstance(value, dict):
+                    raise ConfigError("请求必须为对象")
                 path = urlsplit(self.path).path
                 with lock:
                     if path == "/api/shutdown":
@@ -128,7 +145,26 @@ def create_server(store, port=None):
                         return self.respond(200, {"config": store.save(value), "message": "已保存；端口修改在下次启动生效"})
                     if path == "/api/preflight":
                         return self.respond(200, preflight(value))
+                    if path == "/api/products":
+                        allowed = {"title", "content", "product_index", "product_id", "version"}
+                        if not {"title", "content", "product_index"} <= value.keys() or value.keys() - allowed:
+                            raise ProductError("商品字段不完整或包含未知字段")
+                        return self.respond(200, {"product": products().save(**value)})
+                    if path == "/api/products/select":
+                        if set(value) != {"product_id"} or not isinstance(value["product_id"], str):
+                            raise ProductError("请选择有效商品")
+                        products().select(value["product_id"])
+                        return self.respond(200, {"selected": value["product_id"]})
+                    if path == "/api/scripts":
+                        if set(value) != {"snapshot", "text"}:
+                            raise ProductError("话术字段不完整")
+                        script_id = products().add_script(value["snapshot"], value["text"])
+                        return self.respond(201, {"id": script_id})
                 return self.respond(404, {"error": "接口不存在"})
+            except Conflict as error:
+                self.respond(409, {"error": str(error)})
+            except sqlite3.Error:
+                self.respond(503, {"error": "商品数据库操作失败，请检查文件与权限；原数据未重置"})
             except (ValueError, UnicodeError, OSError) as error:
                 self.respond(400, {"error": str(error)})
 
