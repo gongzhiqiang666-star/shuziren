@@ -60,9 +60,12 @@ def base_chat(question, sys_prompt, chat_history=[], *, model_type="reply",
         elif model_type == "script": data.update({"temperature": .75, "max_tokens": 4096})
         elif model_type == "title": data.update({"temperature": .4, "max_tokens": 512})
         _apply_model_request_options(data, config["model"], config["endpoint"])
+        request_options = {}
+        if "allow_redirects" in config:
+            request_options["allow_redirects"] = bool(config["allow_redirects"])
         response = requests.post(config["endpoint"], headers={"Authorization": f"Bearer {config['api_key']}",
                                  "Content-Type": "application/json"}, json=data,
-                                 timeout=float(config.get("timeout", 60)))
+                                 timeout=float(config.get("timeout", 60)), **request_options)
         response.raise_for_status()
         choices = response.json().get("choices") or []
         content = ((choices[0].get("message") or {}).get("content") if choices else None)

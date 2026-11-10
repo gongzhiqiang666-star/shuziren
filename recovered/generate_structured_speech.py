@@ -69,21 +69,34 @@ def _build_script_prompts(product_info, special_instructions=""):
 
 
 def _retry_without_han(product_info, special_instructions, invalid_script):
+    return _retry_without_han_configured(product_info, special_instructions, invalid_script)
+
+
+def _retry_without_han_configured(product_info, special_instructions, invalid_script, *, llm_config=None):
     prompt, sys_prompt, language_code = _build_script_prompts(product_info, special_instructions)
     retry_prompt = (prompt + "\nThe previous livestream script contains forbidden Chinese/Han characters or CJK "
                     "punctuation. Rewrite it entirely in the target language. Previous invalid script:\n" + invalid_script)
-    return base_chat(retry_prompt, sys_prompt, model_type="script", raise_on_failure=True)
+    options = {} if llm_config is None else {"llm_config": llm_config}
+    return base_chat(retry_prompt, sys_prompt, model_type="script", raise_on_failure=True, **options)
 
 
 def generate_structured_speech(product_info, special_instructions=""):
+    return generate_structured_speech_with_config(product_info, special_instructions)
+
+
+def generate_structured_speech_with_config(product_info, special_instructions="", *, llm_config=None):
     prompt, sys_prompt, language_code = _build_script_prompts(product_info, special_instructions)
     last_error = None
     for attempt in range(2):
         try:
-            full_script = base_chat(prompt, sys_prompt, model_type="script", raise_on_failure=True)
+            options = {} if llm_config is None else {"llm_config": llm_config}
+            full_script = base_chat(prompt, sys_prompt, model_type="script", raise_on_failure=True, **options)
             if language_forbids_han(language_code) and _contains_han_text(full_script):
                 time.sleep(_SCRIPT_RETRY_BASE_SECONDS * (attempt + 1))
-                full_script = _retry_without_han(product_info, special_instructions, full_script)
+                if llm_config is None:
+                    full_script = _retry_without_han(product_info, special_instructions, full_script)
+                else:
+                    full_script = _retry_without_han_configured(product_info, special_instructions, full_script, **options)
             processed = _postprocess_script(full_script, language_code)
             if not processed or _count_script_chars(processed) < 10:
                 raise RuntimeError("生成的话术为空或过短")
