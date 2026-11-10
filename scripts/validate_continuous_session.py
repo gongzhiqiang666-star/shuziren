@@ -14,6 +14,7 @@ from scripts.avatar_render import verify_media
 from scripts.avatar_store import AvatarStore
 from scripts.continuous_av_sink import ContinuousAVSink
 from scripts.live_av_device_sink import AVDeviceSink
+from scripts.received_voice_audit import CounterDeviceSink,DeviceCapture,audit_received_voice
 from scripts.continuous_session import ContinuousSession
 from scripts.live_avatar_client import LiveAvatarClient
 from scripts.live_frame_channel import FrameReceiver
@@ -30,10 +31,13 @@ def main():
     for name in ['runtime-root','source-voice-data','source-avatar-directory','report-directory','seed-cache']:parser.add_argument('--'+name,required=True,type=Path)
     parser.add_argument('--seconds',type=int,default=20)
     parser.add_argument('--device-audio-output',type=int)
+    parser.add_argument('--capture-devices',action='store_true')
     parser.add_argument('--video-delay-ms',type=float,default=0);args=parser.parse_args()
+    if args.capture_devices and args.device_audio_output is None:parser.error('--capture-devices requires --device-audio-output')
     root=(args.report_directory/('run-'+uuid.uuid4().hex)).resolve();root.mkdir(parents=True)
     report={'status':'failed','phase':'preparing','checks':{},'physical_device_tested':False,'platform_tested':False};tts=client=receiver=sink=session=ingress=assembler=injector=None
     completed=[];expected={};errors=[];presented=[];offsets=[];submit_costs=[];device_trace=[]
+    capture=None
     def save():(root/'result.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     try:
         ffmpeg=args.runtime_root/'_internal/env/ffmpeg/bin/ffmpeg.exe'
@@ -49,7 +53,8 @@ def main():
         shutil.copytree(args.seed_cache,root/'engine-cache');client=LiveAvatarClient(args.runtime_root,avatars.directory(avatar['id']),root,root/'engine-cache')
         client.request('start',session_id=speech_session.id);report['avatar_prepare']=client.request('prepare');save()
         receiver=FrameReceiver(speech_session.id,avatar['width'],avatar['height']);client.request('attach_frames',channel=receiver.descriptor())
-        sink=(AVDeviceSink(avatar['width'],avatar['height'],args.device_audio_output,on_present=device_trace.append,video_delay_ms=args.video_delay_ms)
+        device_sink=CounterDeviceSink if args.capture_devices else AVDeviceSink
+        sink=(device_sink(avatar['width'],avatar['height'],args.device_audio_output,on_present=device_trace.append,video_delay_ms=args.video_delay_ms)
             if args.device_audio_output is not None else ContinuousAVSink(ffmpeg,root/'live.ts',avatar['width'],avatar['height']))
         trace=(root/'presented.jsonl').open('w',encoding='utf-8')
         def on_present(row):
@@ -57,7 +62,10 @@ def main():
             if 'late_ns' in row:
                 presented.append(row['late_ns']/1000000);offsets.append(row['offset_ns']/1000000)
             submit_costs.append(row['submit_ns']/1000000)
-        session=ContinuousSession(speech_session.id,client,receiver,sink,root/'assembled',on_source_complete=completed.append,on_present=on_present)
+        def start_capture():
+            nonlocal capture
+            if args.capture_devices:capture=DeviceCapture(ffmpeg,root,max(1,args.seconds-2))
+        session=ContinuousSession(speech_session.id,client,receiver,sink,root/'assembled',on_source_complete=completed.append,on_present=on_present,on_started=start_capture)
         def inject():
             try:
                 if not session.started.wait(30):raise TimeoutError('Continuous output did not start')
@@ -103,6 +111,11 @@ def main():
                 output_closed=sink.closed,avatar_closed=client.process.poll() is not None,video_delay_ms=args.video_delay_ms,
                 timing_acceptance=False,receiver_sync_tested=False)
             report['checks'].update(two_new_utterances_during_output=True,source_pcm_exact=True,device_callbacks_complete=True)
+            if capture:
+                capture.wait();report['receiver']=audit_received_voice(capture.path,completed,expected)
+                report['receiver_sync_tested']=True
+                if not report['receiver']['voice_sync_passed']:
+                    report['status']='failed';raise RuntimeError('Real voice receiver correlation or A/V timing failed')
             return 0
         subprocess.run([str(ffmpeg),'-nostdin','-y','-v','error','-i',str(root/'live.ts'),'-map','0:v:0','-map','0:a:0','-c','copy',str(root/'audit.mp4')],capture_output=True,check=True,timeout=60)
         media=verify_media(reference_path,root/'audit.mp4',ffmpeg)
@@ -116,8 +129,9 @@ def main():
             submit_cost_p95_ms=float(np.percentile(submit_costs,95)),
             timing_acceptance=False)
         report['checks'].update(two_new_utterances_during_output=True,idle_speech_idle_one_mux=True,source_pcm_exact=True,one_video_audio_clock=True,complete_media=True)
-    except Exception as error:report.update(error_type=type(error).__name__,error=str(error))
+    except Exception as error:report.update(status='failed',error_type=type(error).__name__,error=str(error))
     finally:
+        if capture:capture.close()
         report.update(expected_sources=expected,completed_sources=completed,injection_errors=errors)
         if session:session.stop()
         elif receiver:receiver.close()

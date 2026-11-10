@@ -1,0 +1,51 @@
+from fractions import Fraction
+from pathlib import Path
+import tempfile
+import unittest
+import wave
+import av
+import numpy as np
+from scipy import signal
+from scripts.received_voice_audit import stamp_counter,read_counter,audit_received_voice
+
+
+class ReceivedVoiceTests(unittest.TestCase):
+    def fixture(self,root,delay,wrong_voice=False):
+        source=np.random.default_rng(123).integers(-4000,4000,2400,dtype=np.int16)
+        reference=root/'voice.wav'
+        with wave.open(str(reference),'wb') as sound:
+            sound.setparams((1,2,24000,0,'NONE','not compressed'));sound.writeframes(source.tobytes())
+        audio=np.zeros(48000,dtype='<i2');offset=round((.24+delay)*48000)
+        received_source=np.random.default_rng(999).integers(-4000,4000,2400,dtype=np.int16) if wrong_voice else source
+        audio[offset:offset+4800]=signal.resample_poly(received_source.astype(float),2,1).astype('<i2')
+        path=root/'capture.mkv'
+        with av.open(str(path),'w') as output:
+            video=output.add_stream('ffv1',rate=25);video.width=720;video.height=1280;video.pix_fmt='bgr0'
+            sound=output.add_stream('pcm_s16le',rate=48000);sound.layout='mono'
+            frame=av.AudioFrame.from_ndarray(audio.reshape(1,-1),format='s16',layout='mono')
+            frame.sample_rate=48000;frame.pts=0;frame.time_base=Fraction(1,48000)
+            output.mux(sound.encode(frame))
+            image=np.zeros((1280,720,3),np.uint8)
+            for index in range(25):
+                frame=av.VideoFrame.from_ndarray(stamp_counter(image,index),format='bgr24')
+                frame.pts=index;frame.time_base=Fraction(1,25);output.mux(video.encode(frame))
+            output.mux(video.encode(None));output.mux(sound.encode(None))
+        events=[{'source_id':'idle-0','samples':5760},{'source_id':'speech','samples':2400}]
+        return audit_received_voice(path,events,{'speech':{'path':str(reference)}})
+
+    def test_counter_wrap_and_input_ownership(self):
+        image=np.zeros((1280,720,3),np.uint8)
+        for index in [0,255,256,499,65535]:self.assertEqual(read_counter(stamp_counter(image,index)),index)
+        self.assertFalse(image.any())
+        with self.assertRaises(ValueError):stamp_counter(image,65536)
+
+    def test_actual_decode_finds_voice_and_twenty_ms_offset(self):
+        with tempfile.TemporaryDirectory() as temporary:result=self.fixture(Path(temporary),.02)
+        self.assertTrue(result['voice_sync_passed']);self.assertTrue(result['frame_continuity_passed'])
+        self.assertAlmostEqual(result['voices'][0]['av_offset_ms'],20,delta=.1)
+        self.assertGreater(result['voices'][0]['correlation'],.99)
+
+    def test_late_audio_and_wrong_voice_fail(self):
+        for delay,wrong in [(.12,False),(.02,True)]:
+            with self.subTest(delay=delay,wrong=wrong),tempfile.TemporaryDirectory() as temporary:
+                self.assertFalse(self.fixture(Path(temporary),delay,wrong)['voice_sync_passed'])
