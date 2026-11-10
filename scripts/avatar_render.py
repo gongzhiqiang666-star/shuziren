@@ -71,6 +71,7 @@ def render(runtime_root, avatar, audio, output, backend='cuda', cache=None, prof
         'audio_sha256':before,'output_sha256':digest(output),'providers':providers,
         **media,
         'initialization_seconds':initialized-started,'total_seconds':elapsed,
+        'pipeline_timings':synth.last_process_timings,
         'synthesis_batches':stats['batches'],'synthesized_frames':stats['frames'],
         'inference_ms':sum(stats['inference_ms']),'prepare_ms':sum(stats['prepare_ms']),
         'paste_ms':sum(stats['paste_ms']),'engine_cache':str(cache),'full_decode_passed':True,

@@ -115,7 +115,8 @@ def worker(root,stage):
                         verify_started=time.perf_counter();media=verify_media(audio,output,internal/'env/ffmpeg/bin/ffmpeg.exe')
                         result={'status':'passed','item':item['id'],'backend':stage,'cold':index==0,
                             'audio_sha256':source['sha256'],'output':str(output),'output_sha256':digest(output),
-                            'process_seconds':seconds,'verification_seconds':time.perf_counter()-verify_started,**media,
+                            'process_seconds':seconds,'pipeline_timings':synth.last_process_timings,
+                            'verification_seconds':time.perf_counter()-verify_started,**media,
                             **{key:sum(stats[key][before[key]:]) for key in before}}
                         write(destination/(item['id']+'.json'),result)
                         if index==0:

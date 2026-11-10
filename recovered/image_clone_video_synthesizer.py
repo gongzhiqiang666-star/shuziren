@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 import cv2
 import numpy as np
 
@@ -92,23 +93,44 @@ class VideoSynthesizer:
         return [features[int(i/denominator*max_start):int(i/denominator*max_start)+20] for i in range(frame_count)]
 
     def process_single_file(self,audio_path,output_path,frames_dir=None):
+        started=time.perf_counter();timings={}
         features=self.extract_audio_features(audio_path);total_audio_frames=len(features);sequence=self._generate_frame_sequence(total_audio_frames)
+        timings['audio_features_seconds']=time.perf_counter()-started
+        setup_started=time.perf_counter()
         output_path=Path(output_path);output_path.parent.mkdir(parents=True,exist_ok=True)
         first,_=self._load_single_frame(sequence[0]);height,width=first.shape[:2]
         temp_video=output_path.with_name(output_path.stem+"_temp.mp4");writer=cv2.VideoWriter(str(temp_video),cv2.VideoWriter_fourcc(*"mp4v"),25,(width,height))
         if not writer.isOpened():raise RuntimeError(f"无法创建输出视频: {temp_video}")
         save_dir=Path(frames_dir) if frames_dir else None
         if save_dir:save_dir.mkdir(parents=True,exist_ok=True)
+        timings['writer_setup_seconds']=time.perf_counter()-setup_started
+        timings.update(frame_load_seconds=0.,frame_synthesis_seconds=0.,frame_write_seconds=0.)
+        # One pending batch overlaps disk/JPEG work with GPU synthesis. Keep this
+        # executor separate from the loader pool to avoid nested-pool deadlock.
+        prefetch=ThreadPoolExecutor(max_workers=1,thread_name_prefix='avatar-prefetch')
+        pending=prefetch.submit(self._load_batch_frames,sequence[:self.batch_size])
         try:
             for start in range(0,total_audio_frames,self.batch_size):
-                indices=sequence[start:start+self.batch_size];images,metadata=self._load_batch_frames(indices)
+                tick=time.perf_counter()
+                indices=sequence[start:start+self.batch_size];images,metadata=pending.result()
+                next_indices=sequence[start+self.batch_size:start+2*self.batch_size]
+                if next_indices:pending=prefetch.submit(self._load_batch_frames,next_indices)
+                timings['frame_load_seconds']+=time.perf_counter()-tick;tick=time.perf_counter()
                 frames=self._process_batch(images,metadata,features[start:start+len(indices)])
+                timings['frame_synthesis_seconds']+=time.perf_counter()-tick;tick=time.perf_counter()
                 for offset,frame in enumerate(frames):
                     writer.write(frame)
                     if save_dir:cv2.imwrite(str(save_dir/f"frame_{start+offset:06d}.jpg"),frame)
-        finally:writer.release()
+                timings['frame_write_seconds']+=time.perf_counter()-tick
+        finally:
+            prefetch.shutdown(wait=True,cancel_futures=True)
+            tick=time.perf_counter();writer.release();timings['writer_close_seconds']=time.perf_counter()-tick
+        tick=time.perf_counter()
         try:_mux_video_audio(temp_video,audio_path,output_path)
         finally:temp_video.unlink(missing_ok=True)
+        timings['mux_seconds']=time.perf_counter()-tick
+        timings['total_seconds']=time.perf_counter()-started
+        self.last_process_timings=timings
         return str(output_path)
 
     def close(self,wait=True):
