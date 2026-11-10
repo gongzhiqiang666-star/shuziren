@@ -28,6 +28,7 @@ class AVDeviceSink:
         self.queue=queue.Queue(maxsize=buffer_frames);self.closed=False;self.started=False;self.draining=False
         self.error=None;self.frames=0;self.samples=0;self.presented=0;self.peak=0;self.underflows=0
         self.underrun=None
+        self.underrun_context=None
         self.finished=threading.Event();self.pcm_hash=hashlib.sha256();self.camera=None;self.stream=None
         info=sd.query_devices(audio_device)
         settings=sd.WasapiSettings(auto_convert=True) if sd.query_hostapis(info['hostapi'])['name']=='Windows WASAPI' else None
@@ -50,6 +51,9 @@ class AVDeviceSink:
                 self.underflows+=1
                 self.underrun={'callback_ns':time.perf_counter_ns(), 'next_frame':self.presented,
                                'submitted_frames':self.frames}
+                context=self.underrun_context
+                if context is not None:
+                    self.underrun['pipeline']=context()
                 raise RuntimeError('Combined device queue underrun')
             if index!=self.presented:raise RuntimeError('Combined device frame reordered')
             callback_ns=time.perf_counter_ns();outdata[:]=pcm
@@ -121,6 +125,7 @@ class AVDeviceSink:
                 try:self.stream.abort()
                 finally:self.stream.close()
         finally:
+            self.underrun_context=None
             if self.video_thread:self.video_thread.join(2)
             if self.camera:self.camera.close()
             while True:

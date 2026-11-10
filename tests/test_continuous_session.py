@@ -34,6 +34,8 @@ class SessionLifecycleTests(unittest.TestCase):
             sink.abort.assert_called_once()
             self.assertTrue(session.finished.is_set())
             self.assertFalse(audio.exists())
+            self.assertEqual(session.stall_context()['consumer']['stage'],'receive')
+            self.assertEqual(session.stall_context()['consumer']['position'],0)
     def test_reply_dropped_if_capture_stops_or_control_revision_changes(self):
         for cause in ('capture', 'automatic', 'takeover', 'expiry'):
             with self.subTest(cause=cause), tempfile.TemporaryDirectory() as temporary:

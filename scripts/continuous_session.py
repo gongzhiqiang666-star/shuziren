@@ -25,6 +25,13 @@ class ContinuousSession:
         self.leases={};self.lease_lock=threading.RLock();self.pcm=PCMTimeline(session_id,self._audio_done)
         self.frames_written=0;self.started=threading.Event();self.finished=threading.Event();self.consumer_thread=None
         self.submit_costs=deque(maxlen=64)
+        self.producer_stage=('starting',time.perf_counter_ns(),None)
+        self.consumer_stage=('starting',time.perf_counter_ns(),None)
+
+    def stall_context(self):
+        return {name:{'stage':stage,'since_ns':since,'position':position}
+                for name,(stage,since,position) in (
+                    ('producer',self.producer_stage),('consumer',self.consumer_stage))}
 
     def submit(self,utterance,*,priority=False,manual_revision=None,reply_guard=None):
         if not isinstance(utterance,Utterance) or utterance.session_id!=self.session_id or utterance.path.resolve().parent!=self.root:
@@ -121,26 +128,34 @@ class ContinuousSession:
     def _produce(self):
         try:
             while not self.stop_event.is_set():
+                self.producer_stage=('next_utterance',time.perf_counter_ns(),None)
                 utterance=self._next_utterance()
                 if utterance:
                     span=self.clock.reserve(self.session_id,utterance.samples);timing=asdict(span)
+                    self.producer_stage=('speech_pcm',time.perf_counter_ns(),span.frame_start)
                     self.pcm.append(timing,utterance.task_id,utterance.path,utterance.pcm_sha256)
+                    self.producer_stage=('speech_model',time.perf_counter_ns(),span.frame_start)
                     self.client.request('stream',timeout=max(360,utterance.samples/24000+60),session_id=self.session_id,task_id=utterance.task_id,
                         audio=str(utterance.path),pcm_sha256=utterance.pcm_sha256,timing=timing)
                     self._release(utterance.task_id,'model')
                 else:
                     span=self.clock.reserve(self.session_id,8*960);timing=asdict(span);source_id='idle-'+str(span.frame_start)
+                    self.producer_stage=('idle_pcm',time.perf_counter_ns(),span.frame_start)
                     self.pcm.append(timing,source_id)
+                    self.producer_stage=('idle_model',time.perf_counter_ns(),span.frame_start)
                     self.client.request('idle',session_id=self.session_id,task_id=source_id,timing=timing)
         except BaseException as error:
             if not self.stop_event.is_set():self.errors.append(str(error));self.stop_event.set()
 
     def _write(self,index):
+        self.consumer_stage=('receive',time.perf_counter_ns(),index)
         frame=self.receiver.take(timeout=10)
         if frame.frame_index!=index or frame.session_id!=self.session_id:raise ValueError('Presentation frame/session mismatch')
+        self.consumer_stage=('pcm',time.perf_counter_ns(),index)
         pcm=self.pcm.read(960)
         if self.stop_event.is_set():raise RuntimeError('Presentation stopped')
         started=time.perf_counter_ns()
+        self.consumer_stage=('submit',started,index)
         self.sink.submit(index,frame.image,pcm);self.frames_written+=1
         if index>=2:self.submit_costs.append(time.perf_counter_ns()-started)
 
@@ -166,9 +181,11 @@ class ContinuousSession:
                 index=8
                 while not self.stop_event.is_set() and (frames is None or index<frames):
                     receive_started=time.perf_counter_ns()
+                    self.consumer_stage=('receive',receive_started,index)
                     frame=self.receiver.take(timeout=10)
                     received=time.perf_counter_ns()
                     if frame.frame_index!=index:raise ValueError('Output frame order changed')
+                    self.consumer_stage=('pcm',received,index)
                     pcm=self.pcm.read(960);pcm_ready=time.perf_counter_ns()
                     # Compensate measured synchronous submit cost, without moving
                     # the canonical PTS/deadline or hiding early completion.
@@ -176,6 +193,7 @@ class ContinuousSession:
                     deadline=None if audio_clock else self.pacer.wait_for(self.session_id,index,submit_lead_ns=lead)
                     if self.stop_event.is_set():break
                     submit_started=time.perf_counter_ns()
+                    self.consumer_stage=('submit',submit_started,index)
                     sink_timing=self.sink.submit(index,frame.image,pcm);self.frames_written+=1
                     stamp=({'frame_index':index,'pts_ns':index*40000000,'presented_ns':time.perf_counter_ns(),
                         'event':'device_queue_submission'}

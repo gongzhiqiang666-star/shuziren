@@ -115,6 +115,7 @@ class ConsoleLive:
             session = ContinuousSession(binding.id, client, receiver, sink, assembler.root,
                                         on_started=started, on_present=presented,
                                         on_source_complete=source_complete)
+            sink.underrun_context = session.stall_context
             with self.lock:
                 self.session = session
                 self.ingress = ingress
