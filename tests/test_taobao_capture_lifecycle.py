@@ -7,6 +7,11 @@ from recovered.taobao_live_control import TaobaoLiveControl
 
 
 class TaobaoCaptureLifecycleTests(unittest.TestCase):
+    def test_goods_id_prefers_label_over_numeric_product_name(self):
+        item = Mock()
+        item.inner_text.return_value = '20261111 纪念款 ID:123456789 开始讲解'
+        self.assertEqual(TaobaoLiveControl._read_goods_id(item), 123456789)
+
     def test_control_page_is_accessed_on_the_owning_thread(self):
         controller = TaobaoLiveControl()
         self.addCleanup(controller.shutdown)

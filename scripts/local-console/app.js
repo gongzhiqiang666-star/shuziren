@@ -472,21 +472,27 @@ $('live-control').addEventListener('click', () => liveAction(() => request('/api
 window.addEventListener('pagehide', () => clearTimeout(liveTimer));
 let taobaoState = {status:'idle'}, taobaoReply = {}, taobaoTimer, taobaoBusy = false;
 function renderTaobao() {
-  const active = ['login','connecting','capturing','stopping'].includes(taobaoState.status);
+  const active = ['login','connecting','capturing','reconnecting','stopping'].includes(taobaoState.status);
   const disabled = consoleClosed || taobaoBusy;
   $('taobao-login').disabled = disabled || active;
   $('taobao-start').disabled = disabled || active || !taobaoState.saved_login || !/^[0-9]{1,30}$/.test($('taobao-live-id').value);
   $('taobao-stop').disabled = disabled || !active || taobaoState.status === 'stopping';
   $('taobao-auto-reply').disabled = disabled || (!taobaoReply.automatic && taobaoState.status !== 'capturing');
   $('taobao-auto-reply').textContent = taobaoReply.automatic ? '关闭自动回复' : '开启自动回复';
+  $('taobao-goods-refresh').disabled = disabled || taobaoState.status !== 'capturing';
+  $('taobao-explain').disabled = $('taobao-goods-refresh').disabled || !$('taobao-goods').value;
 }
 async function loadTaobao() {
   clearTimeout(taobaoTimer);
   if (consoleClosed) return;
   const {capture, reply} = await request('/api/taobao/state');
+  if (taobaoState.capture_id !== capture.capture_id || capture.status !== 'capturing') {
+    $('taobao-goods').replaceChildren(new Option('请选择商品',''));
+    $('taobao-goods-status').textContent = '';
+  }
   taobaoState = capture;
   taobaoReply = reply;
-  const labels = {idle:'等待登录或采集',login:'请在浏览器完成登录',signed_in:'登录状态已保存',connecting:'正在连接场次',capturing:`已采集 ${taobaoState.count} 条新评论`,stopping:'正在停止',stopped:'已停止',failed:'操作失败',login_required:'请重新登录'};
+  const labels = {idle:'等待登录或采集',login:'请在浏览器完成登录',signed_in:'登录状态已保存',connecting:'正在连接场次',capturing:`已采集 ${taobaoState.count} 条新评论`,reconnecting:`正在重连（第 ${capture.reconnects} 次）`,stopping:'正在停止',stopped:'已停止',failed:'操作失败',login_required:'请重新登录'};
   $('taobao-status').textContent = labels[taobaoState.status];
   $('taobao-error').textContent = taobaoState.error || reply.automatic_error || '';
   const replyLabels = {generating:'正在生成回复',synthesizing:'正在合成回复语音',queued:'回复已加入优先队列',cancelled:'回复已取消',failed:'回复失败'};
@@ -503,7 +509,7 @@ async function loadTaobao() {
     return item;
   }));
   renderTaobao();
-  if (['login','connecting','capturing','stopping'].includes(taobaoState.status) || ['generating','synthesizing'].includes(reply.status) || reply.automatic) {
+  if (['login','connecting','capturing','reconnecting','stopping'].includes(taobaoState.status) || ['generating','synthesizing'].includes(reply.status) || reply.automatic) {
     taobaoTimer = setTimeout(() => loadTaobao().catch(error => {$('taobao-error').textContent = error.message;}), 1000);
   }
 }
@@ -520,5 +526,25 @@ $('taobao-login').addEventListener('click', () => taobaoAction('/api/taobao/logi
 $('taobao-start').addEventListener('click', () => taobaoAction('/api/taobao/start', {live_id:$('taobao-live-id').value}));
 $('taobao-stop').addEventListener('click', () => taobaoAction('/api/taobao/stop', {}));
 $('taobao-auto-reply').addEventListener('click', () => taobaoAction('/api/taobao/auto-reply', {enabled:!taobaoReply.automatic}));
+$('taobao-goods').addEventListener('change', renderTaobao);
+async function taobaoGoods(explain) {
+  if (taobaoBusy || consoleClosed) return;
+  taobaoBusy = true;
+  renderTaobao();
+  const captureId = taobaoState.capture_id;
+  const goodsId = $('taobao-goods').value;
+  try {
+    const result = await request(explain ? '/api/taobao/explain' : '/api/taobao/goods',
+      explain ? {capture_id:captureId, goods_id:goodsId} : {capture_id:captureId});
+    await loadTaobao();
+    if (taobaoState.capture_id !== captureId || taobaoState.status !== 'capturing') return;
+    if (explain) $('taobao-goods-status').textContent = `已开始讲解商品 ${result.goods_id}`;
+    else $('taobao-goods').replaceChildren(new Option('请选择商品',''),
+      ...result.items.map(item => new Option(`${item.name} · ${item.id}`,item.id)));
+  } catch (error) { $('taobao-goods-status').textContent = error.message; }
+  finally { taobaoBusy = false; renderTaobao(); }
+}
+$('taobao-goods-refresh').addEventListener('click', () => taobaoGoods(false));
+$('taobao-explain').addEventListener('click', () => taobaoGoods(true));
 window.addEventListener('pagehide', () => clearTimeout(taobaoTimer));
 action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender);await loadLive();await loadTaobao(); });

@@ -590,7 +590,8 @@ class TaobaoLiveControl:
         except Exception: return ""
     @staticmethod
     def _read_goods_id(item):
-        text=self._item_raw_text(item); match=re.search(r"(?:ID[:：\s]*)?(\d{5,})",text,re.I)
+        text=TaobaoLiveControl._item_raw_text(item)
+        match=re.search(r"ID[:：\s]*(\d{5,})",text,re.I) or re.search(r"\b(\d{5,})\b",text)
         return int(match.group(1)) if match else None
     @staticmethod
     def _button_text(button):

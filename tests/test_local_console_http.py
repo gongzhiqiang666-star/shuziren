@@ -30,6 +30,9 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call('/api/taobao/auto-reply', {'enabled':'true'})[0], 400)
         self.assertEqual(self.call('/api/taobao/auto-reply', {'enabled':True})[0], 409)
         self.assertFalse(self.call('/api/taobao/auto-reply', {'enabled':False})[1]['reply']['automatic'])
+        self.assertEqual(self.call('/api/taobao/goods', {'capture_id':'old'})[0], 409)
+        self.assertEqual(self.call('/api/taobao/explain', {'capture_id':'old','goods_id':'123456'})[0], 409)
+        self.assertEqual(self.call('/api/taobao/explain', {'capture_id':'old','goods_id':123456})[0], 400)
 
     def test_live_routes_reject_stale_or_unauthorized_actions(self):
         self.assertEqual(self.call('/api/live/state')[1], {'session': {'status': 'idle'}})

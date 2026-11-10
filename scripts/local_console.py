@@ -286,6 +286,14 @@ def create_server(store, port=None):
                 if not isinstance(value, dict):
                     raise ConfigError("请求必须为对象")
                 path = urlsplit(self.path).path
+                if path in {'/api/taobao/goods', '/api/taobao/explain'}:
+                    fields = {'capture_id'} if path.endswith('/goods') else {'capture_id', 'goods_id'}
+                    if set(value) != fields or not isinstance(value['capture_id'], str):
+                        raise ProductError('淘宝商品操作参数无效')
+                    goods_id = value.get('goods_id')
+                    if 'goods_id' in fields and (not isinstance(goods_id, str) or not goods_id.isascii() or not goods_id.isdecimal() or not 5 <= len(goods_id) <= 30):
+                        raise ProductError('请选择当前场次的商品')
+                    return self.respond(200, taobao.goods(value['capture_id'], goods_id))
                 with lock:
                     if path == '/api/taobao/auto-reply':
                         if set(value) != {'enabled'} or type(value['enabled']) is not bool:

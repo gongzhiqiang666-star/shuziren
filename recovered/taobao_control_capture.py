@@ -38,14 +38,16 @@ class TaobaoControlDanmuCapture:
         self._storage_state = None
         self._history = CommentHistory()
         self._prime_existing = False
+        self._reconnect_on_error = False
         self._stopped = Event()
         self._stopped.set()
 
     @classmethod
-    def _configured(cls, *, poll_interval_sec=1.5, skip_anchor=True, controller=None, storage_state=None, prime_existing=False):
+    def _configured(cls, *, poll_interval_sec=1.5, skip_anchor=True, controller=None, storage_state=None, prime_existing=False, reconnect_on_error=False):
         instance=cls(poll_interval_sec=poll_interval_sec,skip_anchor=skip_anchor)
         instance._controller=controller; instance._storage_state=storage_state
         instance._prime_existing=prime_existing
+        instance._reconnect_on_error=reconnect_on_error
         return instance
 
     def start(self):
@@ -93,7 +95,7 @@ class TaobaoControlDanmuCapture:
             except TaobaoLoginRequired:
                 raise
             except Exception:
-                if isinstance(controller, TaobaoLiveControl) and not controller.connected():
+                if self._reconnect_on_error or (isinstance(controller, TaobaoLiveControl) and not controller.connected()):
                     raise
                 logging.getLogger(__name__).exception("Taobao comment polling failed")
                 prime = self._prime_existing
