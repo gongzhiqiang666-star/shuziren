@@ -17,6 +17,14 @@ from scripts.local_console_config import ConfigStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_live_routes_reject_stale_or_unauthorized_actions(self):
+        self.assertEqual(self.call('/api/live/state')[1], {'session': {'status': 'idle'}})
+        self.assertEqual(self.call('/api/live/start', {'audio_device': True})[0], 400)
+        self.assertEqual(self.call('/api/live/start', {'audio_device': 14})[0], 400)
+        self.assertEqual(self.call('/api/live/start', {'audio_device': 14}, **{'X-Console-Token': 'bad'})[0], 403)
+        self.assertEqual(self.call('/api/live/enqueue', {'session_id': 'old', 'task_id': 'old'})[0], 409)
+        self.assertEqual(self.call('/api/live/stop', {'session_id': 'old'})[0], 409)
+
     def test_render_endpoints_require_inputs_and_valid_session(self):
         self.assertEqual(self.call('/api/render/state')[1],{'task':None})
         self.assertEqual(self.call('/api/render/start',{})[0],400)

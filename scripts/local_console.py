@@ -17,6 +17,7 @@ from scripts.local_console_config import ConfigError, ConfigStore, preflight
 from scripts.product_store import ProductStore, Conflict, ProductError
 from scripts.voice_store import VoiceStore, VoiceError
 from scripts.avatar_store import AvatarStore, AvatarError
+from scripts.console_live import ConsoleLive
 
 WEB = Path(__file__).parent / "local-console"
 
@@ -76,7 +77,12 @@ def create_server(store, port=None):
     tts_manager = None
     avatar_manager = None
     render_manager = None
+    live_manager = None
     tasks_closed = False
+    def live_label():
+        status = live_manager.state()['status'] if live_manager else 'idle'
+        return {'idle': '未启动', 'preparing': '准备中', 'running': '本机输出中',
+                'stopping': '停止中', 'stopped': '已停止', 'failed': '输出失败'}[status]
     def tasks():
         nonlocal task_manager
         with lock:
@@ -89,6 +95,7 @@ def create_server(store, port=None):
         nonlocal tasks_closed
         with lock:
             tasks_closed = True
+            if live_manager is not None: live_manager.close()
             if task_manager is not None: task_manager.close()
             if render_manager is not None: render_manager.close()
             if tts_manager is not None: tts_manager.close()
@@ -175,7 +182,18 @@ def create_server(store, port=None):
                         config = store.load()
                     return self.respond(200, {"config": config, "token": token,
                                               "listening_port": self.server.server_port,
-                                              "live_status": "未启动", "data_directory": str(store.directory.resolve())})
+                                              "live_status": live_label(), "data_directory": str(store.directory.resolve())})
+                if path == '/api/live/state':
+                    return self.respond(200, {'session': live_manager.state() if live_manager else {'status': 'idle'}})
+                if path == '/api/live/devices':
+                    try:
+                        import sounddevice
+                        hosts = sounddevice.query_hostapis()
+                        devices = [{'id': index, 'name': device['name'], 'host': hosts[device['hostapi']]['name']}
+                                   for index, device in enumerate(sounddevice.query_devices()) if device['max_output_channels']]
+                    except (ImportError, OSError, RuntimeError) as error:
+                        return self.respond(503, {'error': '无法读取音频设备：' + str(error)})
+                    return self.respond(200, {'devices': devices})
                 if path == "/api/session":
                     return self.respond(200, {"token": token})
                 if path == '/api/voices':
@@ -238,6 +256,7 @@ def create_server(store, port=None):
                 self.respond(400, {"error": str(error)})
 
         def do_POST(self):
+            nonlocal live_manager
             origin = "http://127.0.0.1:%d" % self.server.server_port
             if (not self.trusted_host() or self.headers.get("Origin") != origin
                     or not secrets.compare_digest(self.headers.get("X-Console-Token", ""), token)):
@@ -260,6 +279,29 @@ def create_server(store, port=None):
                     raise ConfigError("请求必须为对象")
                 path = urlsplit(self.path).path
                 with lock:
+                    live_active = live_manager is not None and live_manager.state()['status'] in ConsoleLive.active_states
+                    if live_active and path in {'/api/config', '/api/products', '/api/products/select', '/api/avatars/select',
+                                                '/api/voices/select', '/api/avatar-preparation/start', '/api/render/start'}:
+                        raise Conflict('请先停止本机场次')
+                    if path == '/api/live/start':
+                        if set(value) != {'audio_device'} or type(value['audio_device']) is not int or value['audio_device'] < 0:
+                            raise ProductError('请选择音频输出设备')
+                        for manager in (avatar_manager, render_manager):
+                            if manager is not None and (manager.state() or {}).get('status') == 'running':
+                                raise Conflict('请先完成或取消视频任务')
+                        if live_manager is None:
+                            live_manager = ConsoleLive(tts(), store.directory)
+                        return self.respond(202, {'session': live_manager.start(value['audio_device'])})
+                    if path in {'/api/live/stop', '/api/live/enqueue'}:
+                        fields = {'session_id'} if path.endswith('/stop') else {'session_id', 'task_id'}
+                        if set(value) != fields or not all(isinstance(item, str) and item for item in value.values()):
+                            raise ProductError('场次请求字段无效')
+                        if live_manager is None:
+                            raise Conflict('暂无场次')
+                        if path.endswith('/stop'):
+                            return self.respond(200, {'session': live_manager.stop(value['session_id'])})
+                        live_manager.enqueue(value['session_id'], value['task_id'])
+                        return self.respond(202, {'session': live_manager.state()})
                     if path == "/api/shutdown":
                         if value != {"confirm": True}:
                             raise ConfigError("退出请求无效")

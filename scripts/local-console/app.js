@@ -16,7 +16,7 @@ async function action(work) {
   $('error').textContent = ''; $('message').textContent = '';
   document.querySelectorAll('button').forEach(b => b.disabled = true);
   try { await work(); } catch(error) { $('error').textContent = error.message || '无法连接本地服务'; }
-  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); renderRecordingButtons(); renderTTSButtons(); renderAvatarVideoButtons(); renderVideoButtons(); }
+  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); renderRecordingButtons(); renderTTSButtons(); renderAvatarVideoButtons(); renderVideoButtons(); renderLiveButtons(); }
 }
 async function load() {
   clearChecks();
@@ -401,4 +401,47 @@ $('render-preview').addEventListener('error',()=>{
 window.addEventListener('pagehide',()=>{clearTimeout(renderTimer);clearRenderPreview();});
 renderVideoButtons();
 
-action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender); });
+let liveSession = {status:'idle'}, liveTimer, liveBusy = false;
+const liveLabels = {idle:'未启动', preparing:'准备中', running:'本机输出中', stopping:'停止中', stopped:'已停止', failed:'输出失败'};
+function renderLiveButtons() {
+  const active = ['preparing','running','stopping'].includes(liveSession.status);
+  $('live-start').disabled = consoleClosed || liveBusy || active || !$('live-audio').value;
+  $('live-stop').disabled = consoleClosed || liveBusy || !['preparing','running'].includes(liveSession.status);
+  $('live-enqueue').disabled = consoleClosed || liveBusy || liveSession.status !== 'running';
+  $('live-audio').disabled = active || liveBusy;
+}
+async function loadLive() {
+  clearTimeout(liveTimer);
+  if (consoleClosed) return;
+  liveSession = (await request('/api/live/state')).session;
+  $('live-status').textContent = liveLabels[liveSession.status];
+  $('live-detail').textContent = liveSession.frames ? `已提交 ${liveSession.frames} 帧` : '';
+  if (liveSession.error) $('live-error').textContent = liveSession.error;
+  renderLiveButtons();
+  if (['preparing','running','stopping'].includes(liveSession.status)) {
+    liveTimer = setTimeout(() => loadLive().catch(error => {$('live-error').textContent = error.message;}), 800);
+  }
+}
+async function liveAction(work) {
+  if (consoleClosed || liveBusy) return;
+  liveBusy = true; renderLiveButtons(); $('live-error').textContent = '';
+  try { await work(); await loadLive(); }
+  catch (error) { $('live-error').textContent = error.message; }
+  finally { liveBusy = false; renderLiveButtons(); }
+}
+$('live-audio').addEventListener('change', renderLiveButtons);
+$('live-devices').addEventListener('click', () => liveAction(async () => {
+  const {devices} = await request('/api/live/devices');
+  const selected = $('live-audio').value;
+  $('live-audio').replaceChildren(new Option('请选择设备',''), ...devices.map(device => new Option(`${device.name} · ${device.host}`,device.id)));
+  $('live-audio').value = devices.some(device => String(device.id) === selected) ? selected : '';
+}));
+$('live-start').addEventListener('click', () => liveAction(() => request('/api/live/start',{audio_device:Number($('live-audio').value)})));
+$('live-stop').addEventListener('click', () => liveAction(() => request('/api/live/stop',{session_id:liveSession.id})));
+$('live-enqueue').addEventListener('click', () => liveAction(async () => {
+  requireSavedProduct();
+  if (ttsState?.status !== 'succeeded' || ttsState.id !== ttsPreviewTask) throw new Error('请先合成当前话术的语音');
+  await request('/api/live/enqueue',{session_id:liveSession.id,task_id:ttsState.id});
+}));
+window.addEventListener('pagehide', () => clearTimeout(liveTimer));
+action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender);await loadLive(); });
