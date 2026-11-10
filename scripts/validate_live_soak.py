@@ -31,6 +31,7 @@ def main():
     parser.add_argument('--report-directory', type=Path, required=True)
     parser.add_argument('--audio-device', type=int, required=True)
     parser.add_argument('--seconds', type=int, default=28800)
+    parser.add_argument('--device-buffer-frames', type=int, choices=(2, 4), default=2)
     parser.add_argument('--verify-worker-recovery', action='store_true',
                         help='Terminate this run’s avatar worker and restart the scene before sampling')
     args = parser.parse_args()
@@ -52,11 +53,12 @@ def main():
     products.select_script(second['id'], second_script)
 
     tts = TTSTasks(args.runtime_root, directory)
-    live = ConsoleLive(tts, directory)
+    live = ConsoleLive(tts, directory, device_buffer_frames=args.device_buffer_frames)
     process = psutil.Process()
     process_cache = {}
     report = {'status': 'preparing', 'runner_pid': process.pid, 'requested_seconds': args.seconds, 'workload': 'two-product cached rotation',
-              'capture_verified': False, 'faults_tested': False, 'samples': 0}
+              'capture_verified': False, 'faults_tested': False, 'samples': 0,
+              'device_buffer_frames': args.device_buffer_frames}
 
     def save():
         temp = directory / 'result.tmp'

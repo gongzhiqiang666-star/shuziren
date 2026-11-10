@@ -11,10 +11,12 @@ from scripts.audio_video_clock import AudioVideoClock,VideoDeadline
 class AVDeviceSink:
     clock_mode='audio'
 
-    def __init__(self,width,height,audio_device,on_present=None,video_delay_ms=0,smooth_clock=False):
+    def __init__(self,width,height,audio_device,on_present=None,video_delay_ms=0,smooth_clock=False,buffer_frames=2):
         import sounddevice as sd
         if type(audio_device) is not int:raise ValueError('Explicit output device required')
         if type(smooth_clock) is not bool:raise ValueError('Explicit clock mode required')
+        if type(buffer_frames) is not int or buffer_frames not in (2,4):
+            raise ValueError('Device buffer must hold two or four frames')
         self.smooth_clock=smooth_clock
         if type(video_delay_ms) not in (int,float) or not 0<=video_delay_ms<=120:raise ValueError('Video compensation must be 0 to 120ms')
         self.sd=sd;self.width=width;self.height=height;self.on_present=on_present
@@ -22,7 +24,8 @@ class AVDeviceSink:
         self.video_delay_ns=int(video_delay_ms*1000000);self.video_queue=queue.Queue(maxsize=4)
         self.video_clock=AudioVideoClock(self.video_delay_ns)
         self.stop_event=threading.Event();self.video_finished=threading.Event();self.video_thread=None
-        self.queue=queue.Queue(maxsize=2);self.closed=False;self.started=False;self.draining=False
+        self.buffer_frames=buffer_frames
+        self.queue=queue.Queue(maxsize=buffer_frames);self.closed=False;self.started=False;self.draining=False
         self.error=None;self.frames=0;self.samples=0;self.presented=0;self.peak=0;self.underflows=0
         self.underrun=None
         self.finished=threading.Event();self.pcm_hash=hashlib.sha256();self.camera=None;self.stream=None
@@ -80,7 +83,7 @@ class AVDeviceSink:
         if self.draining:raise RuntimeError('Combined output input sealed')
         if type(index) is not int or index!=self.frames or image.shape!=(self.height,self.width,3) or image.dtype!=np.uint8 or not isinstance(pcm,bytes) or len(pcm)!=1920:
             raise ValueError('Next BGR frame and 960 PCM16 samples required')
-        if not self.started and self.frames==1 and threading.get_ident()!=self.owner_thread:
+        if not self.started and self.frames==self.buffer_frames-1 and threading.get_ident()!=self.owner_thread:
             raise RuntimeError('WASAPI stream must start on its creating thread')
         packet=(index,image.copy(),pcm,time.perf_counter_ns());deadline=time.monotonic()+2
         while True:
@@ -89,7 +92,7 @@ class AVDeviceSink:
             except queue.Full:
                 if time.monotonic()>=deadline:raise TimeoutError('Audio device stopped consuming frames')
         self.frames+=1;self.samples+=960;self.pcm_hash.update(pcm);self.peak=max(self.peak,self.queue.qsize())
-        if not self.started and self.frames>=2:self.stream.start();self.started=True
+        if not self.started and self.frames==self.buffer_frames:self.stream.start();self.started=True
         return {'queued_frames':self.queue.qsize()}
 
     def finish_input(self):
@@ -101,7 +104,7 @@ class AVDeviceSink:
         self.draining=True
         try:
             if not self.started:
-                if self.frames:raise RuntimeError('At least two frames required to start device output')
+                if self.frames:raise RuntimeError(f'At least {self.buffer_frames} frames required to start device output')
                 self.finished.set()
             if self.started and not self.finished.wait(2):raise TimeoutError('Audio output did not drain')
             if not self.video_finished.wait(2):raise TimeoutError('Video output did not drain')

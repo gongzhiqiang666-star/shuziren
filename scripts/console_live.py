@@ -13,9 +13,10 @@ from scripts.product_store import Conflict, ProductError
 class ConsoleLive:
     active_states = {'preparing', 'running', 'stopping'}
 
-    def __init__(self, tts, directory):
+    def __init__(self, tts, directory, *, device_buffer_frames=2):
         self.tts = tts
         self.directory = Path(directory).resolve()
+        self.device_buffer_frames = device_buffer_frames
         self.lock = threading.RLock()
         self.thread = None
         self.session = None
@@ -93,7 +94,7 @@ class ConsoleLive:
                 return
             receiver = FrameReceiver(binding.id, avatar['width'], avatar['height'])
             client.request('attach_frames', channel=receiver.descriptor())
-            sink = AVDeviceSink(avatar['width'], avatar['height'], audio_device)
+            sink = AVDeviceSink(avatar['width'], avatar['height'], audio_device, buffer_frames=self.device_buffer_frames)
 
             def started():
                 with self.lock:

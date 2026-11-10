@@ -1,3 +1,4 @@
+import hashlib
 import queue
 import threading
 from types import SimpleNamespace
@@ -13,6 +14,25 @@ class AbortCallback(Exception):pass
 
 
 class CombinedCallbackTests(unittest.TestCase):
+    def test_four_frame_candidate_prefills_on_owner_thread(self):
+        sink=self.sink()
+        sink.closed=sink.started=False
+        sink.buffer_frames=4
+        sink.queue=queue.Queue(maxsize=4)
+        sink.height,sink.width=32,24
+        sink.owner_thread=threading.get_ident()
+        sink.stream=Mock()
+        sink.samples=sink.peak=0
+        sink.pcm_hash=hashlib.sha256()
+        image=np.zeros((32,24,3),np.uint8)
+        for index in range(3):
+            sink.submit(index,image,bytes(1920))
+        sink.stream.start.assert_not_called()
+        sink.submit(3,image,bytes(1920))
+        sink.stream.start.assert_called_once()
+        self.assertEqual(sink.peak,4)
+        self.assertEqual([sink.queue.get_nowait()[0] for _ in range(4)],list(range(4)))
+
     def test_sealed_input_rejects_late_packet(self):
         sink=self.sink();sink.closed=False;sink.finish_input()
         with self.assertRaisesRegex(RuntimeError,'input sealed'):
