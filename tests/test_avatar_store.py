@@ -20,6 +20,15 @@ def fixture(root):
 
 
 class AvatarTests(unittest.TestCase):
+    def test_optional_source_assets_preserved_without_changing_name(self):
+        (self.source/'model_info.yaml').write_text('fps: 25\n',encoding='utf-8')
+        (self.source/'normalized_video.mp4').write_bytes(b'optional source fixture')
+        avatar=self.store.import_prepared(self.source,'指定名称')
+        self.assertEqual(avatar['name'],'指定名称')
+        directory=self.store.directory(avatar['id'])
+        self.assertEqual((directory/'model_info.yaml').read_text(),'fps: 25\n')
+        self.assertEqual((directory/'normalized_video.mp4').read_bytes(),b'optional source fixture')
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

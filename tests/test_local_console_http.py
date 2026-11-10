@@ -17,6 +17,14 @@ from scripts.local_console_config import ConfigStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_avatar_preparation_requires_config_and_valid_fields(self):
+        self.assertEqual(self.call('/api/avatar-preparation/state')[1],{'task':None})
+        self.assertEqual(self.call('/api/avatar-preparation/start',{})[0],400)
+        request={'source':str(Path(self.directory.name)/'absent.mp4'),'name':'形象','resolution':'720p'}
+        self.assertEqual(self.call('/api/avatar-preparation/start',request)[0],400)
+        self.assertEqual(self.call('/api/avatar-preparation/cancel',{'task_id':0})[0],400)
+        self.assertEqual(self.call('/api/avatar-preparation/start',request,**{'X-Console-Token':'bad'})[0],403)
+
     def test_owned_avatar_import_selection_and_preview(self):
         import cv2
         import numpy as np

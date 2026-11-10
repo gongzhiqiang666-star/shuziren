@@ -16,7 +16,7 @@ async function action(work) {
   $('error').textContent = ''; $('message').textContent = '';
   document.querySelectorAll('button').forEach(b => b.disabled = true);
   try { await work(); } catch(error) { $('error').textContent = error.message || '无法连接本地服务'; }
-  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); renderRecordingButtons(); renderTTSButtons(); }
+  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); renderRecordingButtons(); renderTTSButtons(); renderAvatarVideoButtons(); }
 }
 async function load() {
   clearChecks();
@@ -44,7 +44,7 @@ $('shutdown').addEventListener('click', () => action(async () => {
   consoleClosed = true; clearTimeout(taskTimer);
   recorder.discard();
   clearTimeout(ttsTimer);clearTTSPreview();$('tts-panel').hidden=true;
-  $('avatar-preview').removeAttribute('src');$('avatar-panel').hidden=true;
+  clearTimeout(avatarVideoTimer);$('avatar-preview').removeAttribute('src');$('avatar-panel').hidden=true;
   $('live-status').textContent = '控制台已退出';
   $('message').textContent = '本地服务已收到退出请求，可以关闭本页。';
   $('settings').hidden = true; $('shutdown').hidden = true;
@@ -304,4 +304,39 @@ $('avatar-preview').addEventListener('error',()=>{
   if($('avatar-preview').getAttribute('src')) {$('avatar-preview').hidden=true;$('avatar-error').textContent='形象预览已失效，请重读形象检查素材完整性。';}
 });
 
-action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars); });
+let avatarVideoState=null,avatarVideoTimer=null,avatarVideoShown=null,avatarVideoBusy=false;
+function renderAvatarVideoButtons() {
+  $('avatar-video-start').disabled=consoleClosed || avatarVideoBusy || avatarVideoState?.status==='running';
+  $('avatar-video-cancel').disabled=consoleClosed || avatarVideoBusy || avatarVideoState?.status!=='running';
+}
+async function loadAvatarVideo() {
+  clearTimeout(avatarVideoTimer);if(consoleClosed) return;
+  const result=await request('/api/avatar-preparation/state');if(consoleClosed) return;
+  avatarVideoState=result.task;
+  const states={running:'正在制作',succeeded:'制作完成，请在形象列表选择使用',failed:'制作失败',cancelled:'已取消制作',interrupted:'上次制作已中断'};
+  const phases={starting:'正在启动',normalizing:'正在整理视频',detecting_faces:'正在处理人脸',validating:'正在检查形象'};
+  $('avatar-video-status').textContent=avatarVideoState ? (states[avatarVideoState.status] || avatarVideoState.status)+' · '+avatarVideoState.name+(avatarVideoState.status==='running' ? ' · '+(phases[avatarVideoState.phase] || '') : '')+(avatarVideoState.error ? '：'+avatarVideoState.error : '') : '暂无视频制作任务';
+  if(avatarVideoState?.status==='succeeded' && avatarVideoShown!==avatarVideoState.id) {
+    await loadAvatars();avatarVideoShown=avatarVideoState.id;
+  }
+  renderAvatarVideoButtons();
+  if(avatarVideoState?.status==='running') avatarVideoTimer=setTimeout(()=>loadAvatarVideo().catch(error=>{$('avatar-video-error').textContent=error.message;}),1000);
+}
+async function avatarVideoAction(work) {
+  if(avatarVideoBusy || consoleClosed) return;avatarVideoBusy=true;renderAvatarVideoButtons();$('avatar-video-error').textContent='';
+  try {await work();} catch(error) {$('avatar-video-error').textContent=error.message || '形象制作服务无法连接';}
+  finally {avatarVideoBusy=false;renderAvatarVideoButtons();}
+}
+$('avatar-video-form').addEventListener('submit',event=>{event.preventDefault();avatarVideoAction(async()=>{
+  await request('/api/avatar-preparation/start',{source:$('avatar-video-source').value,name:$('avatar-video-name').value,resolution:$('avatar-resolution').value});
+  await loadAvatarVideo();
+});});
+$('avatar-video-cancel').addEventListener('click',()=>avatarVideoAction(async()=>{
+  if(!avatarVideoState) throw new Error('暂无制作任务');
+  await request('/api/avatar-preparation/cancel',{task_id:avatarVideoState.id});await loadAvatarVideo();
+}));
+$('avatar-video-refresh').addEventListener('click',()=>avatarVideoAction(loadAvatarVideo));
+window.addEventListener('pagehide',()=>clearTimeout(avatarVideoTimer));
+renderAvatarVideoButtons();
+
+action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo); });

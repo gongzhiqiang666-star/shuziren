@@ -133,6 +133,18 @@ class AvatarStore:
                     face_frames += 1
             if not face_frames:
                 raise AvatarError('形象中没有可驱动的人脸')
+            for asset_name in ('normalized_video.mp4', 'model_info.yaml'):
+                path = source/asset_name
+                if path.exists():
+                    path.resolve(strict=True).relative_to(source.resolve())
+                    total += path.stat().st_size
+                    if total > 1024**3:
+                        raise AvatarError('形象素材超过1GiB')
+                    before = digest(path)
+                    shutil.copyfile(path, target/asset_name)
+                    if digest(target/asset_name)!=before or digest(path)!=before:
+                        raise AvatarError('源形象正在变化，请停止修改后重试')
+                    hashes[asset_name] = before
             shutil.copyfile(target/'frames/000000.jpg', target/'sample.jpg')
             hashes['sample.jpg'] = digest(target/'sample.jpg')
             (target/'manifest.json').write_text(json.dumps({'version': 1, 'files': hashes}, sort_keys=True), encoding='utf-8')

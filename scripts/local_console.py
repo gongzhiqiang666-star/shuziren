@@ -74,6 +74,7 @@ def create_server(store, port=None):
         return ProductStore(store.directory)
     task_manager = None
     tts_manager = None
+    avatar_manager = None
     tasks_closed = False
     def tasks():
         nonlocal task_manager
@@ -89,6 +90,19 @@ def create_server(store, port=None):
             tasks_closed = True
             if task_manager is not None: task_manager.close()
             if tts_manager is not None: tts_manager.close()
+            if avatar_manager is not None: avatar_manager.close()
+    def preparation():
+        nonlocal avatar_manager
+        with lock:
+            if tasks_closed: raise AvatarError('控制台正在退出')
+            root=preflight(store.load())['runtime_root']
+            if not root: raise AvatarError('请先配置形象制作运行资源目录')
+            if avatar_manager is None:
+                from scripts.avatar_tasks import AvatarTasks
+                avatar_manager=AvatarTasks(root,store.directory)
+            elif Path(root).resolve()!=avatar_manager.runtime:
+                raise Conflict('运行资源目录已修改，请重启控制台后制作')
+            return avatar_manager
     def tts():
         nonlocal tts_manager
         with lock:
@@ -156,6 +170,10 @@ def create_server(store, port=None):
                 if path == '/api/avatars':
                     avatars=AvatarStore(store.directory)
                     return self.respond(200,{'avatars':avatars.list(),'selected':avatars.selected()})
+                if path == '/api/avatar-preparation/state':
+                    task=(avatar_manager.state() if avatar_manager is not None else
+                          preparation().state() if preflight(store.load())['runtime_root'] else None)
+                    return self.respond(200,{'task':task})
                 if path == '/api/avatars/sample':
                     ids=parse_qs(urlsplit(self.path).query).get('id',[])
                     if len(ids)!=1: raise AvatarError('请选择形象')
@@ -233,6 +251,17 @@ def create_server(store, port=None):
                             raise AvatarError('形象导入字段无效')
                         avatar=AvatarStore(store.directory).import_prepared(value['source'],value['name'])
                         return self.respond(201,{'avatar':avatar})
+                    if path == '/api/avatar-preparation/start':
+                        if set(value)!={'source','name','resolution'}:
+                            raise AvatarError('视频制作字段无效')
+                        if tts_manager is not None and (tts_manager.state() or {}).get('status')=='running':
+                            raise Conflict('正在合成语音，请完成或取消后再制作形象')
+                        return self.respond(202,{'task':preparation().start(**value)})
+                    if path == '/api/avatar-preparation/cancel':
+                        if set(value)!={'task_id'} or not isinstance(value['task_id'],str):
+                            raise AvatarError('视频制作取消字段无效')
+                        manager=avatar_manager if avatar_manager is not None else preparation()
+                        return self.respond(200,{'task':manager.cancel(value['task_id'])})
                     if path == '/api/avatars/select':
                         if set(value)!={'avatar_id'} or not isinstance(value['avatar_id'],str):
                             raise AvatarError('形象选择字段无效')
@@ -263,6 +292,8 @@ def create_server(store, port=None):
                             raise ProductError('TTS字段不完整')
                         if not all(isinstance(value[k],str) for k in ('product_id','script_id','voice_id')):
                             raise ProductError('TTS输入ID无效')
+                        if avatar_manager is not None and (avatar_manager.state() or {}).get('status')=='running':
+                            raise Conflict('正在制作形象，请完成或取消后再合成语音')
                         return self.respond(202,{'task':tts().start(**value)})
                     if path == '/api/tts/cancel':
                         if set(value)!={'task_id'} or not isinstance(value['task_id'],str): raise ProductError('TTS取消字段无效')

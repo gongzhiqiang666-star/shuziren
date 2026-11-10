@@ -46,16 +46,21 @@ def save_frame_data(idx,positions_dir,video_info,frame_data,is_no_face):
         for key,value in position_data.items():stream.write(f"{key}: {value}\n")
 
 
-def _face_landmarks(frame,detector,landmark_detector):
+def _face_landmarks(frame,detector,landmark_detector,include_right=True):
     boxes,_=detector.get_bboxes(frame)
     if not len(boxes):return None
     box=boxes[int(np.nanargmax(np.asarray(boxes)[:,4]))]
     x1,y1,x2,y2=np.asarray(box[:4],dtype=np.int32)
+    # Native preprocessing includes context beside/below the detector box.
+    # Its ratio pass excludes the final right column; its persistence pass includes it.
+    pad_x=int((x2-x1)*.1);pad_y=int((y2-y1)*.1)
+    x1=max(0,x1-pad_x);x2=min(frame.shape[1],x2+pad_x+int(include_right))
+    y2=min(frame.shape[0],y2+pad_y);y1=max(0,y1)
     face_img=frame[y1:y2,x1:x2]
     if face_img.size==0:raise ValueError("Face crop for landmarks is empty.")
     landmarks=np.asarray(landmark_detector.forward(face_img)[0],dtype=np.float32)
     landmarks+=np.asarray([x1,y1],dtype=np.float32)
-    return landmarks
+    return landmarks.astype(np.int32)
 
 
 def _position_box(landmarks,shape,wh_ratio):
@@ -86,7 +91,7 @@ def process_face_frames(frames_dir,total_frames,output_dir,video_info,img_size=2
     for index in range(int(total_frames)):
         try:
             frame=cv2.imread(str(Path(frames_dir)/f"{index:06d}.jpg"))
-            landmarks=_face_landmarks(frame,detector,landmark_detector)
+            landmarks=_face_landmarks(frame,detector,landmark_detector,include_right=False)
             if landmarks is not None:
                 _,_,width,height=cv2.boundingRect(landmarks.astype(np.int32))
                 wh_list.append(width/height)

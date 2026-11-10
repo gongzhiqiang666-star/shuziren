@@ -23,7 +23,7 @@ def resolve_model_file(model_path, mode):
 
 
 def resolve_landmark_model_file(model_path):
-    root = normalize_model_dir(model_path); name = "pfld_robust_sim_bs1_8003.onnx"
+    root = normalize_model_dir(model_path); name = "pfpld_robust_sim_bs1_8003.onnx"
     matches = list(root.rglob(name)) if root.is_dir() else []
     if not matches: raise FileNotFoundError(f"找不到关键点模型 {name}: {root}")
     return matches[0]
@@ -63,10 +63,8 @@ class pfpld:
     def __init__(self, cpu=False, model_path="."):
         try:import onnxruntime
         except ImportError as error:raise RuntimeError("人脸模型推理需要 onnxruntime") from error
-        self.onnx_path=str(model_path)+"/pfpld_robust_sim_bs1_8003.onnx"
-        try:self.ort_session=onnxruntime.InferenceSession(self.onnx_path)
-        except Exception:raise RuntimeError("load onnx failed")
-        self.ort_session.set_providers(["CPUExecutionProvider" if cpu else "CUDAExecutionProvider"])
+        self.onnx_path=str(resolve_landmark_model_file(model_path))
+        self.ort_session=_ort_session(self.onnx_path,cpu)
         self.input_name=self.ort_session.get_inputs()[0].name
 
     def forward(self, input):
@@ -92,7 +90,7 @@ class FaceDetect:
         if not isinstance(image, np.ndarray):
             image = cv2.imread(str(image))
             if image is None: raise ValueError("无法读取图像")
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         return self.det_model.detect(
             image, thresh=thresh, max_num=max_num, metric="default"
         )

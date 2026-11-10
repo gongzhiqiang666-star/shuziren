@@ -5376,10 +5376,12 @@ def verify_generate_face_landmark_contract():
         def detect(self,image,**kwargs):
             self.calls.append((image,kwargs));return "boxes","keypoints"
     facade=FaceDetect.__new__(FaceDetect);facade.det_model=Detector()
-    rgb=np.zeros((8,9,3),dtype=np.uint8)
-    assert facade.get_bboxes(rgb,.7,3)==("boxes","keypoints")
+    bgr=np.full((8,9,3),[10,30,90],dtype=np.uint8)
+    assert facade.get_bboxes(bgr,.7,3)==("boxes","keypoints")
     forwarded,kwargs=facade.det_model.calls[0]
-    assert forwarded is rgb
+    # Corrected against V04 native input trace, not the former pass-through assumption.
+    assert np.array_equal(forwarded,bgr[:,:,::-1])
+    assert np.array_equal(bgr[0,0],[10,30,90])
     assert kwargs=={"thresh":.7,"max_num":3,"metric":"default"}
 
 
@@ -5474,8 +5476,9 @@ def verify_generate_infer_data_contract():
         finally:module.FaceDetect,module.pfpld,module.save_frame_data=originals
         assert result is None and len(calls)==1
         assert calls[0][0]==0 and calls[0][4] is False
-        assert calls[0][3]["bounding_box"].tolist()==[23,85,9,71]
-        assert calls[0][3]["landmarks"].tolist()==[[20.0,30.0],[60.0,30.0],[60.0,70.0],[20.0,70.0]]
+        # Native preprocessing expands detector context before landmark inference.
+        assert calls[0][3]["bounding_box"].tolist()==[23,85,3,65]
+        assert calls[0][3]["landmarks"].tolist()==[[14,30],[54,30],[54,70],[14,70]]
 
 
 def verify_image_infer_v2_clear_queues_contract():
