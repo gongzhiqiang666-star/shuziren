@@ -32,6 +32,7 @@ def main():
     parser.add_argument('--seconds',type=int,default=20)
     parser.add_argument('--device-audio-output',type=int)
     parser.add_argument('--capture-devices',action='store_true')
+    parser.add_argument('--smooth-device-clock',action='store_true')
     parser.add_argument('--video-delay-ms',type=float,default=0);args=parser.parse_args()
     if args.capture_devices and args.device_audio_output is None:parser.error('--capture-devices requires --device-audio-output')
     root=(args.report_directory/('run-'+uuid.uuid4().hex)).resolve();root.mkdir(parents=True)
@@ -54,7 +55,7 @@ def main():
         client.request('start',session_id=speech_session.id);report['avatar_prepare']=client.request('prepare');save()
         receiver=FrameReceiver(speech_session.id,avatar['width'],avatar['height']);client.request('attach_frames',channel=receiver.descriptor())
         device_sink=CounterDeviceSink if args.capture_devices else AVDeviceSink
-        sink=(device_sink(avatar['width'],avatar['height'],args.device_audio_output,on_present=device_trace.append,video_delay_ms=args.video_delay_ms)
+        sink=(device_sink(avatar['width'],avatar['height'],args.device_audio_output,on_present=device_trace.append,video_delay_ms=args.video_delay_ms,smooth_clock=args.smooth_device_clock)
             if args.device_audio_output is not None else ContinuousAVSink(ffmpeg,root/'live.ts',avatar['width'],avatar['height']))
         trace=(root/'presented.jsonl').open('w',encoding='utf-8')
         def on_present(row):
@@ -109,7 +110,7 @@ def main():
                 completed_speech=done,frames_written=session.frames_written,device_audio_frames=sink.presented,
                 device_video_frames=sink.camera.frames,device_queue_peak=sink.peak,underflows=sink.underflows,
                 output_closed=sink.closed,avatar_closed=client.process.poll() is not None,video_delay_ms=args.video_delay_ms,
-                timing_acceptance=False,receiver_sync_tested=False)
+                timing_acceptance=False,receiver_sync_tested=False,smooth_device_clock=args.smooth_device_clock)
             report['checks'].update(two_new_utterances_during_output=True,source_pcm_exact=True,device_callbacks_complete=True)
             if capture:
                 capture.wait();report['receiver']=audit_received_voice(capture.path,completed,expected)

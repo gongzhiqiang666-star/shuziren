@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import Mock
 import numpy as np
 from scripts.live_av_device_sink import AVDeviceSink
+from scripts.audio_video_clock import AudioVideoClock
 
 
 class StopCallback(Exception):pass
@@ -23,10 +24,13 @@ class CombinedCallbackTests(unittest.TestCase):
         sink.queue=queue.Queue(maxsize=2);sink.video_queue=queue.Queue(maxsize=4)
         sink.draining=False;sink.presented=0;sink.underflows=0;sink.error=None;sink.on_present=Mock()
         sink.video_delay_ns=100000000;sink.camera=Mock()
+        sink.video_clock=AudioVideoClock(sink.video_delay_ns)
+        sink.smooth_clock=False
         return sink
 
     def test_callback_uses_same_frame_pcm_and_schedules_explicit_delay(self):
         sink=self.sink();image=np.zeros((32,24,3),np.uint8);pcm=b'\x01\x02'*960
+        sink.video_clock.deadline=Mock(side_effect=AssertionError('Candidate clock must be opt-in'))
         sink.queue.put((0,image,pcm,123));output=bytearray(1920)
         timing=SimpleNamespace(outputBufferDacTime=1.04,currentTime=1.)
         sink._callback(output,960,timing,None)
@@ -35,6 +39,7 @@ class CombinedCallbackTests(unittest.TestCase):
         self.assertEqual(index,0);self.assertIs(actual,image)
         self.assertEqual(due-event['callback_ns'],100000000)
         sink.camera.send.assert_not_called()
+        sink.video_clock.deadline.assert_not_called()
 
     def test_underrun_is_failure_not_successful_silence(self):
         sink=self.sink()

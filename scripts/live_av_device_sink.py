@@ -5,18 +5,22 @@ import threading
 import time
 import numpy as np
 from scripts.live_device_output import VirtualCameraOutput
+from scripts.audio_video_clock import AudioVideoClock,VideoDeadline
 
 
 class AVDeviceSink:
     clock_mode='audio'
 
-    def __init__(self,width,height,audio_device,on_present=None,video_delay_ms=0):
+    def __init__(self,width,height,audio_device,on_present=None,video_delay_ms=0,smooth_clock=False):
         import sounddevice as sd
         if type(audio_device) is not int:raise ValueError('Explicit output device required')
+        if type(smooth_clock) is not bool:raise ValueError('Explicit clock mode required')
+        self.smooth_clock=smooth_clock
         if type(video_delay_ms) not in (int,float) or not 0<=video_delay_ms<=120:raise ValueError('Video compensation must be 0 to 120ms')
         self.sd=sd;self.width=width;self.height=height;self.on_present=on_present
         self.owner_thread=threading.get_ident()
         self.video_delay_ns=int(video_delay_ms*1000000);self.video_queue=queue.Queue(maxsize=4)
+        self.video_clock=AudioVideoClock(self.video_delay_ns)
         self.stop_event=threading.Event();self.video_finished=threading.Event();self.video_thread=None
         self.queue=queue.Queue(maxsize=2);self.closed=False;self.started=False;self.draining=False
         self.error=None;self.frames=0;self.samples=0;self.presented=0;self.peak=0;self.underflows=0
@@ -42,9 +46,12 @@ class AVDeviceSink:
                 self.underflows+=1;raise RuntimeError('Combined device queue underrun')
             if index!=self.presented:raise RuntimeError('Combined device frame reordered')
             callback_ns=time.perf_counter_ns();outdata[:]=pcm
-            self.video_queue.put_nowait((index,image,callback_ns+self.video_delay_ns));self.presented+=1
+            deadline=(self.video_clock.deadline(index,callback_ns) if self.smooth_clock
+                else VideoDeadline(callback_ns+self.video_delay_ns,0,False))
+            self.video_queue.put_nowait((index,image,deadline.due_ns));self.presented+=1
             if self.on_present:self.on_present({'event':'audio_callback','frame_index':index,'pts_ns':index*40000000,
                 'callback_ns':callback_ns,'submitted_ns':submitted,
+                'video_due_ns':deadline.due_ns,'video_clock_tracked':deadline.tracked,'video_clock_phase_error_ns':deadline.phase_error_ns,
                 'audio_dac_time':timing.outputBufferDacTime,'audio_current_time':timing.currentTime})
         except self.sd.CallbackStop:raise
         except BaseException as error:
