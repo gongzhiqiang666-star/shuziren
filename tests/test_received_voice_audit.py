@@ -10,7 +10,7 @@ from scripts.received_voice_audit import stamp_counter,read_counter,audit_receiv
 
 
 class ReceivedVoiceTests(unittest.TestCase):
-    def fixture(self,root,delay,wrong_voice=False):
+    def fixture(self,root,delay,wrong_voice=False,replace_frame=None):
         source=np.random.default_rng(123).integers(-4000,4000,2400,dtype=np.int16)
         reference=root/'voice.wav'
         with wave.open(str(reference),'wb') as sound:
@@ -27,7 +27,8 @@ class ReceivedVoiceTests(unittest.TestCase):
             output.mux(sound.encode(frame))
             image=np.zeros((1280,720,3),np.uint8)
             for index in range(25):
-                frame=av.VideoFrame.from_ndarray(stamp_counter(image,index),format='bgr24')
+                marker=replace_frame[1] if replace_frame and index==replace_frame[0] else index
+                frame=av.VideoFrame.from_ndarray(stamp_counter(image,marker),format='bgr24')
                 frame.pts=index;frame.time_base=Fraction(1,25);output.mux(video.encode(frame))
             output.mux(video.encode(None));output.mux(sound.encode(None))
         events=[{'source_id':'idle-0','samples':5760},{'source_id':'speech','samples':2400}]
@@ -42,6 +43,7 @@ class ReceivedVoiceTests(unittest.TestCase):
     def test_actual_decode_finds_voice_and_twenty_ms_offset(self):
         with tempfile.TemporaryDirectory() as temporary:result=self.fixture(Path(temporary),.02)
         self.assertTrue(result['voice_sync_passed']);self.assertTrue(result['frame_continuity_passed'])
+        self.assertTrue(result['speech_frame_continuity_passed'])
         self.assertAlmostEqual(result['voices'][0]['av_offset_ms'],20,delta=.1)
         self.assertGreater(result['voices'][0]['correlation'],.99)
 
@@ -49,3 +51,16 @@ class ReceivedVoiceTests(unittest.TestCase):
         for delay,wrong in [(.12,False),(.02,True)]:
             with self.subTest(delay=delay,wrong=wrong),tempfile.TemporaryDirectory() as temporary:
                 self.assertFalse(self.fixture(Path(temporary),delay,wrong)['voice_sync_passed'])
+
+    def test_active_speech_drop_and_repeat_fail_even_when_in_sync(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            result=self.fixture(Path(temporary),.02,replace_frame=(7,6))
+        self.assertTrue(result['voice_sync_passed'])
+        self.assertFalse(result['speech_frame_continuity_passed'])
+        self.assertEqual((result['speech_missing_frames'],result['speech_repeated_frames']),(1,1))
+
+    def test_idle_drop_does_not_count_as_speech_loss(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            result=self.fixture(Path(temporary),.02,replace_frame=(2,1))
+        self.assertFalse(result['frame_continuity_passed'])
+        self.assertTrue(result['speech_frame_continuity_passed'])

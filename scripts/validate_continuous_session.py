@@ -33,10 +33,15 @@ def main():
     parser.add_argument('--device-audio-output',type=int)
     parser.add_argument('--capture-devices',action='store_true')
     parser.add_argument('--smooth-device-clock',action='store_true')
+    parser.add_argument('--device-buffer-frames',type=int,choices=(2,4),default=2)
     parser.add_argument('--video-delay-ms',type=float,default=0);args=parser.parse_args()
     if args.capture_devices and args.device_audio_output is None:parser.error('--capture-devices requires --device-audio-output')
+    if args.device_buffer_frames != 2 and args.device_audio_output is None:
+        parser.error('--device-buffer-frames requires --device-audio-output')
     root=(args.report_directory/('run-'+uuid.uuid4().hex)).resolve();root.mkdir(parents=True)
-    report={'status':'failed','phase':'preparing','checks':{},'physical_device_tested':False,'platform_tested':False};tts=client=receiver=sink=session=ingress=assembler=injector=None
+    report={'status':'failed','phase':'preparing','checks':{},'physical_device_tested':False,'platform_tested':False,
+            'device_buffer_frames':args.device_buffer_frames if args.device_audio_output is not None else None}
+    tts=client=receiver=sink=session=ingress=assembler=injector=None
     completed=[];expected={};errors=[];presented=[];offsets=[];submit_costs=[];device_trace=[]
     capture=None
     def save():(root/'result.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
@@ -55,7 +60,9 @@ def main():
         client.request('start',session_id=speech_session.id);report['avatar_prepare']=client.request('prepare');save()
         receiver=FrameReceiver(speech_session.id,avatar['width'],avatar['height']);client.request('attach_frames',channel=receiver.descriptor())
         device_sink=CounterDeviceSink if args.capture_devices else AVDeviceSink
-        sink=(device_sink(avatar['width'],avatar['height'],args.device_audio_output,on_present=device_trace.append,video_delay_ms=args.video_delay_ms,smooth_clock=args.smooth_device_clock)
+        sink=(device_sink(avatar['width'],avatar['height'],args.device_audio_output,on_present=device_trace.append,
+                          video_delay_ms=args.video_delay_ms,smooth_clock=args.smooth_device_clock,
+                          buffer_frames=args.device_buffer_frames)
             if args.device_audio_output is not None else ContinuousAVSink(ffmpeg,root/'live.ts',avatar['width'],avatar['height']))
         trace=(root/'presented.jsonl').open('w',encoding='utf-8')
         def on_present(row):
@@ -117,6 +124,8 @@ def main():
                 report['receiver_sync_tested']=True
                 if not report['receiver']['voice_sync_passed']:
                     report['status']='failed';raise RuntimeError('Real voice receiver correlation or A/V timing failed')
+                if not report['receiver']['speech_frame_continuity_passed']:
+                    report['status']='failed';raise RuntimeError('Receiver dropped, repeated or reordered speech video frames')
             return 0
         subprocess.run([str(ffmpeg),'-nostdin','-y','-v','error','-i',str(root/'live.ts'),'-map','0:v:0','-map','0:a:0','-c','copy',str(root/'audit.mp4')],capture_output=True,check=True,timeout=60)
         media=verify_media(reference_path,root/'audit.mp4',ffmpeg)
