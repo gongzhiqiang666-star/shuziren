@@ -1,6 +1,6 @@
 # yunchuang_v122 权威功能矩阵
 
-更新日期：2026-11-07
+更新日期：2026-11-10
 
 本文件是功能范围、开发顺序和最终验收的权威清单。它描述的是用户能够使用的产品能力，不以 `.pyd` 数量或函数数量代替功能完成度。
 
@@ -87,7 +87,7 @@
 | LIV-011 | OCR 弹幕/自动操作/直播保护 | `auto_live_action`、OCR 模块 | `auto_live_action*.py`, `danmu_ocr/*` | 静态验证通过 | Windows DPI、多显示器、窗口遮挡和误触控制 |
 | LIV-012 | 转播/录播本地视频和抖音源 | `RecordLiveManager.start_live` | `record_live_manager.py`, `stream_ingest.py` | 静态验证通过 | 本地 25FPS、真实抖音 URL、长稳和断流恢复 |
 | LIV-013 | 实拍报时公告生成和插播 | `prepare_record_announcement` 调用链 | `record_live_manager.py`, `generate_broadcast_time_video.py` | 静态验证通过 | 真实 TTS/视频、取消竞态和临时文件所有权 |
-| LIV-014 | 人脸人手直播与商品素材调度 | `FaceHandLiveManager` | `face_hand_live_manager.py`, `face_hand_player.py` | 静态验证通过 | 淘宝真实流程、长稳、商品切换和素材缺失 |
+| LIV-014 | 人脸人手直播与商品素材调度 | `FaceHandLiveManager`；2026-11-10 Windows原生切片对照见 `evidence/v00-baseline.md` | `face_hand_live_manager.py`, `face_hand_player.py`, `face_hand_vad_split.py` | 开发中 | Windows切片路径已修复；原版manifest v2/返回结构/默认参数存在待对齐差异，随后验证淘宝、长稳及商品切换 |
 | LIV-015 | AI 互动回复和人工接管 | 互动 LLM/控制提交链 | `face_hand_live_manager.py`, `llm_reply.py` | 静态验证通过 | 真实弹幕、超时、审核、回退和接管恢复 |
 | LIV-016 | 虚拟摄像头输出 | `virtual_cam.pyd` | `virtual_cam.py` | 已分析 | Windows 驱动安装、OBS/直播伴侣、分辨率和音画同步 |
 | LIV-017 | SRS 本地流媒体服务和推流地址 | `assets/srs/srs-live.bat`、`get_stream_urls` | `main.py` | 已分析 | Windows 启停、端口冲突、异常退出和推流拉流 |
@@ -97,8 +97,8 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 43 |
-| 开发中 | 5 |
+| 静态验证通过 | 42 |
+| 开发中 | 6 |
 | 已分析 | 10 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |

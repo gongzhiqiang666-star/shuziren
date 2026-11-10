@@ -221,8 +221,10 @@ def clip_face_hand_video_group(face_video_path: str, hand_video_path: str, *, ou
         futures = [pool.submit(_cut_clip, *job) for job in jobs]
         for future in as_completed(futures):
             future.result()
-    face_rel = [str(Path(job[3]).relative_to(root)) for job in jobs if "/face/" in job[3]]
-    hand_rel = [str(Path(job[3]).relative_to(root)) for job in jobs if "/hand/" in job[3]]
+    face_rel = [Path(job[3]).relative_to(root).as_posix() for job in jobs
+                if Path(job[3]).parent == root / "face"]
+    hand_rel = [Path(job[3]).relative_to(root).as_posix() for job in jobs
+                if Path(job[3]).parent == root / "hand"]
     manifest = {"created_at": datetime.now().isoformat(), "face_source": face, "hand_source": hand,
                 "face": face_rel, "hand": hand_rel, "face_count": len(face_rel), "hand_count": len(hand_rel),
                 "face_method": "energy_vad", "hand_method": "random_duration"}

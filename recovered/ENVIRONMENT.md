@@ -20,3 +20,22 @@ accept executables from `PATH`.
 After installing Playwright, run `playwright install chromium`. Windows-only
 integration tests still require the bundled virtual-camera DLL, WebView2,
 PyAudio devices, NVIDIA drivers and the corresponding model weights.
+
+## Recovery validation against an external original runtime
+
+Run with the original CPython 3.10 environment and explicit UTF-8 mode on Windows:
+
+```powershell
+$runtime = 'D:\TEMP\v122-minimum-proof-ready\runtime\yunchuang_v122'
+$env:PATH = "$runtime\_internal\env\ffmpeg\bin;" + $env:PATH
+& "$runtime\_internal\env\python.exe" -I -X utf8 recovered/verify_recovery.py --runtime-root $runtime
+```
+
+The argument accepts a distribution root or its `_internal` directory.
+`YUNCHUANG_RUNTIME_ROOT` is also supported, including under `-I` (this is an
+application variable, not a Python interpreter configuration variable).
+The explicit argument is preferred for reproducibility. Missing runtime
+paths fail; bundled environments and macOS resource forks are excluded from the
+128-module inventory. Binary symbols are read in Python, so a Unix `strings`
+executable is not required. This check proves the listed contracts and imports,
+not complete Windows/GPU/platform behavior compatibility.

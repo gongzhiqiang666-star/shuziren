@@ -12,6 +12,7 @@
 
 ## 开发资料
 
+- [执行进度：按任务编号记录改动与验证效果](docs/PROGRESS.md)
 - [四期总路线：入门款→高级款→候选方案→进阶款](docs/DEVELOPMENT_PLAN.md)
 - [高级款36项编号任务与验证门槛](docs/ADVANCED_TASKS.md)
 - [候选方案64项编号评测与采用决策](docs/CANDIDATE_TASKS.md)

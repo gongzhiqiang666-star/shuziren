@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "paths": {
+    "runtime": "runtime/yunchuang_v122",
+    "runs": "runs",
+    "reports": "reports",
+    "recordings": "recordings",
+    "web": "proof/web"
+  },
+  "runtime": {
+    "environment": "env",
+    "python": "_internal/env/python.exe"
+  },
+  "capture": {
+    "person_max_bytes": 750000000,
+    "voice_max_bytes": 100000000
+  },
+  "output": {
+    "width": 720,
+    "height": 1280,
+    "fps": 25
+  }
+}

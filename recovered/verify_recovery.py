@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import argparse
 import base64
 import compileall
 import contextlib
@@ -29,11 +30,31 @@ WORKSPACE = HERE.parent
 ORIGINAL = WORKSPACE / "yunchuang_v122" / "_internal"
 
 
-def first_party_extensions():
-    for path in ORIGINAL.rglob("*.pyd"):
-        text = str(path)
-        if not any(part in text for part in ("/env/", "/env_50/", "site-packages", "/DLLs/")):
-            yield path
+def resolve_runtime_internal(runtime_root):
+    """Accept a distribution root or its _internal directory; never guess a fallback."""
+    root = Path(runtime_root).expanduser().resolve()
+    internal = root if root.name.casefold() == "_internal" else root / "_internal"
+    if not internal.is_dir() or not (internal / "main.cp310-win_amd64.pyd").is_file():
+        raise ValueError(f"Original v122 runtime is missing: {internal}")
+    return internal
+
+
+def first_party_extensions(runtime_internal=None):
+    """Prune bundled environments and macOS resource forks on every host OS."""
+    root = Path(runtime_internal) if runtime_internal is not None else ORIGINAL
+    excluded = {"env", "env_50", "site-packages", "dlls"}
+    for directory, names, files in os.walk(root):
+        names[:] = sorted(name for name in names
+                          if name.casefold() not in excluded and not name.startswith("._"))
+        for name in sorted(files):
+            if name.casefold().endswith(".pyd") and not name.startswith("._"):
+                yield Path(directory) / name
+
+
+def binary_strings(binary):
+    """Read printable ASCII runs (minimum four bytes), without a Unix strings executable."""
+    return "\n".join(match.decode("ascii") for match in
+                     re.findall(rb"[\x09\x20-\x7e]{4,}", Path(binary).read_bytes()))
 
 
 def verify_forbidden_word_replacement_contract():
@@ -2281,7 +2302,8 @@ def verify_remaining_private_entrypoints():
     from recovered import win_power_throttling
     from recovered.tools.danmu_capture.kuaishou_v2 import KsLive
     from recovered.bin.image_clone.tools.frame_synthesizer import infer_api, infer_api_save_frame
-    assert virtual_cam._creationflags()==0
+    expected_flags = int(getattr(subprocess, "CREATE_NO_WINDOW", 0)) if sys.platform == "win32" else 0
+    assert virtual_cam._creationflags() == expected_flags
     assert win_power_throttling._set_process_power_throttling(None) is False
     assert all(hasattr(win_power_throttling,name) for name in (
         "_KEEP_ALIVE_LOCK","_KEEP_ALIVE_STOP","_KEEP_ALIVE_THREAD"))
@@ -2828,9 +2850,9 @@ def verify_s3fd_architecture():
 
 def verify_kuaishou_message_protocol():
     import asyncio,contextlib,io,json,sys,types
-    from recovered.kuaishou_v2 import miniproto as proto
+    from recovered.kuaishou_v2 import miniproto
     from recovered.kuaishou_v2.KsLive import KuaishouLiveClient
-    from recovered.kuaishou_v2.protocol import decode_frame,iter_comments,iter_gifts,iter_likes
+    from recovered.kuaishou_v2.protocol import decode_frame,iter_comments,iter_gifts,iter_likes,proto
     user=proto.SimpleUserInfo(principalId="u1",userName="小快",headUrl="https://avatar")
     feed=proto.SCWebFeedPush(displayWatchingCount="1.2万",displayLikeCount="345",
         commentFeeds=[proto.WebCommentFeed(user=user,content="你好")],
@@ -2840,6 +2862,11 @@ def verify_kuaishou_message_protocol():
     assert chat=={"type":"chat","user_name":"小快","user_id":"u1","avatar":"https://avatar","content":"你好"}
     assert like=={"type":"like","user_name":"小快","user_id":"u1","avatar":"https://avatar"}
     assert gift["gift_id"]==7 and gift["gift_count"]==2 and gift["user_name"]=="小快"
+    # Exercise the dependency-free wire implementation even when real protobuf is installed.
+    fallback_feed = miniproto.SCWebFeedPush.FromString(feed.SerializeToString())
+    assert list(iter_comments(fallback_feed)) == list(iter_comments(feed))
+    assert list(iter_gifts(fallback_feed)) == list(iter_gifts(feed))
+    assert list(iter_likes(fallback_feed)) == list(iter_likes(feed))
     watch=proto.SCWebLiveWatchingUsers(displayWatchingCount="999")
     envelope=proto.SocketMessage(payloadType=proto.SC_LIVE_WATCHING_LIST,compressionType=proto.SocketMessage.NONE,payload=watch.SerializeToString()).SerializeToString()
     kind,decoded=decode_frame(envelope);assert kind==proto.SC_LIVE_WATCHING_LIST and decoded.displayWatchingCount=="999"
@@ -2911,9 +2938,9 @@ def verify_kuaishou_message_protocol():
     assert resolved=="resolved-stream" and len(request_calls)==1
     assert ocr_calls==[{"det":False,"ocr":False,"show_ad":False}]
     assert room_tool.verification_token is None and room_tool.cookie=="cookie-value"
-    assert room_tool.node_exe.endswith("/js/node.exe")
-    assert room_tool.sign_url_js.endswith("/js/sign_url.js")
-    assert room_tool.encrypt_js.endswith("/js/encrypt.js")
+    assert Path(room_tool.node_exe).parts[-2:] == ("js", "node.exe")
+    assert Path(room_tool.sign_url_js).parts[-2:] == ("js", "sign_url.js")
+    assert Path(room_tool.encrypt_js).parts[-2:] == ("js", "encrypt.js")
     original_generate_did=kuaishou_hq.generate_did;kuaishou_hq.generate_did=lambda:"fixed-did"
     try:auto_cookie_tool=kuaishou_hq.Tool("https://live.kuaishou.com/u/auto")
     finally:kuaishou_hq.generate_did=original_generate_did
@@ -3601,7 +3628,7 @@ def verify_ip_agent_project_schema_contract():
     api=Api.__new__(Api)
     assert api._get_ip_agent_base_dir()==str(HERE/"assets"/"ip_agent_projects")
     assert api._get_ip_agent_project_dir("project-1")==str(HERE/"assets"/"ip_agent_projects"/"project-1")
-    assert api._get_ip_agent_project_info_path("project-1").endswith("project-1/project_info.yaml")
+    assert Path(api._get_ip_agent_project_info_path("project-1")).parts[-2:] == ("project-1", "project_info.yaml")
     info=api._default_ip_agent_project_info("project-1","演示项目")
     assert len(info)==47
     assert list(info)[:10]==["id","name","create_time","update_time","benchmark_url",
@@ -4933,7 +4960,7 @@ def verify_core_method_coverage():
         for source in sources:
             tree=ast.parse(source.read_text(encoding="utf-8"))
             methods.update(item.name for node in tree.body if isinstance(node,ast.ClassDef) for item in node.body if isinstance(item,(ast.FunctionDef,ast.AsyncFunctionDef)))
-        strings=subprocess.run(["strings",str(binary)],capture_output=True,text=True,check=True).stdout
+        strings=binary_strings(binary)
         expected=set(re.findall(rf"^{class_name}\.([A-Za-z_]\w*)$",strings,re.MULTILINE))
         missing=expected-methods-aliases
         assert not missing, f"{class_name} missing binary methods: {sorted(missing)}"
@@ -4946,7 +4973,7 @@ def verify_all_binary_class_methods():
         if stem.endswith(".pyd"): stem=stem[:-4]
         module_name=".".join(("recovered",*relative.parent.parts,stem))
         module=importlib.import_module(module_name)
-        strings=subprocess.run(["strings",str(binary)],capture_output=True,text=True,check=True).stdout
+        strings=binary_strings(binary)
         missing=[]
         for class_name,method_name in set(re.findall(r"^([A-Za-z_]\w*)\.([A-Za-z_]\w*)$",strings,re.MULTILINE)):
             cls=getattr(module,class_name,None)
@@ -4988,7 +5015,7 @@ def verify_binary_class_signature_arity():
         stem=relative.name.split(".cp310-win_amd64",1)[0]
         if stem.endswith(".pyd"):stem=stem[:-4]
         module=importlib.import_module(".".join(("recovered",*relative.parent.parts,stem)))
-        strings=subprocess.run(["strings",str(binary)],capture_output=True,text=True,check=True).stdout
+        strings=binary_strings(binary)
         missing=[]
         for line in strings.splitlines():
             parts=_binary_signature_parts(line)
@@ -5026,7 +5053,7 @@ def verify_binary_module_signature_arity():
         stem=relative.name.split(".cp310-win_amd64",1)[0]
         if stem.endswith(".pyd"):stem=stem[:-4]
         module=importlib.import_module(".".join(("recovered",*relative.parent.parts,stem)))
-        strings=subprocess.run(["strings",str(binary)],capture_output=True,text=True,check=True).stdout
+        strings=binary_strings(binary)
         missing=[];seen=set()
         for line in strings.splitlines():
             parts=_binary_signature_parts(line.strip())
@@ -5075,7 +5102,7 @@ def verify_public_name_inventory():
     noise={"send","throw","close","connect","NAN","nan","truncated","PROGRAMFILES","Intel","updateCaptureButton","main","forward","lambda","generator","genexpr","coroutines","cython_function_or_method","abc","dll","exe","path","group","infer_api","json","yaml","txt","wav","mp3","mp4","jpg","png","ndarray","Module","Response","Popen","CompletedProcess","Event","Tensor","Sequential","Image","ImageDraw","ImageFont","VideoCapture","PyAudio"}
     gaps={}
     for binary in first_party_extensions():
-        strings=subprocess.run(["strings",str(binary)],capture_output=True,text=True,check=True).stdout
+        strings=binary_strings(binary)
         names={match.group(1) for line in strings.splitlines() if (match:=re.match(r"^([A-Za-z][A-Za-z0-9_]*)\([^)]*\)(?:\s*->.*)?$",line.strip()))}
         missing=sorted(names-exports(recovered_path(binary))-noise)
         if missing: gaps[str(binary.relative_to(ORIGINAL))]=missing
@@ -5091,7 +5118,7 @@ def verify_binary_qualified_module_names():
         if stem.endswith(".pyd"):stem=stem[:-4]
         qualified=".".join((*relative.parent.parts,stem))
         module=importlib.import_module("recovered."+qualified)
-        strings=subprocess.run(["strings",str(binary)],capture_output=True,text=True,check=True).stdout
+        strings=binary_strings(binary)
         names=set()
         prefix=qualified+"."
         for line in strings.splitlines():
@@ -5614,6 +5641,17 @@ def verify_image_infer_v2_single_file_contract():
 
 
 def main():
+    global ORIGINAL
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--runtime-root", default=os.environ.get("YUNCHUANG_RUNTIME_ROOT"),
+                        help="Original v122 distribution root or _internal directory; "
+                             "also accepts YUNCHUANG_RUNTIME_ROOT")
+    args = parser.parse_args()
+    try:
+        ORIGINAL = resolve_runtime_internal(args.runtime_root or ORIGINAL)
+    except ValueError as error:
+        parser.error(str(error))
+    print(f"Original runtime: {ORIGINAL}", flush=True)
     sys.path.insert(0, str(WORKSPACE)); sys.path.insert(0, str(HERE))
     assert compileall.compile_dir(HERE, quiet=1), "compileall failed"
     verify_capture_window_change_contract()
