@@ -38,7 +38,7 @@ class ProductStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2):
+            if version not in (0, 1, 2, 3):
                 raise ProductError("不支持的商品数据库版本")
             db.executescript('''
                 CREATE TABLE IF NOT EXISTS products (
@@ -53,12 +53,15 @@ class ProductStore:
                 CREATE TABLE IF NOT EXISTS selection (
                     singleton INTEGER PRIMARY KEY CHECK(singleton=1),
                     product_id TEXT NOT NULL REFERENCES products(id));
+                CREATE TABLE IF NOT EXISTS script_selection (
+                    product_id TEXT PRIMARY KEY REFERENCES products(id),
+                    script_id TEXT NOT NULL REFERENCES scripts(id));
             ''')
             db.execute('BEGIN IMMEDIATE')
             columns = {row[1] for row in db.execute('PRAGMA table_info(scripts)')}
             if 'parent_script_id' not in columns:
                 db.execute('ALTER TABLE scripts ADD COLUMN parent_script_id TEXT REFERENCES scripts(id)')
-            db.execute('PRAGMA user_version=2')
+            db.execute('PRAGMA user_version=3')
 
     @contextmanager
     def connect(self):
@@ -155,3 +158,21 @@ class ProductStore:
                 value["snapshot"] = json.loads(value["snapshot"])
                 result.append(value)
             return result
+
+    def select_script(self, product_id, script_id):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            product=self.decode(db.execute('SELECT * FROM products WHERE id=?',(product_id,)).fetchone())
+            script=db.execute('SELECT product_id,product_version FROM scripts WHERE id=?',(script_id,)).fetchone()
+            if not script or script['product_id']!=product_id:
+                raise ProductError('话术不存在或不属于当前商品')
+            if script['product_version']!=product['version']:
+                raise Conflict('历史话术不能直接选用，请按当前商品事实修改并保存')
+            db.execute('INSERT OR REPLACE INTO script_selection VALUES(?,?)',(product_id,script_id))
+
+    def selected_script(self, product_id):
+        with self.connect() as db:
+            row=db.execute('''SELECT s.id FROM script_selection choice
+                JOIN scripts s ON s.id=choice.script_id JOIN products p ON p.id=choice.product_id
+                WHERE p.id=? AND s.product_id=p.id AND s.product_version=p.version''',(product_id,)).fetchone()
+            return row[0] if row else None

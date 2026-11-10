@@ -90,13 +90,22 @@ async function showScripts() {
   $('scripts-list').replaceChildren(...result.scripts.map(script => {
     const item = document.createElement('li');
     const content = document.createElement('p');
-    content.textContent = '版本 ' + script.product_version + (script.product_version === currentProduct.version ? ' · 当前' : ' · 历史') + (script.parent_script_id ? ' · 修改稿' : '') + '：' + script.text;
+    content.textContent = '版本 ' + script.product_version + (script.product_version === currentProduct.version ? ' · 当前' : ' · 历史') + (script.id === result.selected ? ' · 已选用' : '') + (script.parent_script_id ? ' · 修改稿' : '') + '：' + script.text;
     const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'secondary'; edit.textContent = '载入修改';
     edit.addEventListener('click', () => {
       $('script-text').value = script.text; parentScriptId = script.id;
       $('product-message').textContent = script.product_version === currentProduct.version ? '原稿已载入，保存时创建修改稿并保留原稿。' : '历史原稿已载入，请按当前商品事实修改后保存；原稿会保留。';
     });
     item.append(content,edit);
+    if (script.product_version === currentProduct.version) {
+      const select = document.createElement('button'); select.type='button'; select.className='secondary'; select.textContent='设为当前话术';
+      select.addEventListener('click', () => productAction(async () => {
+        requireSavedProduct();
+        await request('/api/scripts/select',{product_id:currentProduct.id,script_id:script.id});
+        await showScripts(); $('product-message').textContent='当前话术已保存；尚未启动播放。';
+      }));
+      item.append(select);
+    }
     return item;
   }));
 }

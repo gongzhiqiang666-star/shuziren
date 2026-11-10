@@ -131,7 +131,8 @@ def create_server(store, port=None):
                     ids = query.get("product_id", [])
                     if len(ids) != 1:
                         raise ProductError("请选择商品")
-                    return self.respond(200, {"scripts": products().scripts(ids[0])})
+                    data=products()
+                    return self.respond(200, {"scripts": data.scripts(ids[0]),'selected':data.selected_script(ids[0])})
                 filename = {"/": "index.html", "/app.js": "app.js", "/style.css": "style.css"}.get(path)
                 if filename:
                     mime = {"index.html": "text/html", "app.js": "text/javascript", "style.css": "text/css"}[filename]
@@ -190,6 +191,11 @@ def create_server(store, port=None):
                             raise ProductError("话术字段不完整")
                         script_id = products().add_script(value["snapshot"], value["text"],parent_script_id=value.get('parent_script_id'))
                         return self.respond(201, {"id": script_id})
+                    if path == '/api/scripts/select':
+                        if set(value)!={'product_id','script_id'} or not all(isinstance(v,str) for v in value.values()):
+                            raise ProductError('话术选择字段无效')
+                        products().select_script(value['product_id'],value['script_id'])
+                        return self.respond(200,{'selected':value['script_id']})
                 return self.respond(404, {"error": "接口不存在"})
             except Conflict as error:
                 self.respond(409, {"error": str(error)})

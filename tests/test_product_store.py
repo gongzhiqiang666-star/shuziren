@@ -120,6 +120,20 @@ class ProductStoreTests(unittest.TestCase):
         migrated.add_script(a,'从旧话术修改保存',parent_script_id='old-script')
         self.assertEqual(len(ProductStore(directory).scripts(a['id'])),2)
 
+    def test_script_selection_persists_and_product_edits_invalidate(self):
+        a,b=self.product(8),self.product(3)
+        script=self.store.add_script(a,'商品8当前稿')
+        self.store.select_script(a['id'],script)
+        self.assertEqual(ProductStore(self.directory.name).selected_script(a['id']),script)
+        with self.assertRaises(ProductError): self.store.select_script(b['id'],script)
+        self.assertIsNone(self.store.selected_script(b['id']))
+        changed=self.edit(a,content='更新商品信息')
+        self.assertIsNone(self.store.selected_script(a['id']))
+        with self.assertRaises(Conflict): self.store.select_script(a['id'],script)
+        revised=self.store.add_script(changed,'更新后话术',parent_script_id=script)
+        self.store.select_script(a['id'],revised)
+        self.assertEqual(self.store.selected_script(a['id']),revised)
+
 
 if __name__ == '__main__':
     unittest.main()
