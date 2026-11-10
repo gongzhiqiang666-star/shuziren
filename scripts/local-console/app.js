@@ -16,7 +16,7 @@ async function action(work) {
   $('error').textContent = ''; $('message').textContent = '';
   document.querySelectorAll('button').forEach(b => b.disabled = true);
   try { await work(); } catch(error) { $('error').textContent = error.message || '无法连接本地服务'; }
-  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); }
+  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); renderRecordingButtons(); }
 }
 async function load() {
   clearChecks();
@@ -42,6 +42,7 @@ $('reload').addEventListener('click', () => action(load));
 $('shutdown').addEventListener('click', () => action(async () => {
   await request('/api/shutdown', {confirm:true});
   consoleClosed = true; clearTimeout(taskTimer);
+  recorder.discard();
   $('live-status').textContent = '控制台已退出';
   $('message').textContent = '本地服务已收到退出请求，可以关闭本页。';
   $('settings').hidden = true; $('shutdown').hidden = true;
@@ -162,7 +163,7 @@ async function voiceAction(work) {
   $('voice-error').textContent=''; $('voice-message').textContent='';
   $('voice-panel').querySelectorAll('button,select').forEach(x => x.disabled=true);
   try { await work(); } catch(error) { showVoice(null); $('voice-error').textContent=error.message || '音色服务无法连接'; }
-  finally { $('voice-panel').querySelectorAll('button,select').forEach(x => x.disabled=false); }
+  finally { $('voice-panel').querySelectorAll('button,select').forEach(x => x.disabled=false); renderRecordingButtons(); }
 }
 async function loadVoices() {
   const result=await request('/api/voices'); voiceRecords=result.voices;
@@ -182,4 +183,35 @@ $('voice-list').addEventListener('change',() => voiceAction(async () => {
 }));
 $('reload-voices').addEventListener('click',() => voiceAction(loadVoices));
 $('voice-preview').addEventListener('error',() => {if ($('voice-preview').getAttribute('src')) $('voice-error').textContent='参考音无法加载，请重读音色并检查文件完整性。';});
+let recordingUrl=null;
+function renderRecordingButtons() {
+  $('record-start').disabled=['requesting','recording','stopping'].includes(recorder.state);
+  $('record-stop').disabled=recorder.state!=='recording';
+  $('record-save').disabled=recorder.state!=='preview';
+}
+const recorder=new window.VoiceRecorder((state,blob,error)=>{
+  $('record-preview').pause();
+  if(recordingUrl) URL.revokeObjectURL(recordingUrl);recordingUrl=null;
+  $('record-preview').removeAttribute('src');
+  if(blob) {recordingUrl=URL.createObjectURL(blob);$('record-preview').src=recordingUrl;}
+  $('record-preview').load();
+  const labels={idle:'尚未录音',requesting:'正在请求麦克风权限',recording:'正在录音，30秒后自动停止',stopping:'正在结束录音',preview:'录音完成，请试听并核对对应文本后保存'};
+  $('record-status').textContent=labels[state] || state;
+  if(error) $('voice-error').textContent=error;
+  renderRecordingButtons();
+});
+$('record-start').addEventListener('click',()=>{$('voice-error').textContent='';recorder.start();});
+$('record-stop').addEventListener('click',()=>recorder.stop());
+$('record-discard').addEventListener('click',()=>recorder.discard());
+$('record-save').addEventListener('click',()=>voiceAction(async()=>{
+  if(recorder.state!=='preview' || !recorder.blob) throw new Error('请先完成录音');
+  const blob=recorder.blob;
+  const encoded=await new Promise((resolve,reject)=>{
+    const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('录音读取失败'));reader.readAsDataURL(blob);
+  });
+  const result=await request('/api/voices/recorded',{audio_base64:encoded,name:$('voice-name').value,transcript:$('voice-transcript').value});
+  await request('/api/voices/select',{voice_id:result.voice.id});await loadVoices();recorder.discard();$('voice-message').textContent='录音已保存为音色。';
+}));
+window.addEventListener('pagehide',()=>recorder.discard());
+renderRecordingButtons();
 action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices); });

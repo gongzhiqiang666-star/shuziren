@@ -3,6 +3,7 @@ import subprocess
 import sys
 import os
 import wave
+import base64
 from unittest.mock import patch
 from pathlib import Path
 import tempfile
@@ -160,6 +161,11 @@ class ConsoleHTTPTests(unittest.TestCase):
             self.assertEqual(response.read(4),b'RIFF')
         self.assertEqual(self.call('/api/voices/audio?id=../console.json')[0],400)
         self.assertEqual(self.call('/api/voices/import',{'source':str(source),'transcript':'','name':'测试'})[0],400)
+        self.assertEqual(self.call('/api/voices/recorded',{'audio_base64':base64.b64encode(source.read_bytes()).decode(),
+            'transcript':'录音传输测试音','name':'录音传输测试'})[0],201)
+        self.assertEqual(self.call('/api/voices/recorded',{'audio_base64':'not-base64!',
+            'transcript':'测试','name':'坏录音'})[0],400)
+        self.assertEqual(list((Path(self.directory.name)/'voices').glob('recording-*.webm')),[])
 
 
 if __name__ == '__main__':

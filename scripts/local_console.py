@@ -1,5 +1,7 @@
 """Own loopback console: python -m scripts.local_console --data-directory PATH."""
 import argparse
+import base64
+import binascii
 import json
 import logging
 import os
@@ -141,9 +143,9 @@ def create_server(store, port=None):
                         raise ProductError("请选择商品")
                     data=products()
                     return self.respond(200, {"scripts": data.scripts(ids[0]),'selected':data.selected_script(ids[0])})
-                filename = {"/": "index.html", "/app.js": "app.js", "/style.css": "style.css"}.get(path)
+                filename = {"/": "index.html", "/app.js": "app.js", "/style.css": "style.css",'/voice-recorder.js':'voice-recorder.js'}.get(path)
                 if filename:
-                    mime = {"index.html": "text/html", "app.js": "text/javascript", "style.css": "text/css"}[filename]
+                    mime = {"index.html": "text/html", "app.js": "text/javascript", "style.css": "text/css",'voice-recorder.js':'text/javascript'}[filename]
                     return self.respond(200, (WEB / filename).read_bytes(), mime + "; charset=utf-8")
                 return self.respond(404, {"error": "页面不存在"})
             except sqlite3.Error:
@@ -184,13 +186,20 @@ def create_server(store, port=None):
                         return self.respond(200, {"config": store.save(value), "message": "已保存；端口修改在下次启动生效"})
                     if path == "/api/preflight":
                         return self.respond(200, preflight(value))
-                    if path == '/api/voices/import':
-                        if set(value)!={'source','transcript','name'} or not isinstance(value['source'],str):
+                    if path in {'/api/voices/import','/api/voices/recorded'}:
+                        field='source' if path.endswith('/import') else 'audio_base64'
+                        if set(value)!={field,'transcript','name'} or not isinstance(value[field],str):
                             raise VoiceError('音色导入字段无效')
                         report=preflight(store.load())
                         if not report['runtime_root']: raise VoiceError('请先配置本机运行资源目录')
                         ffmpeg=Path(report['runtime_root'])/'_internal/env/ffmpeg/bin/ffmpeg.exe'
-                        voice=VoiceStore(store.directory).import_audio(value['source'],value['transcript'],value['name'],ffmpeg)
+                        voices=VoiceStore(store.directory)
+                        if field=='source':
+                            voice=voices.import_audio(value['source'],value['transcript'],value['name'],ffmpeg)
+                        else:
+                            try: audio=base64.b64decode(value[field],validate=True)
+                            except binascii.Error: raise VoiceError('录音数据格式无效') from None
+                            voice=voices.import_recording(audio,value['transcript'],value['name'],ffmpeg)
                         return self.respond(201,{'voice':voice})
                     if path == '/api/voices/select':
                         if set(value)!={'voice_id'} or not isinstance(value['voice_id'],str):

@@ -3,6 +3,7 @@ import hashlib
 from array import array
 import math
 import sys
+import tempfile
 from pathlib import Path
 import shutil
 import sqlite3
@@ -115,3 +116,14 @@ class VoiceStore:
     def audio_path(self, voice_id):
         self.get(voice_id)
         return self._directory(voice_id)/'ref_audio.wav'
+
+    def import_recording(self, data, transcript, name, ffmpeg):
+        if not isinstance(data,bytes) or not 1<=len(data)<=524288:
+            raise VoiceError('录音为空或超过512KiB，请重新录制')
+        # A generated file in the owned directory; never a caller-supplied path.
+        with tempfile.NamedTemporaryFile(dir=self.root,prefix='recording-',suffix='.webm',delete=False) as stream:
+            temporary=Path(stream.name);stream.write(data)
+        try:
+            return self.import_audio(temporary.resolve(),transcript,name,ffmpeg)
+        finally:
+            temporary.unlink(missing_ok=True)

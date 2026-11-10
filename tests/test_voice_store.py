@@ -6,6 +6,7 @@ import struct
 import tempfile
 import unittest
 import wave
+import subprocess
 
 from scripts.voice_store import VoiceStore,VoiceError,fingerprint
 
@@ -56,6 +57,15 @@ class VoiceStoreTests(unittest.TestCase):
         for name,transcript in [('', '文字'),('名称','')]:
             with self.assertRaises(VoiceError): self.store.import_audio(self.audio(),transcript,name,FFMPEG)
         self.assertEqual(self.store.list(),[])
+
+    def test_real_webm_recording_decodes_and_temporary_upload_is_removed(self):
+        source=self.audio();webm=self.root/'recorded.webm'
+        subprocess.run([str(FFMPEG),'-nostdin','-y','-loglevel','error','-i',str(source),'-c:a','libopus',str(webm)],check=True)
+        result=self.store.import_recording(webm.read_bytes(),'测试音，非人声','录音媒体测试',FFMPEG)
+        self.assertGreater(result['duration'],1)
+        self.assertEqual(list(self.store.root.glob('recording-*.webm')),[])
+        with self.assertRaises(VoiceError): self.store.import_recording(b'not media','文字','坏录音',FFMPEG)
+        self.assertEqual(list(self.store.root.glob('recording-*.webm')),[])
 
 
 if __name__=='__main__': unittest.main()
