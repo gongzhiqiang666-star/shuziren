@@ -62,11 +62,10 @@ async function loadTask() {
   if (consoleClosed) return;
   const result = await request('/api/llm/state');
   $('llm-configured').textContent = result.configured ? '已配置专用生成服务。生成结果请人工核对后使用。' : '未配置专用生成服务，请在本机设置控制台LLM环境变量后重启。';
-  const previous = currentTask;
   currentTask = result.task;
   const labels = {running:'正在生成',succeeded:'已保存生成话术',failed:'生成失败',cancelled:'已取消',interrupted:'上次生成已中断'};
   $('llm-task').textContent = currentTask ? (labels[currentTask.status] || currentTask.status) + ' · ' + (currentTask.product_title || '商品') + ' · 版本 ' + currentTask.product_version + (currentTask.error ? '：' + currentTask.error : '') : '暂无生成任务';
-  if (currentTask?.status === 'succeeded' && previous?.status === 'running' && currentProduct?.id === currentTask.product_id) await showScripts();
+  if (currentTask?.status === 'succeeded' && currentProduct?.id === currentTask.product_id) await showScripts();
   if (currentTask?.status === 'running') taskTimer = setTimeout(() => loadTask().catch(error => { $('product-error').textContent = error.message; }), 750);
 }
 async function productAction(work) {
