@@ -1,4 +1,6 @@
 node_modules/
 dist/
+!public/vendor/headaudio/dist/
+!public/vendor/headaudio/dist/model-en-mixed.bin
 coverage/
 *.local

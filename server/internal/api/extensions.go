@@ -12,6 +12,7 @@ import (
 // RegisterBusinessRoutes shares the operator authorization middleware. It does
 // not expose any of these resources to the narrowly scoped output receiver.
 func (s *Service) RegisterBusinessRoutes(a *gin.RouterGroup) {
+	s.registerLiveReadinessRoutes(a)
 	a.GET("/promotions", func(c *gin.Context) {
 		shop, yes := queryShop(c)
 		if !yes {

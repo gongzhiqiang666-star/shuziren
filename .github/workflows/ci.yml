@@ -52,6 +52,11 @@ jobs:
         run: |
           npm test
           npm run build
+      - name: Prepare pinned CC0 model for 3D browser validation
+        run: |
+          python3 scripts/avatar3d_setup.py
+          mkdir -p web/dist/avatar-assets
+          cp web/public/avatar-assets/mpfb.glb web/dist/avatar-assets/mpfb.glb
       - name: TTS wrapper dependencies
         run: |
           python -m pip install --upgrade pip==26.2.2
@@ -66,9 +71,9 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium
-          if ! command -v psql >/dev/null; then
+          if ! command -v psql >/dev/null || ! command -v ffprobe >/dev/null; then
             sudo apt-get update
-            sudo apt-get install -y postgresql-client
+            sudo apt-get install -y postgresql-client ffmpeg
           fi
       - name: Real WebRTC browser transport with isolated test media
         working-directory: tests/browser
@@ -77,6 +82,28 @@ jobs:
         run: |
           npm test
           npm run test:business
+      - name: Real 3D rendering, acoustic analysis and recorded audio/video
+        env:
+          AVATAR3D_BASE_URL: http://127.0.0.1:5174
+          AVATAR3D_SOFTWARE_GL: '1'
+        run: |
+          node scripts/serve_avatar3d.mjs --port 5174 > /tmp/shuziren-avatar3d-ci.log 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          python3 - <<'PY'
+          import time
+          import urllib.request
+          for attempt in range(20):
+              try:
+                  with urllib.request.urlopen('http://127.0.0.1:5174/avatar3d', timeout=2) as response:
+                      assert response.status == 200
+                  break
+              except OSError:
+                  if attempt == 19:
+                      raise
+                  time.sleep(0.5)
+          PY
+          node tests/browser/avatar3d.cjs
       - name: Validate deployment configuration
         env:
           APP_TOKEN: ci-only-workspace-token-long-enough

@@ -32,4 +32,21 @@ __pycache__/
 .pytest_cache/
 coverage/
 test-results/
+
+# Local v122 proof payload and evidence (never commit commercial/runtime/user data)
+v122-minimum-proof/
+runs/
+reports/
+recordings/
+materials/
+logs/
+config/v122-proof.local.json
 playwright-report/
+
+# Local minimum-live manifests and evidence
+config/live-readiness.local.json
+live-readiness-evidence/
+
+# Downloaded CC0 example avatar; pinned source and checksum are in the setup script.
+/web/public/avatar-assets/*.glb
+/releases/

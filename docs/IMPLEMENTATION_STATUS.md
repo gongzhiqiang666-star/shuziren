@@ -21,6 +21,7 @@
 | 独立输出 | 场次专用可撤销链接、窄权限token、单接收者租约、真实WebRTC/音视频播放心跳；关闭运营台后独立接收页继续工作；接管/撤销处理在途连接竞争 |
 | 淘宝适配 | 官方TOP签名、直播间详情、出售商品预览与人工核对保存、显式弹卡/状态上报、TMC HTTP消费/确认、持久化去重、评论生成草稿；本地回放有独立来源和去重域 |
 | 质量与运维 | 资产授权/版本/SHA256档案、人工画质表、50句口型语料、闪光/蜂鸣音画传输校准、配置诊断、数据库与WAV一致备份/恢复、CI与可复跑浏览器验收 |
+| 最小链路向导 | 工作台五步“开播验证”页面；按店铺保存环境、真实语音、数字人/OBS、平台与稳定性证据，校验同源WAV及音画证据并导出脱敏JSON；只检查、引导和记录，不执行命令或控制外部进程 |
 
 资产档案为记录：修改台账不会直接替换外部进程中的头像或声音。实际切换须修改媒体服务配置并重启，再核验内容指纹。本版按固定头像/音色、单路媒体验证；多店资料管理不等于多用户SaaS权限。
 
@@ -29,6 +30,8 @@ BGE使用PostgreSQL数组缓存和Go精确余弦排名，保留语义检索能�
 ## 2. 已执行的软件验证
 
 本地环境：隔离Linux x86_64，Go 1.27.3、Node.js 24.22.1、PostgreSQL 16.15、Python 3.12；Playwright 1.62.1与真实Chrome for Testing。没有真实付费Key、淘宝凭据、CosyVoice/MuseTalk权重或GPU。所有数据库测试使用专用库和可清理schema。
+
+2026-11-07 新增的最小链路向导已通过 Go 领域/API 测试、Vue 组件测试和生产构建；这些测试证明记录约束和页面边界，不证明 Windows/NVIDIA、真实模型或 OBS 已通过。实机状态仍以向导中保存的真实证据为准。
 
 应用源码对应提交[fa2d8c9](https://github.com/gongzhiqiang666-star/shuziren/commit/fa2d8c913398602f1768f2b2c54a3cbc7fd4a6f6)。[Push检查](https://github.com/gongzhiqiang666-star/shuziren/actions/runs/41175291513)与[PR检查](https://github.com/gongzhiqiang666-star/shuziren/actions/runs/41175315886)的 `verify`、`container-startup` 均成功，实际执行了数据库、前端、HTTP worker、两套浏览器及容器备份恢复检查。本记录在检查完成后补写，不改变已验证应用源码。远端172个文件的路径、模式与Git blob SHA均已和本地索引逐一核对。
 
