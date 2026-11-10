@@ -1,6 +1,8 @@
 import json
 import subprocess
 import sys
+import os
+from unittest.mock import patch
 from pathlib import Path
 import tempfile
 import threading
@@ -118,6 +120,17 @@ class ConsoleHTTPTests(unittest.TestCase):
                             ('/api/products', {'title':'', 'content':'x', 'product_index':1})]:
             self.assertEqual(self.call(path, value)[0], 400)
         self.assertEqual(self.call('/api/scripts')[0], 400)
+
+    def test_llm_missing_configuration_is_visible_without_creating_task(self):
+        with patch.dict(os.environ, {'SHUZIREN_LLM_API_KEY':''}):
+            status, value = self.call('/api/llm/state')
+            self.assertEqual(status,200)
+            self.assertFalse(value['configured'])
+            p=self.call('/api/products', {'title':'茶杯','content':'300毫升','product_index':8})[1]['product']
+            status, value=self.call('/api/llm/generate', {'product_id':p['id'],'version':1,'instructions':''})
+            self.assertEqual(status,400)
+            self.assertIn('尚未配置',value['error'])
+            self.assertIsNone(self.call('/api/llm/state')[1]['task'])
 
 
 if __name__ == '__main__':

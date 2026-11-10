@@ -25,6 +25,11 @@ class ConsoleServer(ThreadingHTTPServer):
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         super().server_bind()
 
+    def server_close(self):
+        cleanup = getattr(self, 'cleanup_tasks', None)
+        if cleanup: cleanup()
+        super().server_close()
+
 
 class InstanceLock:
     """OS-held lock; a crashed process releases it without trusting a stale PID."""
@@ -63,6 +68,21 @@ def create_server(store, port=None):
     lock = threading.RLock()
     def products():
         return ProductStore(store.directory)
+    task_manager = None
+    tasks_closed = False
+    def tasks():
+        nonlocal task_manager
+        with lock:
+            if tasks_closed: raise ProductError('控制台正在退出')
+            if task_manager is None:
+                from scripts.llm_tasks import LLMTasks
+                task_manager = LLMTasks(products())
+            return task_manager
+    def cleanup():
+        nonlocal tasks_closed
+        with lock:
+            tasks_closed = True
+            if task_manager is not None: task_manager.close()
     try:
         settings = store.load()
         configured_port = settings["port"]
@@ -103,6 +123,9 @@ def create_server(store, port=None):
                 if path == "/api/products":
                     data = products()
                     return self.respond(200, {"products": data.list(), "selected": data.selected()})
+                if path == "/api/llm/state":
+                    from scripts.console_llm import status
+                    return self.respond(200, {**status(), "task":tasks().state()})
                 if path == "/api/scripts":
                     query = parse_qs(urlsplit(self.path).query)
                     ids = query.get("product_id", [])
@@ -116,7 +139,7 @@ def create_server(store, port=None):
                 return self.respond(404, {"error": "页面不存在"})
             except sqlite3.Error:
                 self.respond(503, {"error": "商品数据库无法读取，请检查文件与权限；原数据未重置"})
-            except (ConfigError, ProductError, OSError) as error:
+            except (ValueError, OSError) as error:
                 self.respond(400, {"error": str(error)})
 
         def do_POST(self):
@@ -150,6 +173,13 @@ def create_server(store, port=None):
                         if not {"title", "content", "product_index"} <= value.keys() or value.keys() - allowed:
                             raise ProductError("商品字段不完整或包含未知字段")
                         return self.respond(200, {"product": products().save(**value)})
+                    if path == "/api/llm/generate":
+                        if set(value) != {"product_id", "version", "instructions"} or not isinstance(value['product_id'], str):
+                            raise ProductError("生成字段无效")
+                        return self.respond(202, {"task":tasks().start(value['product_id'],value['version'],value['instructions'])})
+                    if path == "/api/llm/cancel":
+                        if set(value) != {"task_id"}: raise ProductError("取消字段无效")
+                        return self.respond(200, {"task":tasks().cancel(value['task_id'])})
                     if path == "/api/products/select":
                         if set(value) != {"product_id"} or not isinstance(value["product_id"], str):
                             raise ProductError("请选择有效商品")
@@ -170,6 +200,7 @@ def create_server(store, port=None):
 
     server = ConsoleServer(("127.0.0.1", configured_port if port is None else port), Handler)
     server.daemon_threads = True
+    server.cleanup_tasks = cleanup
     return server
 
 

@@ -41,6 +41,7 @@ $('preflight').addEventListener('click', () => action(async () => {
 $('reload').addEventListener('click', () => action(load));
 $('shutdown').addEventListener('click', () => action(async () => {
   await request('/api/shutdown', {confirm:true});
+  consoleClosed = true; clearTimeout(taskTimer);
   $('live-status').textContent = '控制台已退出';
   $('message').textContent = '本地服务已收到退出请求，可以关闭本页。';
   $('settings').hidden = true; $('shutdown').hidden = true;
@@ -48,6 +49,26 @@ $('shutdown').addEventListener('click', () => action(async () => {
 }));
 let currentProduct = null;
 let savedProducts = [];
+let currentTask = null;
+let taskTimer = null;
+let consoleClosed = false;
+function requireSavedProduct() {
+  if (!currentProduct) throw new Error('请先保存或选择商品');
+  if ($('product-title').value !== currentProduct.title || $('product-content').value !== currentProduct.content || $('product-index').value !== String(currentProduct.product_index))
+    throw new Error('商品有未保存修改，请先保存商品');
+}
+async function loadTask() {
+  clearTimeout(taskTimer);
+  if (consoleClosed) return;
+  const result = await request('/api/llm/state');
+  $('llm-configured').textContent = result.configured ? '已配置专用生成服务。生成结果请人工核对后使用。' : '未配置专用生成服务，请在本机设置控制台LLM环境变量后重启。';
+  const previous = currentTask;
+  currentTask = result.task;
+  const labels = {running:'正在生成',succeeded:'已保存生成话术',failed:'生成失败',cancelled:'已取消',interrupted:'上次生成已中断'};
+  $('llm-task').textContent = currentTask ? (labels[currentTask.status] || currentTask.status) + ' · ' + (currentTask.product_title || '商品') + ' · 版本 ' + currentTask.product_version + (currentTask.error ? '：' + currentTask.error : '') : '暂无生成任务';
+  if (currentTask?.status === 'succeeded' && previous?.status === 'running' && currentProduct?.id === currentTask.product_id) await showScripts();
+  if (currentTask?.status === 'running') taskTimer = setTimeout(() => loadTask().catch(error => { $('product-error').textContent = error.message; }), 750);
+}
 async function productAction(work) {
   $('product-error').textContent = ''; $('product-message').textContent = '';
   $('products-panel').querySelectorAll('button,select').forEach(b => b.disabled = true);
@@ -82,7 +103,7 @@ async function loadProducts() {
   $('product-list').value = selected?.id || ''; showProduct(selected); await showScripts();
 }
 $('new-product').addEventListener('click', () => { $('product-list').value = ''; showProduct(null); });
-$('reload-products').addEventListener('click', () => productAction(loadProducts));
+$('reload-products').addEventListener('click', () => productAction(async () => { await loadProducts(); await loadTask(); }));
 $('product-list').addEventListener('change', () => productAction(async () => {
   const selected = savedProducts.find(p => p.id === $('product-list').value);
   if (!selected) { showProduct(null); return; }
@@ -96,10 +117,17 @@ $('product-form').addEventListener('submit', event => { event.preventDefault(); 
   await loadProducts(); $('product-message').textContent = '商品已保存';
 }); });
 $('script-form').addEventListener('submit', event => { event.preventDefault(); productAction(async () => {
-  if (!currentProduct) throw new Error('请先保存或选择商品');
-  if ($('product-title').value !== currentProduct.title || $('product-content').value !== currentProduct.content || $('product-index').value !== String(currentProduct.product_index))
-    throw new Error('商品有未保存修改，请先保存商品');
+  requireSavedProduct();
   await request('/api/scripts', {snapshot:currentProduct,text:$('script-text').value});
   await showScripts(); $('script-text').value = ''; $('product-message').textContent = '话术已保存';
 }); });
-action(async () => { await load(); await productAction(loadProducts); });
+$('generate-script').addEventListener('click', () => productAction(async () => {
+  requireSavedProduct();
+  await request('/api/llm/generate', {product_id:currentProduct.id,version:currentProduct.version,instructions:$('llm-instructions').value});
+  await loadTask();
+}));
+$('cancel-generation').addEventListener('click', () => productAction(async () => {
+  if (!currentTask) throw new Error('暂无生成任务');
+  await request('/api/llm/cancel', {task_id:currentTask.id}); await loadTask();
+}));
+action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); });

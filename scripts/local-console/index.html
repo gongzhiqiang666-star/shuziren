@@ -14,5 +14,6 @@
 <label for="product-title">商品名称</label><input id="product-title" required maxlength="200">
 <label for="product-content">商品信息</label><textarea id="product-content" required maxlength="50000" rows="5"></textarea><div class="actions"><button type="submit">保存商品</button></div></form>
 <form id="script-form"><label for="script-text">人工话术</label><textarea id="script-text" required maxlength="100000" rows="4"></textarea><div class="actions"><button type="submit">保存话术</button></div></form>
+<h3>生成话术</h3><p id="llm-configured">正在检查生成服务。</p><label for="llm-instructions">生成要求</label><textarea id="llm-instructions" rows="3" maxlength="10000" placeholder="例如：语气自然，只使用商品中已填写的事实"></textarea><div class="actions"><button id="generate-script" type="button">生成话术</button><button id="cancel-generation" type="button" class="secondary">取消生成</button></div><p id="llm-task" role="status" aria-live="polite"></p>
 <h3>该商品的话术记录</h3><ul id="scripts-list"></ul><p id="product-message" role="status" aria-live="polite"></p><p id="product-error" role="alert"></p></section>
 <footer><p id="data-directory"></p><p>日志保存在配置目录的 console.log。当前入口用于启动准备；直播能力按后续任务接入。</p><button id="shutdown" class="secondary" type="button">退出控制台</button></footer></main></body></html>

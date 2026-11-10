@@ -1,12 +1,15 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 
 from scripts.console_llm import LLMError, environment_config, generate
 from scripts.product_store import ProductStore, Conflict
+from scripts.llm_tasks import LLMTasks
 
 
 class ConsoleLLMTests(unittest.TestCase):
@@ -25,10 +28,10 @@ class ConsoleLLMTests(unittest.TestCase):
                 test.requests.append(json.loads(self.rfile.read(int(self.headers['Content-Length']))))
                 if test.on_request: test.on_request()
                 status, content = test.responses.pop(0) if len(test.responses)>1 else test.responses[0]
-                self.send_response(status)
-                self.send_header('Content-Type','application/json')
-                self.end_headers()
                 try:
+                    self.send_response(status)
+                    self.send_header('Content-Type','application/json')
+                    self.end_headers()
                     self.wfile.write(json.dumps({'choices':[{'message':{'content':content}}]}).encode())
                 except OSError: pass  # Client intentionally disconnected in timeout cases.
         self.server = ThreadingHTTPServer(('127.0.0.1',0),Handler)
@@ -85,6 +88,57 @@ class ConsoleLLMTests(unittest.TestCase):
         for endpoint in ['http://example.com/chat','https://user:secret@example.com/chat','https://example.com/chat?key=secret']:
             with self.assertRaises(LLMError):
                 environment_config({'SHUZIREN_LLM_ENDPOINT':endpoint,'SHUZIREN_LLM_MODEL':'x','SHUZIREN_LLM_API_KEY':'x'})
+
+    def tasks(self):
+        env = {'SHUZIREN_LLM_ENDPOINT':self.config['endpoint'], 'SHUZIREN_LLM_API_KEY':self.config['api_key'],
+               'SHUZIREN_LLM_MODEL':self.config['model']}
+        environment_patch=patch.dict(os.environ,env)
+        environment_patch.start()
+        self.addCleanup(environment_patch.stop)
+        tasks=LLMTasks(self.store)
+        self.addCleanup(tasks.close)
+        return tasks
+
+    def wait_task(self,tasks):
+        deadline=time.monotonic()+15
+        while time.monotonic()<deadline:
+            state=tasks.state()
+            if state['status']!='running': return state
+            time.sleep(.05)
+        self.fail('Worker did not finish within 15 seconds')
+
+    def test_spawn_task_success_duplicate_and_persisted_status(self):
+        tasks=self.tasks()
+        task=tasks.start(self.product['id'],1)
+        with self.assertRaises(Conflict): tasks.start(self.product['id'],1)
+        state=self.wait_task(tasks)
+        self.assertEqual(state['status'],'succeeded',state)
+        self.assertEqual(len(self.store.scripts(self.product['id'])),1)
+        tasks.close()
+        self.assertEqual(LLMTasks(self.store).state()['id'],task['id'])
+        self.assertNotIn('test-secret-sentinel',tasks.path.read_text())
+
+    def test_cancel_terminates_owned_process_and_prevents_commit(self):
+        entered=threading.Event()
+        def delay(): entered.set(); time.sleep(1)
+        self.on_request=delay
+        tasks=self.tasks()
+        task=tasks.start(self.product['id'],1)
+        self.assertTrue(entered.wait(timeout=10))
+        self.assertEqual(tasks.cancel(task['id'])['status'],'cancelled')
+        self.assertFalse(tasks.process.is_alive())
+        self.assertEqual(self.store.scripts(self.product['id']),[])
+
+    def test_close_cancels_and_restart_marks_unfinished(self):
+        self.on_request=lambda: time.sleep(1)
+        tasks=self.tasks()
+        tasks.start(self.product['id'],1)
+        tasks.close()
+        self.assertFalse(tasks.process.is_alive())
+        self.assertEqual(tasks.state()['status'],'cancelled')
+        tasks.path.write_text(json.dumps({'id':'old','status':'running'}))
+        reopened=LLMTasks(self.store)
+        self.assertEqual(reopened.state()['status'],'interrupted')
 
 
 if __name__ == '__main__': unittest.main()
