@@ -99,8 +99,14 @@ class VideoSynthesizer:
         setup_started=time.perf_counter()
         output_path=Path(output_path);output_path.parent.mkdir(parents=True,exist_ok=True)
         first,_=self._load_single_frame(sequence[0]);height,width=first.shape[:2]
-        temp_video=output_path.with_name(output_path.stem+"_temp.mp4");writer=cv2.VideoWriter(str(temp_video),cv2.VideoWriter_fourcc(*"mp4v"),25,(width,height))
-        if not writer.isOpened():raise RuntimeError(f"无法创建输出视频: {temp_video}")
+        temp_video=output_path.with_name(output_path.stem+"_temp.mp4")
+        factory=getattr(self,'frame_writer_factory',None)
+        writer=factory(output_path,audio_path,width,height) if factory else cv2.VideoWriter(str(temp_video),cv2.VideoWriter_fourcc(*"mp4v"),25,(width,height))
+        if not writer.isOpened():
+            abort=getattr(writer,'abort',None)
+            if callable(abort):abort()
+            else:writer.release()
+            raise RuntimeError(f"无法创建输出视频: {output_path}")
         save_dir=Path(frames_dir) if frames_dir else None
         if save_dir:save_dir.mkdir(parents=True,exist_ok=True)
         timings['writer_setup_seconds']=time.perf_counter()-setup_started
@@ -122,11 +128,16 @@ class VideoSynthesizer:
                     writer.write(frame)
                     if save_dir:cv2.imwrite(str(save_dir/f"frame_{start+offset:06d}.jpg"),frame)
                 timings['frame_write_seconds']+=time.perf_counter()-tick
+        except BaseException:
+            abort=getattr(writer,'abort',None)
+            if callable(abort):abort()
+            raise
         finally:
             prefetch.shutdown(wait=True,cancel_futures=True)
             tick=time.perf_counter();writer.release();timings['writer_close_seconds']=time.perf_counter()-tick
         tick=time.perf_counter()
-        try:_mux_video_audio(temp_video,audio_path,output_path)
+        try:
+            if not factory:_mux_video_audio(temp_video,audio_path,output_path)
         finally:temp_video.unlink(missing_ok=True)
         timings['mux_seconds']=time.perf_counter()-tick
         timings['total_seconds']=time.perf_counter()-started

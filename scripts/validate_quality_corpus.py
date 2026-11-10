@@ -95,6 +95,12 @@ def worker(root,stage):
             with accelerated_unet(config['engine_cache'],backend=stage,memory_gb=stage_report['arena_limit_gb'],profile_directory=destination/'profiles',strict_fp32=True) as sessions:
                 with VideoSynthesizer(avatar,models/'image_infer_v2/unet_v2.onnx',models/'wenet/conf/train_conformer_multi_cn.yaml',
                     models/'wenet/exp/conformer/wenetmodel.pt',device='cuda:0',batch_size=4) as synth:
+                    encoder=config.get('video_encoder','legacy')
+                    if encoder not in {'legacy','libx264','h264_nvenc'}:raise ValueError('未知视频编码方案')
+                    stage_report['video_encoder']=encoder
+                    if encoder!='legacy':
+                        from scripts.raw_video_writer import RawVideoWriter
+                        synth.frame_writer_factory=lambda target,audio,width,height:RawVideoWriter(internal/'env/ffmpeg/bin/ffmpeg.exe',target,audio,width,height,encoder)
                     stage_report['initialization_seconds']=time.perf_counter()-initialized
                     stage_report['ort_version']=ort.__version__
                     options=sessions[0].get_provider_options()
@@ -113,7 +119,7 @@ def worker(root,stage):
                         stats=synth.engine.perf_stats;before={key:len(stats[key]) for key in ['inference_ms','prepare_ms','paste_ms']}
                         start=time.perf_counter();synth.process_single_file(audio,output);seconds=time.perf_counter()-start
                         verify_started=time.perf_counter();media=verify_media(audio,output,internal/'env/ffmpeg/bin/ffmpeg.exe')
-                        result={'status':'passed','item':item['id'],'backend':stage,'cold':index==0,
+                        result={'status':'passed','item':item['id'],'backend':stage,'video_encoder':encoder,'cold':index==0,
                             'audio_sha256':source['sha256'],'output':str(output),'output_sha256':digest(output),
                             'process_seconds':seconds,'pipeline_timings':synth.last_process_timings,
                             'verification_seconds':time.perf_counter()-verify_started,**media,
@@ -182,7 +188,7 @@ def prepare(args):
         'source_sha256':{str(path.relative_to(ROOT)):digest(path) for path in [ROOT/'scripts/tts_worker.py',
             ROOT/'recovered/voice_infer_v3.py',ROOT/'recovered/image_clone_video_synthesizer.py',
             ROOT/'recovered/image_frame_synthesizer_runtime.py',ROOT/'scripts/v122_acceleration.py',
-            ROOT/'scripts/avatar_render.py',ROOT/'scripts/quality_metrics.py',Path(__file__)]}})
+            ROOT/'scripts/avatar_render.py',ROOT/'scripts/quality_metrics.py',ROOT/'scripts/raw_video_writer.py',Path(__file__)]}})
     return root
 
 

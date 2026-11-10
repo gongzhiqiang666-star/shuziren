@@ -10,10 +10,13 @@ from scripts.voice_store import VoiceStore
 from scripts.validate_quality_corpus import ROOT,CORPUS,PROTOCOL,write
 
 
-def migrate(source,report_directory,reason):
+def migrate(source,report_directory,reason,encoder=None):
     source=Path(source).resolve(strict=True)
     old=json.loads((source/'config.json').read_text(encoding='utf-8'))
     known={relative.replace('\\','/'):value for relative,value in old['source_sha256'].items()}
+    known['scripts/raw_video_writer.py']=digest(ROOT/'scripts/raw_video_writer.py')
+    encoder=encoder or old.get('video_encoder','legacy')
+    if encoder not in {'legacy','libx264','h264_nvenc'}:raise ValueError('未知视频编码方案')
     before=json.loads((source/'corpus.json').read_text(encoding='utf-8'))
     after=json.loads(CORPUS.read_text(encoding='utf-8'))
     if before['items']!=after['items'] or before['thresholds']!=after['thresholds']:
@@ -41,7 +44,7 @@ def migrate(source,report_directory,reason):
             raise ValueError('源ASR项目不完整')
         shutil.copytree(source/'asr',target/'asr');preserved.append('asr')
     (target/'corpus.json').write_bytes(CORPUS.read_bytes());(target/'protocol.md').write_bytes(PROTOCOL.read_bytes())
-    write(target/'config.json',{**old,'corpus_sha256':digest(target/'corpus.json'),'protocol_sha256':digest(PROTOCOL),
+    write(target/'config.json',{**old,'video_encoder':encoder,'corpus_sha256':digest(target/'corpus.json'),'protocol_sha256':digest(PROTOCOL),
         'engine_cache':str(target/'engine-cache'),'source_sha256':{relative:digest(ROOT/relative) for relative in known}})
     for name in preserved:
         stage=json.loads((target/name/'stage.json').read_text());stage['carried_from']=str(source);write(target/name/'stage.json',stage)
@@ -54,7 +57,8 @@ def migrate(source,report_directory,reason):
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--source',required=True,type=Path)
     parser.add_argument('--report-directory',required=True,type=Path);parser.add_argument('--reason',required=True)
-    args=parser.parse_args();target=migrate(args.source,args.report_directory,args.reason)
+    parser.add_argument('--encoder',choices=['legacy','libx264','h264_nvenc'])
+    args=parser.parse_args();target=migrate(args.source,args.report_directory,args.reason,args.encoder)
     print(json.dumps({'run_directory':str(target)},ensure_ascii=False))
 
 
