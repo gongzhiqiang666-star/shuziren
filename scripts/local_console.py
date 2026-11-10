@@ -186,9 +186,9 @@ def create_server(store, port=None):
                         products().select(value["product_id"])
                         return self.respond(200, {"selected": value["product_id"]})
                     if path == "/api/scripts":
-                        if set(value) != {"snapshot", "text"}:
+                        if not {'snapshot','text'} <= value.keys() or value.keys()-{'snapshot','text','parent_script_id'}:
                             raise ProductError("话术字段不完整")
-                        script_id = products().add_script(value["snapshot"], value["text"])
+                        script_id = products().add_script(value["snapshot"], value["text"],parent_script_id=value.get('parent_script_id'))
                         return self.respond(201, {"id": script_id})
                 return self.respond(404, {"error": "接口不存在"})
             except Conflict as error:

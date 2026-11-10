@@ -27,3 +27,5 @@ python -X utf8 -m unittest discover -s tests -p 'test_local_console*.py' -v
 ```
 
 LLM配置：在启动服务的本机进程环境设置SHUZIREN_LLM_ENDPOINT（完整chat/completions地址）、SHUZIREN_LLM_MODEL及SHUZIREN_LLM_API_KEY，可选SHUZIREN_LLM_TIMEOUT。不要把密钥写入命令历史、截图或Git。页面仅展示是否配置，不回显密钥。生成中刷新恢复任务状态，不重新派发；取消终止本地工作进程，但不保证远端停止计费。
+
+话术记录可“载入修改”，保存生成新稿并关联原稿，原稿不会覆盖。载入历史稿时须按当前商品事实修正。数据库自动从版本1升级至2，保留旧话术与商品；修改稿来源不能跨商品引用。保存话术不等于审核或播出。

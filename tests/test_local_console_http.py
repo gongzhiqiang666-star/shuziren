@@ -114,6 +114,10 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call('/api/products', update)[0], 409)
         self.assertEqual(self.call('/api/scripts', {'snapshot':a, 'text':'过期话术'})[0], 409)
         self.assertEqual(len(self.call('/api/scripts?product_id=' + a['id'])[1]['scripts']), 1)
+        latest=self.call('/api/products')[1]['products'][0]
+        original=self.call('/api/scripts?product_id=' + a['id'])[1]['scripts'][0]
+        self.assertEqual(self.call('/api/scripts',{'snapshot':latest,'text':'修改话术','parent_script_id':original['id']})[0],201)
+        self.assertEqual(self.call('/api/scripts',{'snapshot':b,'text':'串商品稿','parent_script_id':original['id']})[0],400)
 
     def test_invalid_product_requests_visible(self):
         for path, value in [('/api/products', {}), ('/api/products/select', {}), ('/api/scripts', {}),

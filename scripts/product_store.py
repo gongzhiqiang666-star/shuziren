@@ -38,7 +38,7 @@ class ProductStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1):
+            if version not in (0, 1, 2):
                 raise ProductError("不支持的商品数据库版本")
             db.executescript('''
                 CREATE TABLE IF NOT EXISTS products (
@@ -53,8 +53,12 @@ class ProductStore:
                 CREATE TABLE IF NOT EXISTS selection (
                     singleton INTEGER PRIMARY KEY CHECK(singleton=1),
                     product_id TEXT NOT NULL REFERENCES products(id));
-                PRAGMA user_version=1;
             ''')
+            db.execute('BEGIN IMMEDIATE')
+            columns = {row[1] for row in db.execute('PRAGMA table_info(scripts)')}
+            if 'parent_script_id' not in columns:
+                db.execute('ALTER TABLE scripts ADD COLUMN parent_script_id TEXT REFERENCES scripts(id)')
+            db.execute('PRAGMA user_version=2')
 
     @contextmanager
     def connect(self):
@@ -120,7 +124,7 @@ class ProductStore:
             row = db.execute("SELECT product_id FROM selection WHERE singleton=1").fetchone()
             return row[0] if row else None
 
-    def add_script(self, snapshot, script, source="manual"):
+    def add_script(self, snapshot, script, source="manual", parent_script_id=None):
         script = text(script, "话术", 100000)
         if source not in {"manual", "llm"}:
             raise ProductError("未知话术来源")
@@ -131,9 +135,15 @@ class ProductStore:
             current = self.decode(db.execute("SELECT * FROM products WHERE id=?", (snapshot["id"],)).fetchone())
             if current != snapshot:
                 raise Conflict("商品内容已变更，请重新生成或确认话术")
+            if parent_script_id is not None:
+                if not isinstance(parent_script_id, str) or source != 'manual':
+                    raise ProductError('修改稿来源无效')
+                parent = db.execute('SELECT product_id FROM scripts WHERE id=?',(parent_script_id,)).fetchone()
+                if not parent or parent[0] != current['id']:
+                    raise ProductError('原稿不存在或不属于当前商品')
             script_id = str(uuid.uuid4())
-            db.execute("INSERT INTO scripts(id,product_id,product_version,snapshot,text,source) VALUES(?,?,?,?,?,?)",
-                       (script_id, current["id"], current["version"], json.dumps(current, ensure_ascii=False), script, source))
+            db.execute("INSERT INTO scripts(id,product_id,product_version,snapshot,text,source,parent_script_id) VALUES(?,?,?,?,?,?,?)",
+                       (script_id, current["id"], current["version"], json.dumps(current, ensure_ascii=False), script, source,parent_script_id))
             return script_id
 
     def scripts(self, product_id):

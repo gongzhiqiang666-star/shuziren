@@ -49,6 +49,7 @@ $('shutdown').addEventListener('click', () => action(async () => {
 }));
 let currentProduct = null;
 let savedProducts = [];
+let parentScriptId = null;
 let currentTask = null;
 let taskTimer = null;
 let consoleClosed = false;
@@ -76,6 +77,7 @@ async function productAction(work) {
 }
 function showProduct(product) {
   currentProduct = product;
+  parentScriptId = null;
   $('product-index').value = product?.product_index ?? '';
   $('product-title').value = product?.title ?? '';
   $('product-content').value = product?.content ?? '';
@@ -87,7 +89,14 @@ async function showScripts() {
   const result = await request('/api/scripts?product_id=' + encodeURIComponent(currentProduct.id));
   $('scripts-list').replaceChildren(...result.scripts.map(script => {
     const item = document.createElement('li');
-    item.textContent = '版本 ' + script.product_version + (script.product_version === currentProduct.version ? ' · 当前' : ' · 历史') + '：' + script.text;
+    const content = document.createElement('p');
+    content.textContent = '版本 ' + script.product_version + (script.product_version === currentProduct.version ? ' · 当前' : ' · 历史') + (script.parent_script_id ? ' · 修改稿' : '') + '：' + script.text;
+    const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'secondary'; edit.textContent = '载入修改';
+    edit.addEventListener('click', () => {
+      $('script-text').value = script.text; parentScriptId = script.id;
+      $('product-message').textContent = script.product_version === currentProduct.version ? '原稿已载入，保存时创建修改稿并保留原稿。' : '历史原稿已载入，请按当前商品事实修改后保存；原稿会保留。';
+    });
+    item.append(content,edit);
     return item;
   }));
 }
@@ -117,8 +126,8 @@ $('product-form').addEventListener('submit', event => { event.preventDefault(); 
 }); });
 $('script-form').addEventListener('submit', event => { event.preventDefault(); productAction(async () => {
   requireSavedProduct();
-  await request('/api/scripts', {snapshot:currentProduct,text:$('script-text').value});
-  await showScripts(); $('script-text').value = ''; $('product-message').textContent = '话术已保存';
+  await request('/api/scripts', {snapshot:currentProduct,text:$('script-text').value,parent_script_id:parentScriptId});
+  parentScriptId = null; await showScripts(); $('script-text').value = ''; $('product-message').textContent = '话术已保存';
 }); });
 $('generate-script').addEventListener('click', () => productAction(async () => {
   requireSavedProduct();

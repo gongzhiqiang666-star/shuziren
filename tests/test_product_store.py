@@ -2,6 +2,8 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import subprocess
 import sys
+import sqlite3
+from pathlib import Path
 import tempfile
 import unittest
 
@@ -82,6 +84,41 @@ class ProductStoreTests(unittest.TestCase):
         for script in ('', ' ', None):
             with self.assertRaises(ProductError): self.store.add_script(a, script)
         self.assertEqual(self.store.scripts(a['id']), [])
+
+    def test_revision_keeps_original_and_rejects_cross_product_parent(self):
+        a,b=self.product(8),self.product(3)
+        original=self.store.add_script(a,'原始300毫升话术',source='llm')
+        current=self.edit(a,content='容量500毫升')
+        edited=self.store.add_script(current,'修改为500毫升话术',parent_script_id=original)
+        records=self.store.scripts(a['id'])
+        self.assertEqual([r['product_version'] for r in records],[1,2])
+        self.assertEqual(records[0]['text'],'原始300毫升话术')
+        self.assertEqual(records[1]['parent_script_id'],original)
+        self.assertEqual(records[1]['id'],edited)
+        with self.assertRaises(ProductError): self.store.add_script(b,'不应跨商品',parent_script_id=original)
+        self.assertEqual(self.store.scripts(b['id']),[])
+
+    def test_version_one_database_migrates_without_losing_old_script(self):
+        directory=Path(self.directory.name)/'old'
+        directory.mkdir()
+        path=directory/'products.sqlite3'
+        a=self.product()
+        with sqlite3.connect(path) as db:
+            db.executescript('''CREATE TABLE products(id TEXT PRIMARY KEY,product_index INTEGER UNIQUE,
+                legacy_index TEXT,title TEXT,content TEXT,extra TEXT,version INTEGER);
+                CREATE TABLE scripts(id TEXT PRIMARY KEY,product_id TEXT REFERENCES products(id),
+                product_version INTEGER,snapshot TEXT,text TEXT,source TEXT,created_at TEXT);
+                PRAGMA user_version=1;''')
+            db.execute('INSERT INTO products VALUES(?,?,?,?,?,?,?)',
+                       (a['id'],8,json.dumps(a['product_index']),a['title'],a['content'],json.dumps(a['extra']),1))
+            db.execute('INSERT INTO scripts VALUES(?,?,?,?,?,?,?)',('old-script',a['id'],1,json.dumps(a),'旧话术','llm','2026-11-10'))
+        migrated=ProductStore(directory)
+        self.assertEqual(migrated.get(a['id']),a)
+        record=migrated.scripts(a['id'])[0]
+        self.assertEqual(record['text'],'旧话术')
+        self.assertIsNone(record['parent_script_id'])
+        migrated.add_script(a,'从旧话术修改保存',parent_script_id='old-script')
+        self.assertEqual(len(ProductStore(directory).scripts(a['id'])),2)
 
 
 if __name__ == '__main__':
