@@ -16,19 +16,22 @@ class ContinuousSession:
     def __init__(self,session_id,client,receiver,sink,source_directory,on_source_complete=None,on_present=None,on_started=None):
         self.session_id=session_id;self.client=client;self.receiver=receiver;self.sink=sink
         self.root=Path(source_directory).resolve();self.clock=SampleTimeline(session_id)
-        self.ready=queue.Queue(maxsize=4);self.stop_event=threading.Event();self.producer=None;self.pacer=None;self.errors=[]
+        self.ready=queue.PriorityQueue(maxsize=4);self.submission_order=0
+        self.stop_event=threading.Event();self.producer=None;self.pacer=None;self.errors=[]
         self.on_source_complete=on_source_complete;self.on_present=on_present;self.on_started=on_started
         self.leases={};self.lease_lock=threading.RLock();self.pcm=PCMTimeline(session_id,self._audio_done)
         self.frames_written=0;self.started=threading.Event();self.finished=threading.Event();self.consumer_thread=None
         self.submit_costs=deque(maxlen=64)
 
-    def submit(self,utterance):
+    def submit(self,utterance,*,priority=False):
         if not isinstance(utterance,Utterance) or utterance.session_id!=self.session_id or utterance.path.resolve().parent!=self.root:
             raise ValueError('Owned utterance for this session required')
         with self.lease_lock:
             if self.stop_event.is_set():raise RuntimeError('Continuous session stopped')
             if utterance.task_id in self.leases:raise ValueError('Utterance already pending')
-            self.ready.put_nowait(utterance)
+            if type(priority) is not bool:raise ValueError('Priority must be a boolean')
+            self.ready.put_nowait((0 if priority else 1,self.submission_order,utterance))
+            self.submission_order+=1
             self.leases[utterance.task_id]={'path':utterance.path,'model':False,'audio':False}
 
     def _release(self,source_id,part):
@@ -46,7 +49,7 @@ class ContinuousSession:
     def _produce(self):
         try:
             while not self.stop_event.is_set():
-                try:utterance=self.ready.get_nowait()
+                try:_,_,utterance=self.ready.get_nowait()
                 except queue.Empty:utterance=None
                 if utterance:
                     span=self.clock.reserve(self.session_id,utterance.samples);timing=asdict(span)

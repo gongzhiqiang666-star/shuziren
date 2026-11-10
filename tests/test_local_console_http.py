@@ -23,6 +23,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call('/api/live/start', {'audio_device': 14})[0], 400)
         self.assertEqual(self.call('/api/live/start', {'audio_device': 14}, **{'X-Console-Token': 'bad'})[0], 403)
         self.assertEqual(self.call('/api/live/enqueue', {'session_id': 'old', 'task_id': 'old'})[0], 409)
+        self.assertEqual(self.call('/api/live/insert', {'session_id': 'old', 'task_id': 'old'})[0], 409)
         self.assertEqual(self.call('/api/live/stop', {'session_id': 'old'})[0], 409)
 
     def test_render_endpoints_require_inputs_and_valid_session(self):

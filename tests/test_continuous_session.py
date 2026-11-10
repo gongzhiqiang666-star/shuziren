@@ -1,4 +1,5 @@
 from pathlib import Path
+from queue import Full
 import tempfile
 import threading
 import unittest
@@ -7,9 +8,59 @@ import numpy as np
 from types import SimpleNamespace
 
 from scripts.continuous_session import ContinuousSession
+from scripts.speech_assembler import Utterance
 
 
 class SessionLifecycleTests(unittest.TestCase):
+    def test_priority_utterances_run_after_current_and_before_waiting_fifo(self):
+        expected = ['current', 'urgent-1', 'urgent-2', 'normal-1', 'normal-2']
+        for cycle in range(20):
+            with self.subTest(cycle=cycle), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                client = Mock()
+                session = ContinuousSession('s', client, Mock(), Mock(), root)
+                session.pcm = Mock()
+                started = threading.Event()
+                resume = threading.Event()
+                played = []
+
+                def stream(operation, **options):
+                    played.append(options['task_id'])
+                    if len(played) == 1:
+                        started.set()
+                        if not resume.wait(2):
+                            raise TimeoutError('Test did not release current utterance')
+                    if len(played) == len(expected):
+                        session.stop_event.set()
+
+                def utterance(task_id):
+                    path = root / (task_id + '.wav')
+                    path.touch()
+                    return Utterance('s', task_id, 'script', path, 960, 'wav', 'pcm')
+
+                client.request.side_effect = stream
+                session.submit(utterance('current'))
+                producer = threading.Thread(target=session._produce)
+                producer.start()
+                try:
+                    self.assertTrue(started.wait(2))
+                    session.submit(utterance('normal-1'))
+                    session.submit(utterance('urgent-1'), priority=True)
+                    session.submit(utterance('normal-2'))
+                    session.submit(utterance('urgent-2'), priority=True)
+                    with self.assertRaises(Full):
+                        session.submit(utterance('overflow'), priority=True)
+                    self.assertEqual(played, ['current'])
+                finally:
+                    resume.set()
+                    producer.join(3)
+                    session.stop()
+                self.assertFalse(producer.is_alive())
+                self.assertEqual(session.errors, [])
+                self.assertEqual(played, expected)
+                with self.assertRaises(RuntimeError):
+                    session.submit(utterance('late'), priority=True)
+
     def test_audio_input_sealed_before_slow_worker_cleanup(self):
         with tempfile.TemporaryDirectory() as temporary:
             order=[];receiver=Mock();receiver.full=threading.Event();receiver.full.set()

@@ -408,6 +408,7 @@ function renderLiveButtons() {
   $('live-start').disabled = consoleClosed || liveBusy || active || !$('live-audio').value;
   $('live-stop').disabled = consoleClosed || liveBusy || !['preparing','running'].includes(liveSession.status);
   $('live-enqueue').disabled = consoleClosed || liveBusy || liveSession.status !== 'running';
+  $('live-insert').disabled = $('live-enqueue').disabled;
   $('live-audio').disabled = active || liveBusy;
 }
 async function loadLive() {
@@ -415,7 +416,7 @@ async function loadLive() {
   if (consoleClosed) return;
   liveSession = (await request('/api/live/state')).session;
   $('live-status').textContent = liveLabels[liveSession.status];
-  $('live-detail').textContent = liveSession.frames ? `已提交 ${liveSession.frames} 帧` : '';
+  $('live-detail').textContent = liveSession.frames ? `已提交 ${liveSession.frames} 帧，待播 ${liveSession.pending ?? 0} 条` : '';
   if (liveSession.error) $('live-error').textContent = liveSession.error;
   renderLiveButtons();
   if (['preparing','running','stopping'].includes(liveSession.status)) {
@@ -438,10 +439,12 @@ $('live-devices').addEventListener('click', () => liveAction(async () => {
 }));
 $('live-start').addEventListener('click', () => liveAction(() => request('/api/live/start',{audio_device:Number($('live-audio').value)})));
 $('live-stop').addEventListener('click', () => liveAction(() => request('/api/live/stop',{session_id:liveSession.id})));
-$('live-enqueue').addEventListener('click', () => liveAction(async () => {
+async function enqueueLive(path) {
   requireSavedProduct();
   if (ttsState?.status !== 'succeeded' || ttsState.id !== ttsPreviewTask) throw new Error('请先合成当前话术的语音');
-  await request('/api/live/enqueue',{session_id:liveSession.id,task_id:ttsState.id});
-}));
+  await request(path,{session_id:liveSession.id,task_id:ttsState.id});
+}
+$('live-enqueue').addEventListener('click', () => liveAction(() => enqueueLive('/api/live/enqueue')));
+$('live-insert').addEventListener('click', () => liveAction(() => enqueueLive('/api/live/insert')));
 window.addEventListener('pagehide', () => clearTimeout(liveTimer));
 action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender);await loadLive(); });

@@ -292,7 +292,7 @@ def create_server(store, port=None):
                         if live_manager is None:
                             live_manager = ConsoleLive(tts(), store.directory)
                         return self.respond(202, {'session': live_manager.start(value['audio_device'])})
-                    if path in {'/api/live/stop', '/api/live/enqueue'}:
+                    if path in {'/api/live/stop', '/api/live/enqueue', '/api/live/insert'}:
                         fields = {'session_id'} if path.endswith('/stop') else {'session_id', 'task_id'}
                         if set(value) != fields or not all(isinstance(item, str) and item for item in value.values()):
                             raise ProductError('场次请求字段无效')
@@ -300,7 +300,7 @@ def create_server(store, port=None):
                             raise Conflict('暂无场次')
                         if path.endswith('/stop'):
                             return self.respond(200, {'session': live_manager.stop(value['session_id'])})
-                        live_manager.enqueue(value['session_id'], value['task_id'])
+                        live_manager.enqueue(value['session_id'], value['task_id'], priority=path.endswith('/insert'))
                         return self.respond(202, {'session': live_manager.state()})
                     if path == "/api/shutdown":
                         if value != {"confirm": True}:

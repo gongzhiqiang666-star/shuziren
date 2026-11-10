@@ -24,7 +24,10 @@ class ConsoleLive:
 
     def state(self):
         with self.lock:
-            return dict(self.status)
+            state = dict(self.status)
+            if self.session is not None:
+                state['pending'] = self.session.ready.qsize()
+            return state
 
     def start(self, audio_device):
         if type(audio_device) is not int or audio_device < 0:
@@ -129,7 +132,7 @@ class ConsoleLive:
             with self.lock:
                 self.status.update(status='failed' if error else 'stopped', error=error)
 
-    def enqueue(self, session_id, task_id):
+    def enqueue(self, session_id, task_id, *, priority=False):
         with self.lock:
             if self.status.get('id') != session_id or self.status['status'] != 'running' or self.session is None:
                 raise Conflict('场次已变化或尚未就绪')
@@ -140,7 +143,7 @@ class ConsoleLive:
             while utterance is None:
                 utterance = self.assembler.push(self.ingress.take(timeout=2))
             try:
-                self.session.submit(utterance)
+                self.session.submit(utterance, priority=priority)
             except Full:
                 utterance.path.unlink(missing_ok=True)
                 raise Conflict('待播队列已满') from None
