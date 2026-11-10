@@ -3,10 +3,15 @@ import argparse
 import hashlib
 import io
 import json
+import os
 from pathlib import Path, PurePosixPath
+from queue import Empty, Queue
 import re
 import subprocess
+import sys
 import tempfile
+import threading
+from urllib.request import Request, urlopen
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 
@@ -15,6 +20,7 @@ ROOTS = {'scripts', 'recovered', 'packaging'}
 SUFFIXES = {'.py', '.js', '.html', '.css', '.md', '.txt', '.yaml', '.json', '.cmd', '.ps1'}
 REQUIRED = {'scripts/local_console.py', 'scripts/local-console/index.html', 'packaging/start-console.cmd',
             'packaging/requirements-console.txt', 'packaging/README.md'}
+COMMIT_ID = re.compile(r'[0-9a-f]{40}(?:[0-9a-f]{24})?')
 
 
 def allowed(name):
@@ -47,7 +53,7 @@ def build(output, revision='HEAD'):
         files = {item.filename: source.read(item) for item in source.infolist() if not item.is_dir() and allowed(item.filename)}
     if not REQUIRED <= files.keys():
         raise ValueError('Revision lacks required console package files')
-    manifest = {'version': 1, 'commit': commit,
+    manifest = {'version': 1, 'commit': commit, 'data_schema': 1,
                 'files': {name: digest(data) for name, data in sorted(files.items())}}
     with ZipFile(output, 'x') as archive:
         for name, data in sorted(files.items()):
@@ -68,7 +74,7 @@ def read_package(archive):
     manifest = json.loads(archive.read(MANIFEST))
     files = manifest.get('files') if isinstance(manifest, dict) else None
     if (not isinstance(files, dict) or manifest.get('version') != 1 or not REQUIRED <= files.keys()
-            or not isinstance(manifest.get('commit'), str) or not re.fullmatch(r'[0-9a-f]{40}(?:[0-9a-f]{24})?', manifest['commit'])
+            or not isinstance(manifest.get('commit'), str) or not COMMIT_ID.fullmatch(manifest['commit'])
             or set(files) != set(names) - {MANIFEST}):
         raise ValueError('Package contents disagree with manifest')
     for name, expected in files.items():
@@ -95,6 +101,135 @@ def install(archive, destination):
     return manifest
 
 
+def read_active(root):
+    path = root / 'active.json'
+    if not path.exists():
+        return {'current': None, 'previous': None}
+    state = json.loads(path.read_text(encoding='utf-8'))
+    if not isinstance(state, dict) or set(state) != {'current', 'previous'} or any(
+            value is not None and (not isinstance(value, str) or not COMMIT_ID.fullmatch(value))
+            for value in state.values()):
+        raise ValueError('Invalid installed version selection')
+    return state
+
+
+def write_active(root, state):
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=root, delete=False) as stream:
+            temporary = Path(stream.name)
+            json.dump(state, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(root / 'active.json')
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def check_release(root, commit):
+    release = root / 'releases' / commit
+    if release.resolve().parent != root / 'releases' or release.is_symlink():
+        raise ValueError('Installed release is outside its version directory')
+    manifest = json.loads((release / MANIFEST).read_text(encoding='utf-8'))
+    files = manifest.get('files', {})
+    if (manifest.get('commit') != commit or manifest.get('version') != 1 or manifest.get('data_schema', 1) != 1
+            or not isinstance(files, dict) or not REQUIRED <= files.keys()):
+        raise ValueError('Installed release is incompatible or incomplete')
+    for name, expected in files.items():
+        if not allowed(name):
+            raise ValueError('Unsupported installed path')
+        target = release.joinpath(*PurePosixPath(name).parts)
+        if not target.resolve().is_relative_to(release.resolve()) or target.is_symlink() or digest(target.read_bytes()) != expected:
+            raise ValueError(f'Installed file hash mismatch: {name}')
+    return release, manifest
+
+
+def console_command(data, port):
+    command = [sys.executable, '-B', '-X', 'utf8', '-m', 'scripts.local_console', '--data-directory', str(data)]
+    if port is not None:
+        command.extend(('--port', str(port)))
+    return command
+
+
+def console_environment():
+    return {**{key: value for key, value in os.environ.items() if key.upper() not in {'PYTHONPATH', 'PYTHONHOME'}},
+            'PYTHONNOUSERSITE': '1'}
+
+
+def check_startup(release, root):
+    with tempfile.TemporaryDirectory(prefix='.health-', dir=root) as temporary:
+        child = subprocess.Popen(console_command(Path(temporary), 0), cwd=release, env=console_environment(),
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8')
+        line = Queue(maxsize=1)
+        reader = threading.Thread(target=lambda: line.put(child.stdout.readline().strip()), daemon=True)
+        reader.start()
+        try:
+            try:
+                address = line.get(timeout=15)
+            except Empty as error:
+                raise RuntimeError('Candidate startup timed out') from error
+            if not re.fullmatch(r'http://127\.0\.0\.1:[0-9]{1,5}/', address):
+                raise RuntimeError('Candidate did not publish a local console address')
+            with urlopen(address + 'api/state', timeout=5) as response:
+                state = json.load(response)
+                if state['config']['runtime_root'] or state['config']['version'] != 1:
+                    raise RuntimeError('Candidate did not load the expected isolated configuration')
+            request = Request(address + 'api/shutdown', data=b'{"confirm":true}', headers={
+                'Content-Type': 'application/json', 'Origin': address.rstrip('/'), 'X-Console-Token': state['token']})
+            with urlopen(request, timeout=5):
+                pass
+            if child.wait(timeout=10):
+                raise RuntimeError('Candidate console did not exit cleanly')
+        finally:
+            if child.poll() is None:
+                child.terminate()
+                child.wait(timeout=5)
+            reader.join(timeout=5)
+            child.stdout.close()
+
+
+def switch_release(root, archive=None):
+    from scripts.local_console import InstanceLock
+
+    root = root.resolve()
+    with InstanceLock(root / '.deployment'), InstanceLock(root / 'data'):
+        active = read_active(root)
+        if archive is None:
+            commit = active['previous']
+            if commit is None:
+                raise ValueError('No previous release is available')
+        else:
+            with ZipFile(archive) as package:
+                manifest = read_package(package)
+            if manifest.get('data_schema', 1) != 1:
+                raise ValueError('Package requires an unsupported user-data schema')
+            commit = manifest['commit']
+            release = root / 'releases' / commit
+            if not release.exists():
+                install(archive, release)
+            if check_release(root, commit)[1] != manifest:
+                raise ValueError('This commit already has a different installed manifest')
+        if commit != active['current']:
+            release, _ = check_release(root, commit)
+            check_startup(release, root)
+            active = {'current': commit, 'previous': active['current']}
+            write_active(root, active)
+        return active
+
+
+def run_release(root, port):
+    from scripts.local_console import InstanceLock
+
+    root = root.resolve()
+    with InstanceLock(root / '.deployment'):
+        commit = read_active(root)['current']
+        if commit is None:
+            raise ValueError('Install a release first')
+        release, _ = check_release(root, commit)
+        return subprocess.call(console_command(root / 'data', port), cwd=release, env=console_environment())
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
@@ -106,7 +241,19 @@ def main():
         command.add_argument('--archive', required=True, type=Path)
         if name == 'install':
             command.add_argument('--destination', required=True, type=Path)
+    for name in ('deploy', 'rollback', 'run'):
+        command = commands.add_parser(name)
+        command.add_argument('--root', required=True, type=Path)
+        if name == 'deploy':
+            command.add_argument('--archive', required=True, type=Path)
+        if name == 'run':
+            command.add_argument('--port', type=int)
     args = parser.parse_args()
+    if args.command == 'run':
+        return run_release(args.root, args.port)
+    if args.command in {'deploy', 'rollback'}:
+        print(json.dumps(switch_release(args.root, getattr(args, 'archive', None))))
+        return 0
     if args.command == 'build':
         manifest = build(args.output, args.revision)
     elif args.command == 'install':
@@ -118,4 +265,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())
