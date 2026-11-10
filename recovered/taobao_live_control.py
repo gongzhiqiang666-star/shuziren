@@ -203,11 +203,22 @@ def _pick_latest_unpublished_live(lives):
     return max(candidates, default=("", -1, None), key=lambda row: (row[0], row[1]))[2]
 
 
-def _wait_taobao_login(page, *, target_url):
+def _wait_taobao_login(page, *, target_url, timeout_sec=600, cancel=None):
     if page is None:
         raise RuntimeError("Taobao page is unavailable")
     target_host = urlsplit(target_url).hostname
-    page.wait_for_url(lambda url: urlsplit(str(url)).hostname == target_host, timeout=600000)
+    if cancel is None:
+        page.wait_for_url(lambda url: urlsplit(str(url)).hostname == target_host, timeout=timeout_sec * 1000)
+    else:
+        deadline = time.monotonic() + timeout_sec
+        while urlsplit(page.url).hostname != target_host:
+            if cancel.is_set():
+                raise InterruptedError('淘宝登录已取消')
+            if time.monotonic() >= deadline:
+                raise TimeoutError('淘宝登录超时')
+            page.wait_for_timeout(250)
+        if cancel.is_set():
+            raise InterruptedError('淘宝登录已取消')
     _dismiss_live_plan_overlays(page)
     return None
 
@@ -452,9 +463,9 @@ class TaobaoLiveControl:
             raise
         return True
 
-    def login(self, *, storage_path=None, login_timeout_sec=600, force_relogin=False):
+    def login(self, *, storage_path=None, login_timeout_sec=600, force_relogin=False, cancel=None):
         if not self._on_worker():
-            return self._call("login",timeout=float(login_timeout_sec)+30,storage_path=storage_path,login_timeout_sec=login_timeout_sec,force_relogin=force_relogin)
+            return self._call("login",timeout=float(login_timeout_sec)+45,storage_path=storage_path,login_timeout_sec=login_timeout_sec,force_relogin=force_relogin,cancel=cancel)
         if storage_path is None:
             storage_path = self._storage_path
         if storage_path is None:
@@ -470,7 +481,7 @@ class TaobaoLiveControl:
         target = "https://liveplatform.taobao.com/restful/index/live/list"
         login_query = urlencode({"bizName": "taobao", "sub": "true", "redirectURL": target})
         self._page.goto("https://login.taobao.com/havanaone/login/login.htm?" + login_query)
-        _wait_taobao_login(self._page, target_url=target)
+        _wait_taobao_login(self._page, target_url=target, timeout_sec=login_timeout_sec, cancel=cancel)
         self._save_storage_state()
 
     def _save_storage_state(self):

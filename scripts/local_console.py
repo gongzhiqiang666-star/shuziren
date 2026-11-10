@@ -18,6 +18,7 @@ from scripts.product_store import ProductStore, Conflict, ProductError
 from scripts.voice_store import VoiceStore, VoiceError
 from scripts.avatar_store import AvatarStore, AvatarError
 from scripts.console_live import ConsoleLive
+from scripts.console_taobao import ConsoleTaobao
 
 WEB = Path(__file__).parent / "local-console"
 
@@ -78,6 +79,7 @@ def create_server(store, port=None):
     avatar_manager = None
     render_manager = None
     live_manager = None
+    taobao = ConsoleTaobao(store.directory)
     tasks_closed = False
     def live_label():
         status = live_manager.state()['status'] if live_manager else 'idle'
@@ -95,6 +97,7 @@ def create_server(store, port=None):
         nonlocal tasks_closed
         with lock:
             tasks_closed = True
+            taobao.close()
             if live_manager is not None: live_manager.close()
             if task_manager is not None: task_manager.close()
             if render_manager is not None: render_manager.close()
@@ -185,6 +188,8 @@ def create_server(store, port=None):
                                               "live_status": live_label(), "data_directory": str(store.directory.resolve())})
                 if path == '/api/live/state':
                     return self.respond(200, {'session': live_manager.state() if live_manager else {'status': 'idle'}})
+                if path == '/api/taobao/state':
+                    return self.respond(200, {'capture': taobao.state()})
                 if path == '/api/live/devices':
                     try:
                         import sounddevice
@@ -279,6 +284,16 @@ def create_server(store, port=None):
                     raise ConfigError("请求必须为对象")
                 path = urlsplit(self.path).path
                 with lock:
+                    if path in {'/api/taobao/login', '/api/taobao/start', '/api/taobao/stop'}:
+                        if path.endswith('/start'):
+                            if set(value) != {'live_id'}:
+                                raise ProductError('淘宝采集请求字段无效')
+                            return self.respond(202, {'capture': taobao.start(value['live_id'])})
+                        if value:
+                            raise ProductError('淘宝请求字段无效')
+                        if path.endswith('/login'):
+                            return self.respond(202, {'capture': taobao.login()})
+                        return self.respond(200, {'capture': taobao.stop()})
                     live_active = live_manager is not None and live_manager.state()['status'] in ConsoleLive.active_states
                     if live_active and path in {'/api/config', '/api/products', '/api/products/select', '/api/avatars/select',
                                                 '/api/voices/select', '/api/avatar-preparation/start', '/api/render/start'}:

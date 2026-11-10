@@ -17,6 +17,15 @@ from scripts.local_console_config import ConfigStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_taobao_routes_require_login_explicit_room_and_console_token(self):
+        state = self.call('/api/taobao/state')[1]['capture']
+        self.assertEqual(state['status'], 'idle')
+        self.assertFalse(state['saved_login'])
+        self.assertEqual(self.call('/api/taobao/start', {'live_id':'https://example.com'})[0], 400)
+        self.assertEqual(self.call('/api/taobao/start', {'live_id':'123456'})[0], 409)
+        self.assertEqual(self.call('/api/taobao/login', {}, **{'X-Console-Token':'invalid'})[0], 403)
+        self.assertEqual(self.call('/api/taobao/stop', {})[0], 200)
+
     def test_live_routes_reject_stale_or_unauthorized_actions(self):
         self.assertEqual(self.call('/api/live/state')[1], {'session': {'status': 'idle'}})
         self.assertEqual(self.call('/api/live/start', {'audio_device': True})[0], 400)

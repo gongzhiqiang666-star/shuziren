@@ -16,7 +16,7 @@ async function action(work) {
   $('error').textContent = ''; $('message').textContent = '';
   document.querySelectorAll('button').forEach(b => b.disabled = true);
   try { await work(); } catch(error) { $('error').textContent = error.message || '无法连接本地服务'; }
-  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); renderRecordingButtons(); renderTTSButtons(); renderAvatarVideoButtons(); renderVideoButtons(); renderLiveButtons(); }
+  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); renderRecordingButtons(); renderTTSButtons(); renderAvatarVideoButtons(); renderVideoButtons(); renderLiveButtons(); renderTaobao(); }
 }
 async function load() {
   clearChecks();
@@ -470,4 +470,42 @@ $('live-control').addEventListener('click', () => liveAction(() => request('/api
   session_id:liveSession.id, manual:!liveSession.manual, revision:liveSession.control_revision
 })));
 window.addEventListener('pagehide', () => clearTimeout(liveTimer));
-action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender);await loadLive(); });
+let taobaoState = {status:'idle'}, taobaoTimer, taobaoBusy = false;
+function renderTaobao() {
+  const active = ['login','connecting','capturing','stopping'].includes(taobaoState.status);
+  const disabled = consoleClosed || taobaoBusy;
+  $('taobao-login').disabled = disabled || active;
+  $('taobao-start').disabled = disabled || active || !taobaoState.saved_login || !/^[0-9]{1,30}$/.test($('taobao-live-id').value);
+  $('taobao-stop').disabled = disabled || !active || taobaoState.status === 'stopping';
+}
+async function loadTaobao() {
+  clearTimeout(taobaoTimer);
+  if (consoleClosed) return;
+  taobaoState = (await request('/api/taobao/state')).capture;
+  const labels = {idle:'等待登录或采集',login:'请在浏览器完成登录',signed_in:'登录状态已保存',connecting:'正在连接场次',capturing:`已采集 ${taobaoState.count} 条新评论`,stopping:'正在停止',stopped:'已停止',failed:'操作失败',login_required:'请重新登录'};
+  $('taobao-status').textContent = labels[taobaoState.status];
+  $('taobao-error').textContent = taobaoState.error || '';
+  $('taobao-comments').replaceChildren(...taobaoState.comments.map(comment => {
+    const item = document.createElement('li');
+    item.textContent = `${comment.nickname} ${comment.time} · ${comment.content}`;
+    return item;
+  }));
+  renderTaobao();
+  if (['login','connecting','capturing','stopping'].includes(taobaoState.status)) {
+    taobaoTimer = setTimeout(() => loadTaobao().catch(error => {$('taobao-error').textContent = error.message;}), 1000);
+  }
+}
+async function taobaoAction(path, value) {
+  if (consoleClosed || taobaoBusy) return;
+  taobaoBusy = true;
+  renderTaobao();
+  try { await request(path, value); await loadTaobao(); }
+  catch (error) { $('taobao-error').textContent = error.message; }
+  finally { taobaoBusy = false; renderTaobao(); }
+}
+$('taobao-live-id').addEventListener('input', renderTaobao);
+$('taobao-login').addEventListener('click', () => taobaoAction('/api/taobao/login', {}));
+$('taobao-start').addEventListener('click', () => taobaoAction('/api/taobao/start', {live_id:$('taobao-live-id').value}));
+$('taobao-stop').addEventListener('click', () => taobaoAction('/api/taobao/stop', {}));
+window.addEventListener('pagehide', () => clearTimeout(taobaoTimer));
+action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender);await loadLive();await loadTaobao(); });
