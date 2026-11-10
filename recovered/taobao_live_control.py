@@ -383,6 +383,7 @@ class TaobaoLiveControl:
         if action=="connect": return self._connect_direct(headless=bool(payload.get("headless")))
         if action=="connect_configured": return self._connect_direct(**payload)
         if action=="fetch_comments": return self._do_fetch_comments()
+        if action=="open_control_page": return self.open_control_page(payload.get("live_id"))
         if action=="send_comment": return self._do_send_comment(payload.get("text",""))
         if action=="popup": return self._do_popup(int(payload["goods_id"]))
         if action=="set_active_goods": return self._set_active_goods_direct(int(payload["goods_id"]),float(payload.get("interval_sec",30.0)))
@@ -791,6 +792,8 @@ class TaobaoLiveControl:
         return _scrape_unpublished_live_id(self._page)
 
     def open_control_page(self, live_id=None):
+        if not self._on_worker():
+            return self._call("open_control_page", live_id=live_id)
         current_url = self._page.url
         if _is_control_url(current_url, "" if live_id is None else str(live_id)):
             self._live_id = parse_qs(urlsplit(current_url).query).get("liveId", [None])[0]

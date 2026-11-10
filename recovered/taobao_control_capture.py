@@ -37,13 +37,16 @@ class TaobaoControlDanmuCapture:
         self._controller = None
         self._storage_state = None
         self._history = CommentHistory()
+        self._prime_existing = False
         self._stopped = Event()
         self._stopped.set()
 
     @classmethod
-    def _configured(cls, *, poll_interval_sec=1.5, skip_anchor=True, controller=None, storage_state=None):
+    def _configured(cls, *, poll_interval_sec=1.5, skip_anchor=True, controller=None, storage_state=None, prime_existing=False):
         instance=cls(poll_interval_sec=poll_interval_sec,skip_anchor=skip_anchor)
-        instance._controller=controller; instance._storage_state=storage_state; return instance
+        instance._controller=controller; instance._storage_state=storage_state
+        instance._prime_existing=prime_existing
+        return instance
 
     def start(self):
         self._history = CommentHistory()
@@ -83,6 +86,7 @@ class TaobaoControlDanmuCapture:
             self._history._seen.discard(self._history._seen_order.popleft())
 
     def _poll(self, controller):
+        prime = self._prime_existing
         while not self._stopped.is_set():
             try:
                 comments = controller.fetch_comments()
@@ -92,6 +96,13 @@ class TaobaoControlDanmuCapture:
                 if isinstance(controller, TaobaoLiveControl) and not controller.connected():
                     raise
                 logging.getLogger(__name__).exception("Taobao comment polling failed")
+                prime = self._prime_existing
+                self._stopped.wait(self.poll_interval_sec)
+                continue
+            if prime:
+                for item in comments:
+                    self._history.remember(item)
+                prime = False
                 self._stopped.wait(self.poll_interval_sec)
                 continue
             for item in comments:
