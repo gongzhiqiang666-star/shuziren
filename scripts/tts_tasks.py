@@ -1,6 +1,7 @@
 """Parent-owned persistent TTS process and version-bound result acceptance."""
 import json
 import hashlib
+import logging
 from pathlib import Path
 import subprocess
 import threading
@@ -109,7 +110,7 @@ class TTSTasks:
                 if created:destination.unlink(missing_ok=True)
                 raise
 
-    def start(self,product_id,script_id,voice_id,speed=1.0,language='zh-CN',use_cache=False):
+    def start(self,product_id,script_id,voice_id,speed=1.0,language='zh-CN',use_cache=False,*,rotation=False):
         with self.lock:
             if self.closed: raise Conflict('TTS服务正在退出')
             if self.task and self.task['status']=='running': raise Conflict('已有语音合成任务')
@@ -122,7 +123,8 @@ class TTSTasks:
             if type(speed) not in (int,float) or not .5<=speed<=2 or type(use_cache) is not bool:
                 raise ProductError('语速或缓存参数无效')
             if not isinstance(language,str) or not language: raise ProductError('请选择语言')
-            return self._submit(product, script_id, voice, script['text'], speed, language, use_cache)
+            return self._submit(product, script_id, voice, script['text'], speed, language, use_cache,
+                                kind='rotation' if rotation else None)
 
     def start_reply(self, product, voice_id, text):
         with self.lock:
@@ -137,17 +139,35 @@ class TTSTasks:
 
     def _submit(self, product, script_id, voice, text, speed, language, use_cache, *, kind=None):
         process=self._start_worker()
+        previous=self.task
         self.task={'id':str(uuid.uuid4()),'status':'running','product_id':product['id'],
             'product_version':product['version'],'script_id':script_id,'voice_id':voice['id']}
         if kind:self.task['kind']=kind
         self.task.update(voice_audio_sha256=voice['audio_sha256'],voice_text_sha256=voice['text_sha256'])
         self.task.update(product_title=product['title'],speed=speed,language=language,use_cache=use_cache)
         self._save()
+        self._retire_live_audio(previous)
         request={'voice_id':voice['id'],'text':text,'speed':speed,'language':language,'use_cache':use_cache}
         task_id=self.task['id']
         self.monitor=threading.Thread(target=self._run,args=(process,request,product,voice,task_id),daemon=True)
         self.monitor.start()
         return dict(self.task)
+
+    def _retire_live_audio(self, task):
+        if not task or task.get('kind') not in {'rotation', 'reply'}:
+            return
+        result = task.get('result') or task.get('previous_result') or {}
+        output = result.get('output')
+        if not isinstance(output, str):
+            return
+        try:
+            path = Path(output)
+            if path.suffix == '.wav' and str(uuid.UUID(path.stem)) == path.stem and not path.is_symlink() and path.resolve().parent == (self.data/'tts').resolve():
+                path.unlink(missing_ok=True)
+        except ValueError:
+            return
+        except OSError:
+            logging.warning('未能清理上一条直播临时音频')
 
     def _run(self,process,request,product,voice,task_id):
         timer=threading.Timer(180,self._expire,args=(task_id,));timer.daemon=True;timer.start()

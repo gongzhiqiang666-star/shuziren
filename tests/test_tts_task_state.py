@@ -39,6 +39,21 @@ class TTSStateTests(unittest.TestCase):
         state=self.tasks.state();self.assertEqual(state['status'],'failed');self.assertNotIn('result',state)
         self.assertIn('previous_result',state)
 
+    def test_retirement_removes_only_superseded_owned_live_audio(self):
+        outputs = self.root / 'tts'
+        outputs.mkdir()
+        live = outputs / (str(uuid.uuid4()) + '.wav')
+        ordinary = outputs / (str(uuid.uuid4()) + '.wav')
+        outside = self.root / (str(uuid.uuid4()) + '.wav')
+        for path in (live, ordinary, outside):
+            path.write_bytes(b'fixture')
+        self.tasks._retire_live_audio({'kind':'rotation','result':{'output':str(live)}})
+        self.tasks._retire_live_audio({'result':{'output':str(ordinary)}})
+        self.tasks._retire_live_audio({'kind':'reply','previous_result':{'output':str(outside)}})
+        self.assertFalse(live.exists())
+        self.assertTrue(ordinary.exists())
+        self.assertTrue(outside.exists())
+
     def test_script_selection_change_invalidates_completed_result(self):
         script=self.products.add_script(self.product,'选用第二稿');self.products.select_script(self.product['id'],script)
         self.assertEqual(self.tasks.state()['status'],'failed')

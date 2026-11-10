@@ -231,7 +231,7 @@ class ConsoleLive:
                             current = self.tts.state()
                             if current and current['status'] == 'running':
                                 continue
-                            task = self.tts.start(item['product_id'], item['script_id'], self.ingress.context['voice_id'], use_cache=True)
+                            task = self.tts.start(item['product_id'], item['script_id'], self.ingress.context['voice_id'], use_cache=True, rotation=True)
                         pending = (task['id'], rotation, control['control_revision'])
                 except (ValueError, OSError, RuntimeError) as error:
                     logging.exception('商品轮播失败')
