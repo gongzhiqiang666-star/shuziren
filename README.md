@@ -13,6 +13,8 @@
 ## 开发资料
 
 - [最终执行计划：入门款、高级款与候选方案验证](docs/DEVELOPMENT_PLAN.md)
+- [高级款36项编号任务与验证门槛](docs/ADVANCED_TASKS.md)
+- [候选方案56项编号评测与采用决策](docs/CANDIDATE_TASKS.md)
 - [本机逐关开发与验证（通过后再进入下一流程）](docs/LOCAL_VALIDATION.md)
 - [历史本地化方案（已被当前路线替代）](docs/DEVELOPMENT_PLAN_2026-10-31_ARCHIVE.md)
 - [验收清单](docs/ACCEPTANCE.md)
