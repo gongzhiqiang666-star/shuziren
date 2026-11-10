@@ -29,15 +29,19 @@ def independent_runtime(root):
         value = json.loads(manifest.read_text(encoding='utf-8'))
     except (OSError, ValueError) as error:
         raise ValueError('独立媒体运行目录清单无法读取') from error
-    if value != INDEPENDENT or type(value.get('version')) is not int:
+    if (not isinstance(value, dict) or set(value) - (INDEPENDENT.keys() | {'python'})
+            or any(value.get(key) != expected for key, expected in INDEPENDENT.items())
+            or type(value.get('version')) is not int
+            or value.get('python', INDEPENDENT_PYTHON) not in (INDEPENDENT_PYTHON, LEGACY_PYTHON)):
         raise ValueError('独立媒体运行目录清单版本无效')
-    return True
+    return value
 
 
 def runtime_python(root):
     root = Path(root).resolve()
-    if independent_runtime(root):
-        return checked_path(root, INDEPENDENT_PYTHON)
+    manifest = independent_runtime(root)
+    if manifest:
+        return checked_path(root, manifest.get('python', INDEPENDENT_PYTHON))
     return root / LEGACY_PYTHON
 
 
@@ -50,10 +54,12 @@ def checked_path(root, relative):
 
 def inspect_runtime(root):
     root = Path(root).resolve()
-    if not independent_runtime(root):
+    manifest = independent_runtime(root)
+    if not manifest:
         raise ValueError('缺少独立媒体运行目录清单')
     checks = []
-    for group, files in (('environment', MEDIA_FILES), ('models', MODEL_FILES), ('providers', PROVIDER_FILES)):
+    media = (manifest.get('python', INDEPENDENT_PYTHON), *MEDIA_FILES[1:])
+    for group, files in (('environment', media), ('models', MODEL_FILES), ('providers', PROVIDER_FILES)):
         for name in files:
             try:
                 present = checked_path(root, name).is_file()

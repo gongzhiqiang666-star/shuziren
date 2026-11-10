@@ -10,6 +10,15 @@
 
 将该目录填入控制台的运行资源配置。原目录格式也可用于对照验证。独立布局不要求原厂 EXE、启动脚本和原厂应用扩展模块。
 
+可从已获授权的本机参考运行目录准备独立环境。目标必须是新目录，建议预留至少 20 GiB，实际占用取决于参考环境和模型。
+
+```powershell
+python -m scripts.stage_media_runtime --reference "<授权参考目录>" --destination "<新媒体目录>"
+python -m scripts.media_runtime check --root "<新媒体目录>"
+```
+
+此流程复制选定的 Python 和第三方运行环境、提供方源码及模型。将新媒体目录填入控制台配置，使用其中的解释器和依赖。该流程依赖本机已配置的参考资源。输出的 `staging-result.json` 记录解释器重定位和关键入口检查，真实 GPU 推理另行验证。媒体目录保存在仓库外。
+
 维护者从已提交版本运行 `python -m scripts.console_package build --output <zip路径>`。使用 `verify --archive <zip路径>` 核对清单，再以 `install --archive <zip路径> --destination <新目录>` 安装。校验用于发现文件损坏，来源仍需通过可信交付渠道确认。
 
 ## 版本管理

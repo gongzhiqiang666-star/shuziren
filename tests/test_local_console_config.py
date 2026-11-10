@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from scripts.local_console_config import ConfigError, ConfigStore, preflight, validate
 from scripts.v122_package_policy import REQUIRED_RUNTIME_FILES
-from scripts.media_runtime import INDEPENDENT, MANIFEST_NAME, MEDIA_FILES, MODEL_FILES, PROVIDER_FILES, runtime_python
+from scripts.media_runtime import INDEPENDENT, LEGACY_PYTHON, MANIFEST_NAME, MEDIA_FILES, MODEL_FILES, PROVIDER_FILES, runtime_python
 
 
 class ConsoleConfigTests(unittest.TestCase):
@@ -84,6 +84,17 @@ class ConsoleConfigTests(unittest.TestCase):
         self.assertFalse(preflight(config)['inference_verified'])
         (runtime / MODEL_FILES[0]).unlink()
         self.assertFalse(preflight(config)['ready'])
+
+    def test_independent_portable_interpreter_is_explicit_and_bounded(self):
+        runtime = self.root / 'portable'
+        runtime.mkdir()
+        manifest = runtime / MANIFEST_NAME
+        manifest.write_text(json.dumps({**INDEPENDENT, 'python':LEGACY_PYTHON}), encoding='utf-8')
+        self.assertEqual(runtime_python(runtime), runtime / LEGACY_PYTHON)
+        for invalid in ('../python.exe', ['python.exe']):
+            manifest.write_text(json.dumps({**INDEPENDENT, 'python':invalid}), encoding='utf-8')
+            with self.assertRaises(ValueError):
+                runtime_python(runtime)
 
 
 if __name__ == "__main__":
