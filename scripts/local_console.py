@@ -2,15 +2,58 @@
 import argparse
 import json
 import logging
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import secrets
+import socket
 import threading
 from urllib.parse import urlsplit
 
 from scripts.local_console_config import ConfigError, ConfigStore, preflight
 
 WEB = Path(__file__).parent / "local-console"
+
+
+class ConsoleServer(ThreadingHTTPServer):
+    allow_reuse_address = False
+
+    def server_bind(self):
+        if os.name == "nt":
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
+class InstanceLock:
+    """OS-held lock; a crashed process releases it without trusting a stale PID."""
+    def __init__(self, directory):
+        self.path = Path(directory) / "console.lock"
+        self.stream = None
+
+    def __enter__(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.stream = self.path.open("a+b")
+        if self.path.stat().st_size == 0:
+            self.stream.write(b"0")
+            self.stream.flush()
+        self.stream.seek(0)
+        try:
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(self.stream.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self.stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            self.stream.close()
+            self.stream = None
+            raise OSError("同一配置目录的控制台已运行") from None
+        return self
+
+    def __exit__(self, *args):
+        if self.stream is not None:
+            self.stream.close()
+            self.stream = None
 
 
 def create_server(store, port=None):
@@ -75,6 +118,12 @@ def create_server(store, port=None):
                 value = json.loads(self.rfile.read(length).decode("utf-8"))
                 path = urlsplit(self.path).path
                 with lock:
+                    if path == "/api/shutdown":
+                        if value != {"confirm": True}:
+                            raise ConfigError("退出请求无效")
+                        self.respond(200, {"message": "控制台正在退出"})
+                        threading.Thread(target=self.server.shutdown, daemon=True).start()
+                        return
                     if path == "/api/config":
                         return self.respond(200, {"config": store.save(value), "message": "已保存；端口修改在下次启动生效"})
                     if path == "/api/preflight":
@@ -83,7 +132,7 @@ def create_server(store, port=None):
             except (ValueError, UnicodeError, OSError) as error:
                 self.respond(400, {"error": str(error)})
 
-    server = ThreadingHTTPServer(("127.0.0.1", configured_port if port is None else port), Handler)
+    server = ConsoleServer(("127.0.0.1", configured_port if port is None else port), Handler)
     server.daemon_threads = True
     return server
 
@@ -97,9 +146,12 @@ def main(argv=None):
     store.directory.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(filename=store.directory / "console.log", encoding="utf-8", level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
+    instance = InstanceLock(store.directory)
     try:
+        instance.__enter__()
         server = create_server(store, args.port)
     except OSError as error:
+        instance.__exit__()
         logging.error("启动失败：%s", error)
         print("控制台启动失败，请检查端口是否占用：%s" % error, flush=True)
         return 1
@@ -110,6 +162,7 @@ def main(argv=None):
         pass
     finally:
         server.server_close()
+        instance.__exit__()
         logging.info("控制台已关闭")
     return 0
 

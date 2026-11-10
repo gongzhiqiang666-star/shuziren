@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import threading
@@ -6,7 +8,7 @@ import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from scripts.local_console import create_server
+from scripts.local_console import InstanceLock, create_server
 from scripts.local_console_config import ConfigStore
 
 
@@ -70,6 +72,29 @@ class ConsoleHTTPTests(unittest.TestCase):
             self.assertIn('数字人工作台', response.read().decode())
             self.assertIn("frame-ancestors 'none'", response.headers['Content-Security-Policy'])
         self.assertEqual(self.call('/console.json')[0], 404)
+
+    def test_shutdown_requires_explicit_request_and_stops_server(self):
+        self.assertEqual(self.call('/api/shutdown', {})[0], 400)
+        self.assertEqual(self.call('/api/state')[0], 200)
+        self.assertEqual(self.call('/api/shutdown', {'confirm': True})[0], 200)
+        self.thread.join(timeout=3)
+        self.assertFalse(self.thread.is_alive())
+
+    def test_os_lock_rejects_second_process_and_releases(self):
+        code = ('from scripts.local_console import InstanceLock; '
+                'import sys; lock=InstanceLock(sys.argv[1]); lock.__enter__(); lock.__exit__()')
+        with InstanceLock(self.directory.name):
+            result = subprocess.run([sys.executable, '-X', 'utf8', '-c', code, self.directory.name],
+                                    capture_output=True, timeout=10)
+            self.assertNotEqual(result.returncode, 0)
+        result = subprocess.run([sys.executable, '-X', 'utf8', '-c', code, self.directory.name],
+                                capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_port_conflict_does_not_disrupt_existing_service(self):
+        with self.assertRaises(OSError):
+            create_server(self.store, port=self.server.server_port)
+        self.assertEqual(self.call('/api/state')[0], 200)
 
 
 if __name__ == '__main__':

@@ -37,4 +37,10 @@ $('preflight').addEventListener('click', () => action(async () => {
   }));
 }));
 $('reload').addEventListener('click', () => action(load));
+$('shutdown').addEventListener('click', () => action(async () => {
+  await request('/api/shutdown', {confirm:true});
+  $('live-status').textContent = '控制台已退出';
+  $('message').textContent = '本地服务已收到退出请求，可以关闭本页。';
+  $('settings').hidden = true; $('shutdown').hidden = true;
+}));
 action(load);
