@@ -76,7 +76,7 @@
 |---|---|---|---|---|---|
 | LIV-001 | 数字人直播启动、停止和资源回收 | `Api.start_live`→`LiveManager` | `main.py`, `digital_live_manager.py`, `live_manager_runtime.py` | 静态验证通过 | Windows 长稳、反复启停、设备/模型异常和内存显存 |
 | LIV-002 | 文件/摄像头/视频/RTMP 驱动 | `VideoStreamManager` 各 reader | `image_*_reader.py`, `frame_player_*` | 静态验证通过 | Windows 摄像头、RTMP 断流、格式和分辨率矩阵 |
-| LIV-003 | TTS 队列、弹幕打断、淡入淡出和静音续接 | `live_manager.pyd` 调度链 | `live_manager_runtime.py`, `image_infer_audio.py` | 静态验证通过 | 实时压力、竞态、长时间运行和听感 |
+| LIV-003 | TTS 队列、弹幕打断、淡入淡出和静音续接 | `live_manager.pyd` 调度链 | `live_manager_runtime.py`, `image_infer_audio.py`、`scripts/live_speech_ingress.py` | 静态验证通过 | V05-01b新增真实TTS逐句交接局部通过（两句/180224采样/8段PCM一致），背压/重复/停止改版清理通过；口型、控制台/设备接入、实时压力、竞态、长稳及听感仍待验 |
 | LIV-004 | 手动口播与模拟提问 | `Api.speak/simulate_question` | `main.py`, `digital_live_manager.py`, `face_hand_live_manager.py` | 静态验证通过 | 三种直播模式、停止竞态和前端反馈 |
 | LIV-005 | 弹幕采集启动/停止 | `start_danmu_capture/stop_danmu_capture` | `danmu_bridge.py`, `ws_capture.py` | 开发中 | 抖音/淘宝/快手/Shopee/PDD 真实房间 |
 | LIV-006 | 快手 WebSocket 协议、心跳和重连 | `KsLive/hq/ks.pyd` | `kuaishou_v2/*` | 静态验证通过 | 真实账号/直播间、协议变化、掉线重连 |

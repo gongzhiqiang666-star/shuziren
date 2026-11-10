@@ -63,5 +63,17 @@ class TTSStateTests(unittest.TestCase):
         self.tasks.task['result']['output']=str(self.root/'outside.wav')
         with self.assertRaises(ProductError): self.tasks.audio('state-fixture')
 
+    def test_exclusive_snapshot_and_hash_failure_cleanup(self):
+        output=self.root/'tts'/'source.wav';output.parent.mkdir();output.write_bytes(b'snapshot fixture')
+        self.tasks.task['result']={'output':str(output),'sha256':hashlib.sha256(output.read_bytes()).hexdigest()}
+        target=self.root/'snapshot.wav';state=self.tasks.snapshot_audio('state-fixture',target)
+        self.assertEqual(target.read_bytes(),output.read_bytes());self.assertEqual(state['id'],'state-fixture')
+        with self.assertRaises(FileExistsError):self.tasks.snapshot_audio('state-fixture',target)
+        self.assertEqual(target.read_bytes(),b'snapshot fixture')
+        output.write_bytes(b'changed')
+        rejected=self.root/'rejected.wav'
+        with self.assertRaises(Conflict):self.tasks.snapshot_audio('state-fixture',rejected)
+        self.assertFalse(rejected.exists())
+
 
 if __name__=='__main__': unittest.main()

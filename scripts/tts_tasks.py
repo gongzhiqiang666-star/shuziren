@@ -84,6 +84,31 @@ class TTSTasks:
             self.process=None
         if self.log: self.log.close();self.log=None
 
+    def snapshot_audio(self,task_id,destination):
+        """Copy a completed immutable task to an exclusive owned staging file."""
+        destination=Path(destination);created=False
+        with self.lock:
+            state=self.state()
+            if not state or state['id']!=task_id or state['status']!='succeeded':
+                raise Conflict('音频任务不存在、未完成或已失效')
+            source=Path(state['result']['output']).resolve()
+            if source.parent!=(self.data/'tts').resolve():raise ProductError('音频路径越界')
+            try:
+                value=hashlib.sha256()
+                with source.open('rb') as reader,destination.open('xb') as writer:
+                    created=True
+                    for block in iter(lambda:reader.read(1024*1024),b''):
+                        writer.write(block);value.update(block)
+                if value.hexdigest()!=state['result']['sha256']:
+                    raise Conflict('音频文件已变化，请重新合成')
+                current=self.state()
+                if not current or current['id']!=task_id or current['status']!='succeeded':
+                    raise Conflict('音频输入在快照期间发生变化')
+                return json.loads(json.dumps(state))
+            except BaseException:
+                if created:destination.unlink(missing_ok=True)
+                raise
+
     def start(self,product_id,script_id,voice_id,speed=1.0,language='zh-CN',use_cache=False):
         with self.lock:
             if self.closed: raise Conflict('TTS服务正在退出')

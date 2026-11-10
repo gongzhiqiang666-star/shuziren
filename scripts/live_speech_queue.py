@@ -20,12 +20,22 @@ class SpeechSession:
 
 
 @dataclass(frozen=True)
+class SpeechOrigin:
+    task_id:str
+    script_id:str
+    original_sha256:str
+    start_sample:int
+    total_samples:int
+
+
+@dataclass(frozen=True)
 class SpeechPacket:
     session:SpeechSession
     sequence:int
     pcm:bytes
     samples:int
     source_sha256:str
+    origin:SpeechOrigin | None=None
 
 
 class LiveSpeechQueue:
@@ -57,7 +67,8 @@ class LiveSpeechQueue:
     def _check(self,session):
         if self.session is None or session!=self.session:raise StaleSession('Speech session stopped or inputs changed')
 
-    def put(self,session,audio,timeout=0):
+    def put(self,session,audio,timeout=0,*,origin=None):
+        if origin is not None and not isinstance(origin,SpeechOrigin):raise ValueError('Immutable speech provenance required')
         if not isinstance(audio,(bytes,bytearray,memoryview)):raise ValueError('WAV bytes required')
         if memoryview(audio).nbytes>self.max_utterance_samples*2+65536:raise ValueError('Utterance exceeds byte budget')
         audio=bytes(audio)
@@ -76,7 +87,7 @@ class LiveSpeechQueue:
                 remaining=deadline-time.monotonic()
                 if remaining<=0:raise TimeoutError('Speech queue is full; producer must apply backpressure')
                 self.condition.wait(remaining)
-            packet=SpeechPacket(session,self.sequence,pcm,samples,hashlib.sha256(audio).hexdigest())
+            packet=SpeechPacket(session,self.sequence,pcm,samples,hashlib.sha256(audio).hexdigest(),origin)
             self.sequence+=1;self.items.append(packet);self.samples+=samples;self.condition.notify_all()
             return packet
 

@@ -1,5 +1,7 @@
 # V05-01a：逐句音频交接队列（前置开发）
 
+更新：V05-01b真实TTS快照交接已通过对应范围，见[真实交接证据](v05-real-ingress.md)。下文是V05-01a最初范围记录，后续状态以新增证据为准。
+
 2026-11-10。V03/V04整关尚未放行；本项仅独立开发，不触发开播或替代前置验收。
 
 现有`scripts/tts_tasks.py`已绑定商品版本、话术、音色并提供成功任务音频；`scripts/render_tasks.py`仍是一段WAV到完整MP4，不能当作持续音频驱动。`scripts/benchmark_v122_realtime.py`预先提取整段特征，也不能代替V05。恢复版`video_player.py`分别实现PortAudio声音与虚拟摄像头画面，后续必须分别验证，不能假设摄像头携带音频。

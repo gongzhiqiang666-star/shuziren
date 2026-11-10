@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import hashlib
 import io
 import wave
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -14,12 +15,10 @@ class SpeechChunk:
     total_samples:int
 
 
-def iter_wav_chunks(audio,max_samples=720000):
-    if not isinstance(audio,(bytes,bytearray,memoryview)):raise ValueError('WAV bytes required')
-    if not isinstance(max_samples,int) or isinstance(max_samples,bool) or max_samples<1:
-        raise ValueError('Positive integer sample budget required')
-    audio=bytes(audio);source_hash=hashlib.sha256(audio).hexdigest()
-    with wave.open(io.BytesIO(audio),'rb') as source:
+def _iter_chunks(source,source_hash,max_samples):
+    with source:
+        if not isinstance(max_samples,int) or isinstance(max_samples,bool) or max_samples<1:
+            raise ValueError('Positive integer sample budget required')
         if (source.getnchannels(),source.getsampwidth(),source.getframerate(),source.getcomptype())!=(1,2,24000,'NONE'):
             raise ValueError('Expected 24kHz mono PCM16 WAV')
         total=source.getnframes()
@@ -37,3 +36,17 @@ def iter_wav_chunks(audio,max_samples=720000):
             with wave.open(stream,'wb') as writer:
                 writer.setparams((1,2,24000,0,'NONE','not compressed'));writer.writeframes(pcm)
             yield SpeechChunk(stream.getvalue(),source_hash,start,len(pcm)//2,total)
+
+
+def iter_wav_chunks(audio,max_samples=720000):
+    if not isinstance(audio,(bytes,bytearray,memoryview)):raise ValueError('WAV bytes required')
+    audio=bytes(audio)
+    yield from _iter_chunks(wave.open(io.BytesIO(audio),'rb'),hashlib.sha256(audio).hexdigest(),max_samples)
+
+
+def iter_wav_file_chunks(path,max_samples=720000):
+    """Read one owned immutable snapshot with bounded block and chunk memory."""
+    with Path(path).open('rb') as stream:
+        value=hashlib.sha256()
+        for block in iter(lambda:stream.read(1024*1024),b''):value.update(block)
+    yield from _iter_chunks(wave.open(str(path),'rb'),value.hexdigest(),max_samples)

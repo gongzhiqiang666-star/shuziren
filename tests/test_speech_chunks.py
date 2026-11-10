@@ -2,7 +2,9 @@ import hashlib
 import io
 import unittest
 import wave
-from scripts.speech_chunks import iter_wav_chunks
+import tempfile
+from pathlib import Path
+from scripts.speech_chunks import iter_wav_chunks,iter_wav_file_chunks
 
 
 def encode(pcm,rate=24000):
@@ -29,3 +31,11 @@ class ChunkTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'Truncated'):next(iter_wav_chunks(source,2400))
         with self.assertRaises(ValueError):next(iter_wav_chunks(encode(bytes(240),16000)))
         with self.assertRaises(ValueError):next(iter_wav_chunks(encode(b'')))
+
+    def test_file_chunks_match_bytes_and_close_on_early_stop(self):
+        original=encode(bytes(range(256))*50)
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'snapshot.wav';path.write_bytes(original)
+            self.assertEqual(list(iter_wav_file_chunks(path,1000)),list(iter_wav_chunks(original,1000)))
+            iterator=iter_wav_file_chunks(path,1000);next(iterator);iterator.close()
+            path.unlink();self.assertFalse(path.exists())
