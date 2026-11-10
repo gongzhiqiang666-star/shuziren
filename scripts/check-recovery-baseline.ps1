@@ -18,6 +18,7 @@ $reportRoot = if ([IO.Path]::IsPathRooted($ReportDirectory)) {
 New-Item -ItemType Directory -Path $reportRoot -Force | Out-Null
 $checks = @(
     @{ name='runtime-path-tests'; arguments=@('-I','-X','utf8','tests/test_recovery_runtime_paths.py') },
+    @{ name='package-policy-tests'; arguments=@('-I','-X','utf8','tests/test_package_integrity_policy.py') },
     @{ name='function-matrix'; arguments=@('-I','-X','utf8','scripts/validate_function_matrix.py') },
     @{ name='recovery'; arguments=@('-I','-X','utf8','recovered/verify_recovery.py','--runtime-root',$internal) },
     @{ name='proof-tools'; arguments=@('-X','utf8','-m','unittest','scripts.test_v122_proof') }

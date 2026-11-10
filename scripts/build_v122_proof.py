@@ -6,8 +6,15 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
+
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from v122_package_policy import POLICY, REQUIRED_RUNTIME_FILES, derived_reason, transport_metadata
+else:
+    from .v122_package_policy import POLICY, REQUIRED_RUNTIME_FILES, derived_reason, transport_metadata
 
 
 class BuildError(RuntimeError):
@@ -47,13 +54,20 @@ def build_package(runtime_source, proof_source, destination, required=()):
         if not candidate.is_file():
             raise BuildError("required runtime file is missing: " + relative)
     runtime_files = list(_files(runtime_source)); proof_files = list(_files(proof_source))
-    if destination == runtime_source or destination == proof_source:
+    if any(destination == source or source in destination.parents or destination in source.parents
+           for source in (runtime_source, proof_source)):
         raise BuildError("destination cannot overlap a source")
     destination.mkdir(parents=True, exist_ok=True)
     records = []
+    omitted = {}
     for prefix, source_root, entries in (("runtime/yunchuang_v122", runtime_source, runtime_files),
                                          ("proof", proof_source, proof_files)):
         for source, relative in entries:
+            packaged_relative = (Path(prefix) / relative).as_posix()
+            reason = "macos-transport-metadata" if transport_metadata(packaged_relative) else derived_reason(packaged_relative)
+            if reason:
+                omitted[reason] = omitted.get(reason, 0) + 1
+                continue
             target = destination / prefix / relative; target.parent.mkdir(parents=True, exist_ok=True)
             before = source.stat(); shutil.copy2(str(source), str(target)); after = source.stat()
             if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
@@ -61,7 +75,9 @@ def build_package(runtime_source, proof_source, destination, required=()):
             records.append({"path": (Path(prefix) / relative).as_posix(), "bytes": target.stat().st_size,
                             "sha256": _sha256(target)})
     records.sort(key=lambda item: item["path"])
-    manifest = {"format": 1, "files": records}
+    if not records:
+        raise BuildError("package has no immutable files")
+    manifest = {"format": 2, "runtime_policy": POLICY, "omitted_generated_files": omitted, "files": records}
     manifest_path = destination / "proof/manifests/package.json"; manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return manifest
@@ -70,7 +86,7 @@ def build_package(runtime_source, proof_source, destination, required=()):
 def _stage_tools(repository, staging):
     repository = Path(repository).resolve(); staging = Path(staging)
     (staging / "scripts").mkdir(parents=True); (staging / "web").mkdir(); (staging / "windows").mkdir()
-    for name in ("v122_proof.py", "v122_proof_server.py", "v122_adapter.py", "v122_orchestrator.py", "v122_runtime_bridge.py", "verify_v122_package.py"):
+    for name in ("v122_proof.py", "v122_proof_server.py", "v122_adapter.py", "v122_orchestrator.py", "v122_runtime_bridge.py", "verify_v122_package.py", "v122_package_policy.py"):
         shutil.copy2(repository / "scripts" / name, staging / "scripts" / name)
     shutil.copytree(repository / "scripts/v122-proof/web", staging / "web", dirs_exist_ok=True)
     windows = repository / "scripts/v122-proof/windows"
@@ -85,9 +101,7 @@ def build_release(repository, runtime_source, destination):
     with tempfile.TemporaryDirectory(prefix="v122-proof-") as raw:
         staging = Path(raw)
         windows = _stage_tools(repository, staging)
-        required = ("数字人直播.exe", "_internal/start.py", "_internal/main.cp310-win_amd64.pyd",
-                    "_internal/live/clone_manager.cp310-win_amd64.pyd", "_internal/config/config.yaml",
-                    "_internal/env/python.exe", "_internal/env/ffmpeg/bin/ffmpeg.exe")
+        required = REQUIRED_RUNTIME_FILES
         manifest = build_package(runtime_source, staging, destination, required)
         for name in ("00_开始验证.cmd", "01_环境检查.cmd", "99_停止验证.cmd"):
             target = destination / name; shutil.copy2(windows / name, target)
@@ -113,7 +127,8 @@ def refresh_release_tools(repository, destination):
         for name in ("00_开始验证.cmd", "01_环境检查.cmd", "99_停止验证.cmd"):
             target = destination / name; shutil.copy2(windows / name, target)
             proof_records.append({"path": name, "bytes": target.stat().st_size, "sha256": _sha256(target)})
-    result = {"format": 1, "files": sorted(runtime_records + proof_records, key=lambda item: item["path"])}
+    # Preserve the archive's original scope. Tool refresh is not runtime rebaselining.
+    result = {**manifest, "files": sorted(runtime_records + proof_records, key=lambda item: item["path"])}
     manifest_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result
 

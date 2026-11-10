@@ -228,7 +228,7 @@ class BuilderTests(unittest.TestCase):
             root = Path(raw); runtime = root / "runtime"
             for name in ("数字人直播.exe", "_internal/start.py", "_internal/main.cp310-win_amd64.pyd",
                          "_internal/live/clone_manager.cp310-win_amd64.pyd", "_internal/config/config.yaml",
-                         "_internal/env/python.exe", "_internal/env/ffmpeg/bin/ffmpeg.exe"):
+                         "_internal/env/python.exe", "_internal/env/ffmpeg/bin/ffmpeg.exe", "_internal/env/ffmpeg/bin/ffprobe.exe"):
                 path = runtime / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(b"x")
             manifest = build_v122_proof.build_release(source, runtime, root / "release")
             paths = {item["path"] for item in manifest["files"]}
@@ -254,7 +254,7 @@ class BuilderTests(unittest.TestCase):
             root = Path(raw); runtime = root / "runtime"
             for name in ("数字人直播.exe", "_internal/start.py", "_internal/main.cp310-win_amd64.pyd",
                          "_internal/live/clone_manager.cp310-win_amd64.pyd", "_internal/config/config.yaml",
-                         "_internal/env/python.exe", "_internal/env/ffmpeg/bin/ffmpeg.exe"):
+                         "_internal/env/python.exe", "_internal/env/ffmpeg/bin/ffmpeg.exe", "_internal/env/ffmpeg/bin/ffprobe.exe"):
                 path = runtime / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(b"x")
             release = root / "release"; before = build_v122_proof.build_release(source, runtime, release)
             runtime_records = [item for item in before["files"] if item["path"].startswith("runtime/")]
@@ -301,7 +301,7 @@ class WindowsContractTests(unittest.TestCase):
     def test_preflight_checks_gpu_cuda_media_and_disk(self):
         root = PROJECT / "scripts/v122-proof/windows"
         source = (root / "preflight.ps1").read_text(encoding="utf-8").lower()
-        for token in ("nvidia-smi", "torch.cuda.is_available", "onnxruntime", "ffmpeg.exe", "ffprobe.exe", "freespace", "package-integrity.json"):
+        for token in ("nvidia-smi", "torch.cuda.is_available", "onnxruntime", "ffmpeg.exe", "ffprobe.exe", "freespace", "package-integrity-$integrityprofile.json", "--profile $integrityprofile", "$integrityprofile = 'archive'"):
             self.assertIn(token, source)
         self.assertNotIn("get-childitem env:", source)
 

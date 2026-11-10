@@ -1,4 +1,7 @@
-param([Parameter(Mandatory=$true)][string]$PackageRoot)
+param(
+  [Parameter(Mandatory=$true)][string]$PackageRoot,
+  [ValidateSet('archive','runtime')][string]$IntegrityProfile = 'archive'
+)
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath $PackageRoot).Path
 $runtime = Join-Path $root 'runtime\yunchuang_v122'
@@ -23,9 +26,9 @@ if (Test-Path -LiteralPath $python) {
   $onnx = & $python -c "import onnxruntime as o; print(','.join(o.get_available_providers()))" 2>&1
   Add-Check 'onnxruntime' $(if($LASTEXITCODE -eq 0 -and "$onnx" -match 'CUDAExecutionProvider'){'pass'}else{'blocked'}) ([string]$onnx)
   $verify = Join-Path $root 'proof\scripts\verify_v122_package.py'
-  $integrity = Join-Path $reportDir 'package-integrity.json'
-  & $python $verify --root $root --output $integrity | Out-Null
-  Add-Check 'package' $(if($LASTEXITCODE -eq 0){'pass'}else{'blocked'}) 'package-integrity.json'
+  $integrity = Join-Path $reportDir ("package-integrity-$IntegrityProfile.json")
+  & $python -X utf8 $verify --root $root --profile $IntegrityProfile --output $integrity | Out-Null
+  Add-Check 'package' $(if($LASTEXITCODE -eq 0){'pass'}else{'blocked'}) ("profile=$IntegrityProfile; package-integrity-$IntegrityProfile.json")
 }
 $result = [ordered]@{ generated_at=(Get-Date).ToString('o'); checks=$checks; blocked=@($checks | Where-Object status -eq 'blocked').Count -gt 0 }
 $result | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $reportDir 'environment.json') -Encoding UTF8

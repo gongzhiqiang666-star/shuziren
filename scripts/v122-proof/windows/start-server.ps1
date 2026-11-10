@@ -1,4 +1,7 @@
-param([Parameter(Mandatory=$true)][string]$PackageRoot)
+param(
+  [Parameter(Mandatory=$true)][string]$PackageRoot,
+  [ValidateSet('archive','runtime')][string]$IntegrityProfile = 'archive'
+)
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath $PackageRoot).Path
 $python = Join-Path $root 'runtime\yunchuang_v122\_internal\env\python.exe'
@@ -6,7 +9,7 @@ $server = Join-Path $root 'proof\scripts\v122_proof_server.py'
 $web = Join-Path $root 'proof\web'
 $state = Join-Path $root 'runs\tool-process.json'
 if (!(Test-Path -LiteralPath $python) -or !(Test-Path -LiteralPath $server)) { throw '验证运行环境不完整' }
-& (Join-Path $root 'proof\windows\preflight.ps1') -PackageRoot $root | Out-Host
+& (Join-Path $root 'proof\windows\preflight.ps1') -PackageRoot $root -IntegrityProfile $IntegrityProfile | Out-Host
 if ($LASTEXITCODE -ne 0) { throw '环境或离线包完整性检查未通过，请查看 reports\preflight' }
 New-Item -ItemType Directory -Force -Path (Split-Path $state) | Out-Null
 function Quote-Argument([string]$Value) {
