@@ -29,7 +29,7 @@ class TTSProvider:
         self.outputs=self.data_directory/'tts'
         self.outputs.mkdir(parents=True,exist_ok=True)
         self.internal=configure_runtime(Path(runtime_root).resolve())
-        self.synth=None;self.identity=None;self.loads=0;self.inference_calls=0
+        self.synth=None;self.identity=None;self.loads=0;self.inference_calls=0;self.reference_switches=0
         self.cache=AudioCache(self.outputs/'content-cache');self.engine_stamp=None
 
     def _engine_stamp(self):
@@ -65,12 +65,17 @@ class TTSProvider:
         validation_seconds=time.perf_counter()-validation_started
         identity=(voice['id'],voice['audio_sha256'],voice['text_sha256'])
         started=time.perf_counter();cold=False
-        if cached is None and identity!=self.identity:
-            self.close()
+        if cached is None and self.synth is None:
             synth=OwnedSynthesizer.from_voice_dir(str(self.internal/'assets/pretrained_models'),
                 str(self.voices.root),voice['id'],device='cuda',voice_infer_version='v3')
             synth.output_directory=self.outputs/'cache'
             self.synth=synth;self.identity=identity;self.loads+=1;cold=True
+        elif cached is None and identity!=self.identity:
+            # IndexTTS refreshes prompt conditioning when its audio_prompt path changes.
+            # VoiceStore references are immutable and each imported voice has its own path.
+            self.synth.reference_audio=str(self.voices.audio_path(voice['id']))
+            self.synth.reference_text=voice['transcript'];self.synth.voice_id=voice['id']
+            self.identity=identity;self.reference_switches+=1
         initialization=time.perf_counter()-started
         started=time.perf_counter()
         if cached is None:
@@ -93,6 +98,7 @@ class TTSProvider:
                 'provider':'recovered-voice-infer-v3','use_cache':request['use_cache'],
                 'device':self.synth.device if self.synth is not None else 'cache',
                 'cache_hit':cached is not None,'cache_key':cache_key,'inference_calls':self.inference_calls,
+                'reference_switch_count':self.reference_switches,
                 'validation_seconds':validation_seconds,'request_seconds':time.perf_counter()-validation_started}
 
 
