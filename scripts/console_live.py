@@ -1,4 +1,5 @@
 """Run a local live session from the console's existing selections."""
+from collections import deque
 import logging
 from pathlib import Path
 from queue import Empty, Full, SimpleQueue
@@ -55,6 +56,7 @@ class ConsoleLive:
         rotation_thread = None
         rotation_stop = threading.Event()
         error = None
+        recent_submissions = deque(maxlen=8)
         try:
             if sys.platform == 'win32':
                 import ctypes
@@ -99,6 +101,8 @@ class ConsoleLive:
                         self.status.update(status='running')
 
             def presented(row):
+                recent_submissions.append({key: row[key] for key in (
+                    'frame_index', 'task_id', 'presented_ns', 'receive_ns', 'pcm_read_ns', 'submit_ns', 'sink_timing')})
                 if self.cancel.is_set():
                     session.stop_event.set()
 
@@ -126,6 +130,8 @@ class ConsoleLive:
             rotation_stop.set()
             with self.lock:
                 self._record_completed()
+                if sink is not None and sink.underrun is not None:
+                    self.status['device_underrun'] = {**sink.underrun, 'recent_submissions': list(recent_submissions)}
                 if self.session is not None:
                     self.status['frames'] = self.session.frames_written
                 self.session = None

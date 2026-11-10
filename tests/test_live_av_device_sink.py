@@ -23,6 +23,7 @@ class CombinedCallbackTests(unittest.TestCase):
         sink.sd=SimpleNamespace(CallbackStop=StopCallback,CallbackAbort=AbortCallback)
         sink.queue=queue.Queue(maxsize=2);sink.video_queue=queue.Queue(maxsize=4)
         sink.draining=False;sink.presented=0;sink.underflows=0;sink.error=None;sink.on_present=Mock()
+        sink.frames=0;sink.underrun=None
         sink.video_delay_ns=100000000;sink.camera=Mock()
         sink.video_clock=AudioVideoClock(sink.video_delay_ns)
         sink.smooth_clock=False
@@ -46,6 +47,9 @@ class CombinedCallbackTests(unittest.TestCase):
         with self.assertRaises(AbortCallback):sink._callback(bytearray(1920),960,Mock(),None)
         self.assertEqual(sink.underflows,1);self.assertIn('underrun',sink.error)
         self.assertEqual(sink.presented,0)
+        self.assertEqual(sink.underrun['next_frame'],0)
+        self.assertEqual(sink.underrun['submitted_frames'],0)
+        self.assertGreater(sink.underrun['callback_ns'],0)
 
     def test_drained_input_stops_cleanly_and_reorder_aborts(self):
         sink=self.sink();sink.draining=True
