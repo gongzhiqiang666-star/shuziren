@@ -13,6 +13,7 @@ from urllib.parse import urlsplit, parse_qs
 
 from scripts.local_console_config import ConfigError, ConfigStore, preflight
 from scripts.product_store import ProductStore, Conflict, ProductError
+from scripts.voice_store import VoiceStore, VoiceError
 
 WEB = Path(__file__).parent / "local-console"
 
@@ -120,6 +121,13 @@ def create_server(store, port=None):
                                               "live_status": "未启动", "data_directory": str(store.directory.resolve())})
                 if path == "/api/session":
                     return self.respond(200, {"token": token})
+                if path == '/api/voices':
+                    voices=VoiceStore(store.directory)
+                    return self.respond(200,{'voices':voices.list(),'selected':voices.selected()})
+                if path == '/api/voices/audio':
+                    ids=parse_qs(urlsplit(self.path).query).get('id',[])
+                    if len(ids)!=1: raise VoiceError('请选择音色')
+                    return self.respond(200,VoiceStore(store.directory).audio_path(ids[0]).read_bytes(),'audio/wav')
                 if path == "/api/products":
                     data = products()
                     return self.respond(200, {"products": data.list(), "selected": data.selected()})
@@ -147,6 +155,13 @@ def create_server(store, port=None):
             origin = "http://127.0.0.1:%d" % self.server.server_port
             if (not self.trusted_host() or self.headers.get("Origin") != origin
                     or not secrets.compare_digest(self.headers.get("X-Console-Token", ""), token)):
+                # Drain small rejected requests so Windows does not reset the socket
+                # before the client can receive the explicit 403 response.
+                length=self.headers.get('Content-Length','0')
+                if length.isdecimal() and 0<int(length)<=1048576:
+                    self.connection.settimeout(2)
+                    try: self.rfile.read(int(length))
+                    except OSError: pass
                 return self.respond(403, {"error": "请求来源或会话无效，请刷新页面"})
             try:
                 if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
@@ -169,6 +184,19 @@ def create_server(store, port=None):
                         return self.respond(200, {"config": store.save(value), "message": "已保存；端口修改在下次启动生效"})
                     if path == "/api/preflight":
                         return self.respond(200, preflight(value))
+                    if path == '/api/voices/import':
+                        if set(value)!={'source','transcript','name'} or not isinstance(value['source'],str):
+                            raise VoiceError('音色导入字段无效')
+                        report=preflight(store.load())
+                        if not report['runtime_root']: raise VoiceError('请先配置本机运行资源目录')
+                        ffmpeg=Path(report['runtime_root'])/'_internal/env/ffmpeg/bin/ffmpeg.exe'
+                        voice=VoiceStore(store.directory).import_audio(value['source'],value['transcript'],value['name'],ffmpeg)
+                        return self.respond(201,{'voice':voice})
+                    if path == '/api/voices/select':
+                        if set(value)!={'voice_id'} or not isinstance(value['voice_id'],str):
+                            raise VoiceError('音色选择字段无效')
+                        VoiceStore(store.directory).select(value['voice_id'])
+                        return self.respond(200,{'selected':value['voice_id']})
                     if path == "/api/products":
                         allowed = {"title", "content", "product_index", "product_id", "version"}
                         if not {"title", "content", "product_index"} <= value.keys() or value.keys() - allowed:

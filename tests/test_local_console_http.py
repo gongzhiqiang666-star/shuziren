@@ -2,6 +2,7 @@ import json
 import subprocess
 import sys
 import os
+import wave
 from unittest.mock import patch
 from pathlib import Path
 import tempfile
@@ -139,6 +140,26 @@ class ConsoleHTTPTests(unittest.TestCase):
             self.assertEqual(status,400)
             self.assertIn('尚未配置',value['error'])
             self.assertIsNone(self.call('/api/llm/state')[1]['task'])
+
+    def test_voice_import_selection_audio_and_invalid_id(self):
+        ffmpeg=os.environ.get('SHUZIREN_TEST_FFMPEG')
+        if not ffmpeg or not Path(ffmpeg).is_file(): self.skipTest('Explicit real runtime FFmpeg required')
+        runtime=Path(ffmpeg).parents[4]
+        self.store.save({'version':1,'runtime_root':str(runtime),'port':5158})
+        source=Path(self.directory.name)/'reference.wav'
+        with wave.open(str(source),'wb') as output:
+            output.setparams((1,2,24000,0,'NONE','not compressed'))
+            output.writeframes((b'\x88\x13\x78\xec')*24000)
+        status,value=self.call('/api/voices/import',{'source':str(source),'transcript':'媒体测试音，不是语音','name':'测试音色'})
+        self.assertEqual(status,201,value)
+        voice_id=value['voice']['id']
+        self.assertEqual(self.call('/api/voices/select',{'voice_id':voice_id})[0],200)
+        self.assertEqual(self.call('/api/voices')[1]['selected'],voice_id)
+        with urlopen(self.base+'/api/voices/audio?id='+voice_id,timeout=3) as response:
+            self.assertEqual(response.headers['Content-Type'],'audio/wav')
+            self.assertEqual(response.read(4),b'RIFF')
+        self.assertEqual(self.call('/api/voices/audio?id=../console.json')[0],400)
+        self.assertEqual(self.call('/api/voices/import',{'source':str(source),'transcript':'','name':'测试'})[0],400)
 
 
 if __name__ == '__main__':

@@ -111,3 +111,7 @@ class VoiceStore:
             row=db.execute('SELECT voice_id FROM selection WHERE singleton=1').fetchone()
         if row: self.get(row[0])
         return row[0] if row else None
+
+    def audio_path(self, voice_id):
+        self.get(voice_id)
+        return self._directory(voice_id)/'ref_audio.wav'

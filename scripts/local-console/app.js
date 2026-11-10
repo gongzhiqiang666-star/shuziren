@@ -46,6 +46,7 @@ $('shutdown').addEventListener('click', () => action(async () => {
   $('message').textContent = '本地服务已收到退出请求，可以关闭本页。';
   $('settings').hidden = true; $('shutdown').hidden = true;
   $('products-panel').hidden = true;
+  $('voice-preview').pause(); $('voice-preview').removeAttribute('src'); $('voice-preview').load(); $('voice-panel').hidden=true;
 }));
 let currentProduct = null;
 let savedProducts = [];
@@ -147,4 +148,38 @@ $('cancel-generation').addEventListener('click', () => productAction(async () =>
   if (!currentTask) throw new Error('暂无生成任务');
   await request('/api/llm/cancel', {task_id:currentTask.id}); await loadTask();
 }));
-action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); });
+let voiceRecords=[];
+function showVoice(id) {
+  const voice=voiceRecords.find(v => v.id===id);
+  $('voice-preview').pause();
+  if (voice) {
+    $('voice-info').textContent=voice.name+' · '+voice.duration.toFixed(2)+'秒 · 参考文本：'+voice.transcript;
+    $('voice-preview').src='/api/voices/audio?id='+encodeURIComponent(voice.id);
+  } else { $('voice-info').textContent='尚未选择音色'; $('voice-preview').removeAttribute('src'); }
+  $('voice-preview').load();
+}
+async function voiceAction(work) {
+  $('voice-error').textContent=''; $('voice-message').textContent='';
+  $('voice-panel').querySelectorAll('button,select').forEach(x => x.disabled=true);
+  try { await work(); } catch(error) { showVoice(null); $('voice-error').textContent=error.message || '音色服务无法连接'; }
+  finally { $('voice-panel').querySelectorAll('button,select').forEach(x => x.disabled=false); }
+}
+async function loadVoices() {
+  const result=await request('/api/voices'); voiceRecords=result.voices;
+  const empty=document.createElement('option');empty.value='';empty.textContent='请选择音色';
+  $('voice-list').replaceChildren(empty,...voiceRecords.map(voice => {
+    const option=document.createElement('option');option.value=voice.id;option.textContent=voice.name;return option;
+  }));
+  $('voice-list').value=result.selected || ''; showVoice(result.selected);
+}
+$('voice-form').addEventListener('submit',event => { event.preventDefault(); voiceAction(async () => {
+  const result=await request('/api/voices/import',{source:$('voice-source').value,transcript:$('voice-transcript').value,name:$('voice-name').value});
+  await request('/api/voices/select',{voice_id:result.voice.id});await loadVoices();$('voice-message').textContent='音色已导入并选中。';
+}); });
+$('voice-list').addEventListener('change',() => voiceAction(async () => {
+  const id=$('voice-list').value;if (!id) {showVoice(null);return;}
+  await request('/api/voices/select',{voice_id:id});showVoice(id);
+}));
+$('reload-voices').addEventListener('click',() => voiceAction(loadVoices));
+$('voice-preview').addEventListener('error',() => {if ($('voice-preview').getAttribute('src')) $('voice-error').textContent='参考音无法加载，请重读音色并检查文件完整性。';});
+action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices); });
