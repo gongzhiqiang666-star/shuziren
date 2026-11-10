@@ -13,6 +13,7 @@ class SpeechChunk:
     start_sample:int
     samples:int
     total_samples:int
+    original_pcm_sha256:str
 
 
 def _iter_chunks(source,source_hash,max_samples):
@@ -25,17 +26,18 @@ def _iter_chunks(source,source_hash,max_samples):
         if not total:raise ValueError('Empty WAV')
         # Validate the entire snapshot before yielding any playable segment.
         # The validation scan uses small blocks rather than a full PCM copy.
-        found=0
+        found=0;pcm_hash=hashlib.sha256()
         while found<total:
             block=source.readframes(min(24000,total-found))
             if not block or len(block)%2:raise ValueError('Truncated WAV')
+            pcm_hash.update(block)
             found+=len(block)//2
         source.rewind()
         for start in range(0,total,max_samples):
             pcm=source.readframes(min(max_samples,total-start));stream=io.BytesIO()
             with wave.open(stream,'wb') as writer:
                 writer.setparams((1,2,24000,0,'NONE','not compressed'));writer.writeframes(pcm)
-            yield SpeechChunk(stream.getvalue(),source_hash,start,len(pcm)//2,total)
+            yield SpeechChunk(stream.getvalue(),source_hash,start,len(pcm)//2,total,pcm_hash.hexdigest())
 
 
 def iter_wav_chunks(audio,max_samples=720000):

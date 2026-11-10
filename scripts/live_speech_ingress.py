@@ -85,7 +85,7 @@ class LiveSpeechIngress:
         try:
             while self.pending:
                 pending=self.pending;chunk=pending['chunk']
-                origin=SpeechOrigin(pending['task_id'],pending['script_id'],chunk.source_sha256,chunk.start_sample,chunk.total_samples)
+                origin=SpeechOrigin(pending['task_id'],pending['script_id'],chunk.source_sha256,chunk.start_sample,chunk.total_samples,chunk.original_pcm_sha256)
                 try:self.queue.put(self.session,chunk.audio,origin=origin)
                 except TimeoutError:return
                 try:pending['chunk']=next(pending['iterator'])

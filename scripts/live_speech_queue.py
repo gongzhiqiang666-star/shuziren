@@ -26,6 +26,7 @@ class SpeechOrigin:
     original_sha256:str
     start_sample:int
     total_samples:int
+    original_pcm_sha256:str | None=None
 
 
 @dataclass(frozen=True)
