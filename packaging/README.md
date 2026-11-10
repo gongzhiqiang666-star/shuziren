@@ -42,3 +42,9 @@ python -m scripts.console_package migrate-data --source "<原控制台数据目�
 ```
 
 迁移保留配置、商品、话术、已登记音色和形象及其选择状态，源数据可继续使用。媒体目录设置保留原路径，搬到另一台机器时按实际位置更新。缓存、运行日志和平台登录态不随迁移复制，到新环境后可重新登录平台。
+
+从 v122 迁移已授权的本地音色和形象时，使用独立媒体环境中的 Python 运行以下命令。音色目录需要 `ref_audio.wav` 和 `ref_text.txt`，形象目录需要成对的 `frames` 和 `positions`。可重复传入 `--voice` 或 `--avatar`，每类只传一个时自动选中，导入多个时可在控制台选择。命令返回原目录名与新素材 ID 的对应关系。
+
+```powershell
+python -m scripts.console_package migrate-v122-assets --root "<新安装目录>" --runtime "<独立媒体目录>" --voice "<v122 音色目录>" --avatar "<v122 形象目录>"
+```

@@ -1,5 +1,5 @@
 """Move persistent console data into a fresh managed installation."""
-from contextlib import closing
+from contextlib import closing, contextmanager
 import json
 from pathlib import Path
 import re
@@ -11,6 +11,7 @@ import uuid
 
 from scripts.avatar_store import AvatarStore, digest
 from scripts.local_console_config import ConfigStore
+from scripts.media_runtime import checked_path as runtime_file, inspect_runtime
 from scripts.product_store import ProductStore
 from scripts.voice_store import VoiceStore
 
@@ -72,6 +73,21 @@ def copy_media(source, target, store, kind):
         store.get(identifier)
 
 
+@contextmanager
+def new_managed_data(root):
+    from scripts.local_console import InstanceLock
+
+    with InstanceLock(root / '.deployment'):
+        target = root / 'data'
+        if target.exists() or target.is_symlink():
+            raise FileExistsError('Managed data directory already exists')
+        with tempfile.TemporaryDirectory(prefix='.migration-', dir=root) as temporary:
+            snapshot = Path(temporary) / 'data'
+            snapshot.mkdir()
+            yield snapshot
+            snapshot.rename(target)
+
+
 def migrate_data(source, root):
     from scripts.local_console import InstanceLock
 
@@ -80,12 +96,8 @@ def migrate_data(source, root):
     target = root / 'data'
     if not source.is_dir() or source.is_relative_to(root) or root.is_relative_to(source):
         raise ValueError('Source and managed installation must be separate directories')
-    with InstanceLock(root / '.deployment'), InstanceLock(source):
-        if target.exists() or target.is_symlink():
-            raise FileExistsError('Managed data directory already exists')
-        with tempfile.TemporaryDirectory(prefix='.migration-', dir=root) as temporary:
-            snapshot = Path(temporary) / 'data'
-            snapshot.mkdir()
+    with InstanceLock(source):
+        with new_managed_data(root) as snapshot:
             paths = ('console.json', 'products.sqlite3', 'voices/voices.sqlite3', 'avatars/avatars.sqlite3')
             present = [name for name in paths if (source / name).exists() or (source / name).is_symlink()]
             if not present:
@@ -102,5 +114,36 @@ def migrate_data(source, root):
                 copy_media(source, snapshot, VoiceStore(snapshot), 'voices')
             if 'avatars/avatars.sqlite3' in present:
                 copy_media(source, snapshot, AvatarStore(snapshot), 'avatars')
-            snapshot.rename(target)
     return {'status': 'ok', 'data_directory': str(target), 'data_sets': present}
+
+
+def migrate_v122_assets(root, runtime, voices, avatars):
+    root = root.resolve()
+    runtime = runtime.resolve(strict=True)
+    if not voices and not avatars:
+        raise ValueError('Select at least one legacy voice or avatar directory')
+    if not inspect_runtime(runtime)['ready']:
+        raise ValueError('Independent media runtime is incomplete')
+    ffmpeg = runtime_file(runtime, '_internal/env/ffmpeg/bin/ffmpeg.exe')
+    imported = {'voices': [], 'avatars': []}
+    with new_managed_data(root) as snapshot:
+        for kind, sources in (('voices', voices), ('avatars', avatars)):
+            if not sources:
+                continue
+            store = VoiceStore(snapshot) if kind == 'voices' else AvatarStore(snapshot)
+            for source in sources:
+                source = source.resolve(strict=True)
+                if not source.is_dir() or root.is_relative_to(source) or source.is_relative_to(root):
+                    raise ValueError('Legacy assets and managed installation must be separate directories')
+                if kind == 'voices':
+                    audio = checked_path(source, 'ref_audio.wav')
+                    text = checked_path(source, 'ref_text.txt').read_text(encoding='utf-8-sig')
+                    record = store.import_audio(str(audio), text, source.name, ffmpeg)
+                else:
+                    record = store.import_prepared(source, source.name)
+                imported[kind].append({'legacy_id': source.name, 'id': record['id']})
+            if len(imported[kind]) == 1:
+                store.select(imported[kind][0]['id'])
+        config = ConfigStore(snapshot)
+        config.save({**config.load(), 'runtime_root': str(runtime)})
+    return {'status': 'ok', 'data_directory': str(root / 'data'), **imported}
