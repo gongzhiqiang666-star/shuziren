@@ -82,8 +82,17 @@ class ConsoleConfigTests(unittest.TestCase):
         self.assertTrue(preflight(config)['ready'])
         self.assertEqual(runtime_python(runtime), runtime / MEDIA_FILES[0])
         self.assertFalse(preflight(config)['inference_verified'])
-        (runtime / MODEL_FILES[0]).unlink()
-        self.assertFalse(preflight(config)['ready'])
+        normalizers = [name for name in MODEL_FILES if '/wetext/' in name]
+        self.assertEqual(len(normalizers), 4)
+        tokenizer = '_internal/assets/pretrained_models/indextts/checkpoints/bpe.model'
+        self.assertIn(tokenizer, MODEL_FILES)
+        for name in [MODEL_FILES[0], tokenizer, *normalizers]:
+            target = runtime / name
+            target.unlink()
+            report = preflight(config)
+            self.assertFalse(report['ready'])
+            self.assertEqual([item['path'] for item in report['checks'] if not item['present']], [name])
+            target.write_bytes(b'test fixture')
 
     def test_independent_portable_interpreter_is_explicit_and_bounded(self):
         runtime = self.root / 'portable'

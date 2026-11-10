@@ -12,7 +12,10 @@ MEDIA_FILES = (INDEPENDENT_PYTHON, '_internal/env/ffmpeg/bin/ffmpeg.exe',
                '_internal/env/ffmpeg/bin/ffprobe.exe')
 MODEL_FILES = tuple('_internal/assets/pretrained_models/' + name for name in (
     'indextts/config.yaml', 'indextts/gpt.pth', 'indextts/dvae.pth', 'indextts/bigvgan_generator.pth',
-    'indextts/bpe.model', 'wenet/conf/train_conformer_multi_cn.yaml',
+    'indextts/bpe.model', 'indextts/checkpoints/bpe.model',
+    'indextts/wetext/zh/tn/tagger.fst', 'indextts/wetext/zh/tn/verbalizer.fst',
+    'indextts/wetext/en/tn/tagger.fst', 'indextts/wetext/en/tn/verbalizer.fst',
+    'wenet/conf/train_conformer_multi_cn.yaml',
     'wenet/exp/conformer/wenetmodel.pt', 'image_infer_v2/unet_v2.onnx',
     'image_infer_v2/input_mask.npy', 'image_infer_v2/input_mask_re.npy',
     'face_detect/pfpld_robust_sim_bs1_8003.onnx', 'face_detect/scrfd_500m_bnkps_shape640x640.onnx',
