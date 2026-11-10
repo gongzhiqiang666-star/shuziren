@@ -102,5 +102,27 @@ class RenderTests(unittest.TestCase):
         saved=json.loads((work/'task.json').read_text(encoding='utf-8'))
         self.assertEqual(saved['id'],task['id']);self.assertEqual(saved['status'],'failed')
 
+    def test_explicit_profile_rejects_fallback_and_accepts_matching_result(self):
+        task,work,result=self.pending();task['render_profile']='trt-nvenc'
+        result.update(render_profile='standard',backend='cuda',video_encoder='legacy')
+        self.finish(task,work,result)
+        self.assertEqual(self.tasks.state()['status'],'failed');self.assertFalse((work/'output.mp4').exists())
+        task,work,result=self.pending();task['render_profile']='trt-nvenc'
+        result.update(render_profile='trt-nvenc',backend='tensorrt',video_encoder='h264_nvenc')
+        self.finish(task,work,result);self.assertEqual(self.tasks.state()['status'],'succeeded')
+        self.tasks.task['result']['video_encoder']='libx264'
+        self.assertEqual(self.tasks.state()['status'],'failed')
+
+    def test_unknown_profile_rejected_before_any_job(self):
+        for profile in ['unknown',{},None]:
+            with self.assertRaises(ProductError):self.tasks.start(self.audio.value['id'],self.avatar['id'],profile)
+        self.assertEqual(list(self.tasks.jobs.iterdir()),[])
+
+    def test_new_standard_job_requires_profile_evidence(self):
+        task,work,result=self.pending();task['render_profile']='standard'
+        self.finish(task,work,result)
+        self.assertEqual(self.tasks.state()['status'],'failed')
+        self.assertFalse((work/'output.mp4').exists())
+
 
 if __name__=='__main__':unittest.main()

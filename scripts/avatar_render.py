@@ -1,5 +1,6 @@
 """Restored offline avatar render shared by the product worker and validation CLI."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import time
@@ -35,7 +36,9 @@ def verify_media(audio,output,ffmpeg):
         'input_audio_samples':original,'decoded_audio_samples':decoded,'audio_complete':True,'full_decode_passed':True}
 
 
-def render(runtime_root, avatar, audio, output, backend='cuda', cache=None, profile=False):
+def render(runtime_root, avatar, audio, output, backend='cuda', cache=None, profile=False,encoder='legacy',strict_precision=False):
+    if encoder not in {'legacy','libx264','h264_nvenc'}:raise ValueError('未知视频编码方案')
+    if strict_precision:os.environ['NVIDIA_TF32_OVERRIDE']='0'
     avatar=Path(avatar).resolve(strict=True);audio=Path(audio).resolve(strict=True)
     output=Path(output).resolve()
     if output.exists():
@@ -46,10 +49,13 @@ def render(runtime_root, avatar, audio, output, backend='cuda', cache=None, prof
     from recovered.image_clone_video_synthesizer import VideoSynthesizer
     before=digest(audio);models=internal/'assets/pretrained_models';started=time.perf_counter()
     counts={}
-    with accelerated_unet(cache,backend=backend,profile_directory=output.parent/'profiles' if profile else None) as sessions:
+    with accelerated_unet(cache,backend=backend,profile_directory=output.parent/'profiles' if profile else None,strict_fp32=strict_precision) as sessions:
         with VideoSynthesizer(avatar,models/'image_infer_v2/unet_v2.onnx',
             models/'wenet/conf/train_conformer_multi_cn.yaml',models/'wenet/exp/conformer/wenetmodel.pt',
             device='cuda:0',batch_size=4) as synth:
+            if encoder!='legacy':
+                from scripts.raw_video_writer import RawVideoWriter
+                synth.frame_writer_factory=lambda target,sound,width,height:RawVideoWriter(internal/'env/ffmpeg/bin/ffmpeg.exe',target,sound,width,height,encoder)
             initialized=time.perf_counter()
             synth.process_single_file(audio,output)
             stats=synth.engine.perf_stats
@@ -67,7 +73,7 @@ def render(runtime_root, avatar, audio, output, backend='cuda', cache=None, prof
     ffmpeg=internal/'env/ffmpeg/bin/ffmpeg.exe'
     media=verify_media(audio,output,ffmpeg)
     if digest(audio)!=before:raise RuntimeError('输入音频在合成中发生变化')
-    result={'provider':'restored-offline-avatar','backend':backend,'output':str(output),
+    result={'provider':'restored-offline-avatar','backend':backend,'video_encoder':encoder,'output':str(output),
         'audio_sha256':before,'output_sha256':digest(output),'providers':providers,
         **media,
         'initialization_seconds':initialized-started,'total_seconds':elapsed,

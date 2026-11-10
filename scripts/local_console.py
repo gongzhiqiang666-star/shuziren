@@ -324,7 +324,7 @@ def create_server(store, port=None):
                             raise Conflict('正在合成视频，请完成或取消后再合成语音')
                         return self.respond(202,{'task':tts().start(**value)})
                     if path == '/api/render/start':
-                        if set(value)!={'tts_task_id','avatar_id'}:
+                        if set(value) not in ({'tts_task_id','avatar_id'},{'tts_task_id','avatar_id','render_profile'}):
                             raise ProductError('视频合成字段无效')
                         if avatar_manager is not None and (avatar_manager.state() or {}).get('status')=='running':
                             raise Conflict('正在制作形象，请完成或取消后再合成视频')

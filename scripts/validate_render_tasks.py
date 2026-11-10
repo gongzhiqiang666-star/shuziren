@@ -29,9 +29,10 @@ def main():
     parser.add_argument('--source-voice-data',required=True,type=Path)
     parser.add_argument('--source-avatar-directory',required=True,type=Path)
     parser.add_argument('--report-directory',required=True,type=Path)
+    parser.add_argument('--render-profile',choices=['standard','trt-nvenc'],default='standard')
     args=parser.parse_args()
     root=(args.report_directory/('run-'+uuid.uuid4().hex)).resolve();root.mkdir(parents=True)
-    report={'status':'failed','checks':{},'visual_quality_verified':False};tts=renders=None
+    report={'status':'failed','checks':{},'render_profile':args.render_profile,'visual_quality_verified':False};tts=renders=None
     try:
         source=VoiceStore(args.source_voice_data);reference=source.get(source.selected());voices=VoiceStore(root)
         voice=voices.import_audio(source.audio_path(reference['id']),reference['transcript'],'真实合成验证音色',
@@ -46,23 +47,24 @@ def main():
         tts=TTSTasks(args.runtime_root,root);tts.start(product['id'],script,voice['id'])
         audio=wait(tts,195);assert audio['status']=='succeeded',audio
         renders=RenderTasks(args.runtime_root,root,tts)
-        task=renders.start(audio['id'],first_avatar['id'])
+        task=renders.start(audio['id'],first_avatar['id'],args.render_profile)
         try:renders.start(audio['id'],first_avatar['id']);raise AssertionError('重复视频任务被接受')
         except Conflict:report['checks']['duplicate_rejected']=True
         success=wait(renders,620);assert success['status']=='succeeded',success
+        assert success['result']['render_profile']==args.render_profile
         assert renders.video_path(success['id']).is_file()
         report['first_result']=success['result'];report['checks']['real_tts_to_render_with_resident_tts']=True
         renders.close();renders=RenderTasks(args.runtime_root,root,tts)
         assert renders.video_path(success['id']).is_file();report['checks']['reopen_retains_valid_result']=True
-        task=renders.start(audio['id'],first_avatar['id']);process=renders.process
+        task=renders.start(audio['id'],first_avatar['id'],args.render_profile);process=renders.process
         cancelled=renders.cancel(task['id'])
         assert cancelled['status']=='cancelled' and 'result' not in cancelled and process.poll() is not None
         assert not (renders.jobs/task['id']/'output.mp4').exists()
         report['checks']['cancel_terminates_without_accepted_result']=True
-        task=renders.start(audio['id'],first_avatar['id']);recovered=wait(renders,620)
+        task=renders.start(audio['id'],first_avatar['id'],args.render_profile);recovered=wait(renders,620)
         assert recovered['status']=='succeeded',recovered
         report['checks']['new_render_after_cancel']=True
-        renders.start(audio['id'],first_avatar['id'])
+        renders.start(audio['id'],first_avatar['id'],args.render_profile)
         avatars.select(second_avatar['id'])
         # Do not poll state: let the real worker finish to exercise late-result rejection.
         renders.monitor.join(timeout=620)

@@ -11,6 +11,7 @@ import uuid
 from scripts.avatar_store import AvatarStore,digest
 from scripts.avatar_tasks import AvatarTasks
 from scripts.product_store import Conflict,ProductError
+from scripts.render_profiles import PROFILES,result_matches
 
 
 class RenderTasks:
@@ -51,6 +52,8 @@ class RenderTasks:
         return binding,content,audio,avatar
 
     def _validate(self,task):
+        if task['status']=='succeeded' and not result_matches(task.get('render_profile','standard'),task.get('result',{}),allow_legacy='render_profile' not in task):
+            raise Conflict('视频生成方案与结果不符，请重新生成')
         if task['status']=='succeeded' and task.get('result',{}).get('audio_complete') is not True:
             raise Conflict('旧视频未通过新版音轨完整性检查，请重新生成')
         binding,_,_,_=self._inputs(task['tts_task_id'],task['avatar_id'])
@@ -67,7 +70,8 @@ class RenderTasks:
                     if self.process:AvatarTasks._terminate(self.process)
             return dict(self.task) if self.task else None
 
-    def start(self,tts_task_id,avatar_id):
+    def start(self,tts_task_id,avatar_id,render_profile='standard'):
+        if not isinstance(render_profile,str) or render_profile not in PROFILES:raise ProductError('视频生成方案无效')
         if not all(isinstance(value,str) for value in (tts_task_id,avatar_id)):
             raise ProductError('语音任务或形象ID无效')
         with self.lock:
@@ -79,13 +83,14 @@ class RenderTasks:
             if not python.is_file():raise ProductError('缺少视频合成运行解释器')
             task_id=str(uuid.uuid4());work=self.jobs/task_id;work.mkdir()
             self.task={'id':task_id,'status':'running',**binding,'product_title':audio['product_title'],
-                       'avatar_name':avatar['name'],'speed':audio['speed']}
+                       'avatar_name':avatar['name'],'speed':audio['speed'],'render_profile':render_profile}
             log=(work/'worker.log').open('wb')
             try:
                 (work/'audio.wav').write_bytes(content);self._save()
                 self.process=subprocess.Popen([str(python),'-X','utf8','-m','scripts.render_worker',
                     '--runtime-root',str(self.runtime),'--avatar-directory',str(self.avatars._directory(avatar_id)),
-                    '--audio',str(work/'audio.wav'),'--output',str(work/'output.mp4')],
+                    '--audio',str(work/'audio.wav'),'--output',str(work/'output.mp4'),
+                    '--render-profile',render_profile,'--engine-cache',str(self.data/'render-engine-cache')],
                     stdout=subprocess.PIPE,stderr=log,cwd=Path(__file__).resolve().parents[1],
                     creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0),start_new_session=os.name!='nt')
                 self.monitor=threading.Thread(target=self._finish,args=(self.process,task_id,work,log),daemon=True)
@@ -112,6 +117,7 @@ class RenderTasks:
             with self.lock:
                 if self.closed or self.task['id']!=task_id or self.task['status']!='running':return
                 self._validate(self.task)
+                if not result_matches(self.task.get('render_profile','standard'),result,allow_legacy='render_profile' not in self.task):raise ProductError('视频工作进程返回了其他生成方案')
                 if path!=(work/'output.mp4').resolve() or result['audio_sha256']!=self.task['audio_sha256']:
                     raise ProductError('视频结果路径或输入音频不符')
                 if not result.get('full_decode_passed') or result.get('audio_complete') is not True or digest(path)!=result['output_sha256']:

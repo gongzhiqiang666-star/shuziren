@@ -347,6 +347,7 @@ function clearRenderPreview() {
   $('render-preview').pause();$('render-preview').removeAttribute('src');$('render-preview').load();renderPreviewTask=null;
 }
 function renderVideoButtons() {
+  $('render-profile').disabled=consoleClosed || renderBusy || renderState?.status==='running';
   $('render-generate').disabled=consoleClosed || renderBusy || renderState?.status==='running';
   $('render-cancel').disabled=consoleClosed || (!renderStarting && (renderBusy || renderState?.status!=='running'));
 }
@@ -358,7 +359,7 @@ async function loadRender() {
   if(consoleClosed || generation!==renderGeneration) return;
   renderState=response.task;
   const labels={running:'正在生成视频',succeeded:'视频已生成',cancelled:'视频生成已取消',interrupted:'上次视频生成已中断',failed:'视频不可用'};
-  $('render-status').textContent=renderState ? (labels[renderState.status] || renderState.status)+' · '+renderState.product_title+' · '+renderState.avatar_name+(renderState.error ? '：'+renderState.error : '') : '暂无视频生成任务';
+  $('render-status').textContent=renderState ? (labels[renderState.status] || renderState.status)+' · '+renderState.product_title+' · '+renderState.avatar_name+' · '+(renderState.render_profile==='trt-nvenc' ? '加速预览' : '标准生成')+(renderState.error ? '：'+renderState.error : '') : '暂无视频生成任务';
   const saved=currentProduct && $('product-title').value===currentProduct.title && $('product-content').value===currentProduct.content && $('product-index').value===String(currentProduct.product_index);
   const matches=renderState?.status==='succeeded' && saved && renderState.product_id===currentProduct.id && renderState.script_id===currentScriptId && renderState.tts_task_id===ttsState?.id && renderState.tts_task_id===ttsPreviewTask && renderState.avatar_id===$('avatar-list').value;
   if(matches) {
@@ -380,7 +381,7 @@ $('render-generate').addEventListener('click',()=>renderAction(async()=>{
   clearRenderPreview();renderStarting=true;renderCancelRequested=false;renderVideoButtons();
   $('render-status').textContent='正在检查语音与形象，可以取消…';
   try {
-    const result=await request('/api/render/start',{tts_task_id:ttsState.id,avatar_id:$('avatar-list').value});renderState=result.task;
+    const result=await request('/api/render/start',{tts_task_id:ttsState.id,avatar_id:$('avatar-list').value,render_profile:$('render-profile').value});renderState=result.task;
     if(renderCancelRequested) await request('/api/render/cancel',{task_id:renderState.id});
     await loadRender();
   } finally {renderStarting=false;renderCancelRequested=false;}
