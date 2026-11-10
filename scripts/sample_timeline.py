@@ -80,14 +80,16 @@ class FramePacer:
         if type(start_frame) is not int or start_frame<0:raise ValueError('Nonnegative first frame required')
         self.stop_event=threading.Event();self.lock=threading.Lock();self.next_frame=start_frame;self.pending=None
 
-    def wait_for(self,session_id,frame_index):
+    def wait_for(self,session_id,frame_index,submit_lead_ns=0):
+        if type(submit_lead_ns) is not int or not 0<=submit_lead_ns<1000000000//self.fps:
+            raise ValueError('Submission lead must be below one frame interval')
         with self.lock:
             self._check(session_id)
             if type(frame_index) is not int or frame_index!=self.next_frame or self.pending is not None:
                 raise ValueError('Missing, repeated or unacknowledged frame')
             pts=frame_index*1000000000//self.fps;deadline=self.origin_ns+pts
             while True:
-                self._check(session_id);remaining=deadline-self.now()
+                self._check(session_id);remaining=deadline-submit_lead_ns-self.now()
                 if remaining<=0:break
                 self.stop_event.wait(remaining/1000000000)
             self._check(session_id)
@@ -99,7 +101,8 @@ class FramePacer:
             if deadline!=self.pending:raise ValueError('Unknown presentation acknowledgement')
             actual=self.now();self.pending=None;self.next_frame+=1
             return {'frame_index':deadline.frame_index,'pts_ns':deadline.pts_ns,'deadline_ns':deadline.deadline_ns,
-                'presented_ns':actual,'late_ns':max(0,actual-deadline.deadline_ns)}
+                'presented_ns':actual,'late_ns':max(0,actual-deadline.deadline_ns),
+                'early_ns':max(0,deadline.deadline_ns-actual),'offset_ns':actual-deadline.deadline_ns}
 
     def _check(self,session_id):
         if self.stop_event.is_set() or session_id!=self.session_id:raise StaleSession('Presentation session stopped or changed')

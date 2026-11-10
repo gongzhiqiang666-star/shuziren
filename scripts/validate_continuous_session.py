@@ -30,7 +30,7 @@ def main():
     parser.add_argument('--seconds',type=int,default=20);args=parser.parse_args()
     root=(args.report_directory/('run-'+uuid.uuid4().hex)).resolve();root.mkdir(parents=True)
     report={'status':'failed','phase':'preparing','checks':{},'physical_device_tested':False,'platform_tested':False};tts=client=receiver=sink=session=ingress=assembler=injector=None
-    completed=[];expected={};errors=[];presented=[]
+    completed=[];expected={};errors=[];presented=[];offsets=[];submit_costs=[]
     def save():(root/'result.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     try:
         ffmpeg=args.runtime_root/'_internal/env/ffmpeg/bin/ffmpeg.exe'
@@ -48,7 +48,9 @@ def main():
         receiver=FrameReceiver(speech_session.id,avatar['width'],avatar['height']);client.request('attach_frames',channel=receiver.descriptor())
         sink=ContinuousAVSink(ffmpeg,root/'live.ts',avatar['width'],avatar['height'])
         trace=(root/'presented.jsonl').open('w',encoding='utf-8')
-        def on_present(row):trace.write(json.dumps(row)+'\n');presented.append(row['late_ns']/1000000)
+        def on_present(row):
+            trace.write(json.dumps(row)+'\n');presented.append(row['late_ns']/1000000)
+            offsets.append(row['offset_ns']/1000000);submit_costs.append(row['submit_ns']/1000000)
         session=ContinuousSession(speech_session.id,client,receiver,sink,root/'assembled',on_source_complete=completed.append,on_present=on_present)
         def inject():
             try:
@@ -94,6 +96,8 @@ def main():
             observed_frame_queue_peak=receiver.peak,startup_preroll_frames=8,
             submission_late_p95_ms=float(np.percentile(presented,95)),submission_late_p99_ms=float(np.percentile(presented,99)),
             submission_late_max_ms=max(presented),submission_above_5ms_ratio=sum(value>5 for value in presented)/len(presented),
+            submission_early_max_ms=max(0,-min(offsets)),submission_abs_offset_p95_ms=float(np.percentile(np.abs(offsets),95)),
+            submit_cost_p95_ms=float(np.percentile(submit_costs,95)),
             timing_acceptance=False)
         report['checks'].update(two_new_utterances_during_output=True,idle_speech_idle_one_mux=True,source_pcm_exact=True,one_video_audio_clock=True,complete_media=True)
     except Exception as error:report.update(error_type=type(error).__name__,error=str(error))

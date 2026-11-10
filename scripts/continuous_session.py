@@ -1,7 +1,9 @@
 """Live idle/speech jobs, bounded raw frames and one PCM/video presentation clock."""
 from dataclasses import asdict
+from collections import deque
 from pathlib import Path
 import queue
+import statistics
 import threading
 import time
 from scripts.pcm_timeline import PCMTimeline
@@ -18,6 +20,7 @@ class ContinuousSession:
         self.on_source_complete=on_source_complete;self.on_present=on_present;self.on_started=on_started
         self.leases={};self.lease_lock=threading.RLock();self.pcm=PCMTimeline(session_id,self._audio_done)
         self.frames_written=0;self.started=threading.Event();self.finished=threading.Event();self.consumer_thread=None
+        self.submit_costs=deque(maxlen=64)
 
     def submit(self,utterance):
         if not isinstance(utterance,Utterance) or utterance.session_id!=self.session_id or utterance.path.resolve().parent!=self.root:
@@ -63,7 +66,9 @@ class ContinuousSession:
         if frame.frame_index!=index or frame.session_id!=self.session_id:raise ValueError('Presentation frame/session mismatch')
         pcm=self.pcm.read(960)
         if self.stop_event.is_set():raise RuntimeError('Presentation stopped')
+        started=time.perf_counter_ns()
         self.sink.submit(index,frame.image,pcm);self.frames_written+=1
+        if index>=2:self.submit_costs.append(time.perf_counter_ns()-started)
 
     def run(self,frames=None):
         if frames is not None and (type(frames) is not int or frames<9):raise ValueError('At least nine frames required for prebuffered output')
@@ -84,13 +89,24 @@ class ContinuousSession:
                 if self.on_started:self.on_started()
                 index=8
                 while not self.stop_event.is_set() and (frames is None or index<frames):
+                    receive_started=time.perf_counter_ns()
                     frame=self.receiver.take(timeout=10)
+                    received=time.perf_counter_ns()
                     if frame.frame_index!=index:raise ValueError('Output frame order changed')
-                    pcm=self.pcm.read(960);deadline=self.pacer.wait_for(self.session_id,index)
+                    pcm=self.pcm.read(960);pcm_ready=time.perf_counter_ns()
+                    # Compensate measured synchronous submit cost, without moving
+                    # the canonical PTS/deadline or hiding early completion.
+                    lead=min(20000000,int(statistics.median(self.submit_costs))) if self.submit_costs else 0
+                    deadline=self.pacer.wait_for(self.session_id,index,submit_lead_ns=lead)
                     if self.stop_event.is_set():break
-                    self.sink.submit(index,frame.image,pcm);self.frames_written+=1
+                    submit_started=time.perf_counter_ns()
+                    sink_timing=self.sink.submit(index,frame.image,pcm);self.frames_written+=1
                     stamp=self.pacer.presented(deadline)
-                    if self.on_present:self.on_present({**stamp,'task_id':frame.task_id})
+                    self.submit_costs.append(stamp['presented_ns']-submit_started)
+                    if self.on_present:self.on_present({**stamp,'task_id':frame.task_id,
+                        'receive_ns':received-receive_started,'pcm_read_ns':pcm_ready-received,
+                        'submit_started_ns':submit_started,'submit_ns':stamp['presented_ns']-submit_started,
+                        'submit_lead_ns':lead,'sink_timing':sink_timing})
                     index+=1
             if self.errors:raise RuntimeError(self.errors[0])
             success=True

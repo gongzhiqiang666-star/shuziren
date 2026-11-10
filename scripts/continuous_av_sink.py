@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import threading
+import time
 import av
 import numpy as np
 
@@ -35,12 +36,18 @@ class ContinuousAVSink:
         if self.closed:raise RuntimeError('Continuous output stopped')
         if frame_index!=self.frames or image.shape!=(self.height,self.width,3) or image.dtype!=np.uint8 or len(pcm)!=1920:
             raise ValueError('Expected next BGR frame and exactly 960 PCM samples')
+        started=time.perf_counter_ns()
         video=av.VideoFrame.from_ndarray(image,format='bgr24');video.pts=frame_index;video.time_base=Fraction(1,25)
         audio=av.AudioFrame.from_ndarray(np.frombuffer(pcm,dtype='<i2').reshape(1,-1),format='s16',layout='mono')
         audio.sample_rate=24000;audio.pts=self.samples;audio.time_base=Fraction(1,24000)
-        try:self.container.mux(self.video.encode(video));self.container.mux(self.audio.encode(audio))
+        prepared=time.perf_counter_ns()
+        try:
+            self.container.mux(self.video.encode(video));video_written=time.perf_counter_ns()
+            self.container.mux(self.audio.encode(audio))
         except BaseException:self.abort();raise
         self.frames+=1;self.samples+=960;self.pcm_hash.update(pcm)
+        return {'prepare_ns':prepared-started,'video_mux_ns':video_written-prepared,
+            'audio_mux_ns':time.perf_counter_ns()-video_written}
 
     def close(self):
         with self.lock:return self._close()

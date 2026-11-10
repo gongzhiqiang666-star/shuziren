@@ -9,6 +9,15 @@ from scripts.sample_timeline import SampleTimeline,FramePacer,parse_span,feature
 
 
 class TimelineTests(unittest.TestCase):
+    def test_submit_lead_preserves_pts_and_reports_early_completion(self):
+        now=[35000000];clock=FramePacer('one',0,now=lambda:now[0],start_frame=1)
+        stamp=clock.wait_for('one',1,submit_lead_ns=6000000)
+        self.assertEqual((stamp.pts_ns,stamp.deadline_ns),(40000000,40000000))
+        now[0]=39000000;result=clock.presented(stamp)
+        self.assertEqual((result['late_ns'],result['early_ns'],result['offset_ns']),(0,1000000,-1000000))
+        for lead in [-1,40000000,True]:
+            with self.assertRaises(ValueError):clock.wait_for('one',2,submit_lead_ns=lead)
+
     def test_long_mixed_sequence_has_no_cumulative_rounding_drift(self):
         clock=SampleTimeline('one');random_source=random.Random(314159);samples=frames=0
         for _ in range(20000):
