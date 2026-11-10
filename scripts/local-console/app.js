@@ -21,13 +21,15 @@ async function action(work) {
 async function load() {
   clearChecks();
   const session = await request('/api/session'); token = session.token;
-  const state = await request('/api/state');
+  let state;
+  try { state = await request('/api/state'); }
+  catch(error) { $('live-status').textContent = '状态读取失败'; throw error; }
   $('runtime-root').value = state.config.runtime_root; $('port').value = state.config.port;
   $('live-status').textContent = state.live_status;
   $('data-directory').textContent = '配置目录：' + state.data_directory;
 }
 $('settings').addEventListener('submit', event => {event.preventDefault(); action(async () => {
-  const result = await request('/api/config', config()); $('message').textContent = result.message;
+  const result = await request('/api/config', config()); await load(); $('message').textContent = result.message;
 });});
 $('preflight').addEventListener('click', () => action(async () => {
   const result = await request('/api/preflight', config());
