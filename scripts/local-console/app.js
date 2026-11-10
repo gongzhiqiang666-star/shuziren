@@ -233,7 +233,7 @@ async function loadTTS() {
   const response=await request('/api/tts/state');if(consoleClosed) return;
   ttsState=response.task;
   const labels={running:'正在合成',succeeded:'语音已生成',cancelled:'已取消合成',interrupted:'上次合成已中断',failed:'语音不可用'};
-  $('tts-status').textContent=ttsState ? (labels[ttsState.status] || ttsState.status)+' · '+(ttsState.product_title || '商品')+' · 版本 '+ttsState.product_version+(ttsState.error ? '：'+ttsState.error : '') : '暂无合成任务';
+  $('tts-status').textContent=ttsState ? (labels[ttsState.status] || ttsState.status)+' · '+(ttsState.product_title || '商品')+' · 版本 '+ttsState.product_version+(ttsState.result?.cache_hit ? ' · 已复用相同输入的语音' : '')+(ttsState.error ? '：'+ttsState.error : '') : '暂无合成任务';
   const saved=currentProduct && $('product-title').value===currentProduct.title && $('product-content').value===currentProduct.content && $('product-index').value===String(currentProduct.product_index);
   const matches=ttsState?.status==='succeeded' && saved && ttsState.product_id===currentProduct.id && ttsState.script_id===currentScriptId && ttsState.voice_id===$('voice-list').value && ttsState.speed===Number($('tts-speed').value);
   if(matches) {
@@ -252,7 +252,7 @@ $('tts-generate').addEventListener('click',()=>ttsAction(async()=>{
   if(!currentScriptId) throw new Error('请先将一条当前版本的话术设为当前话术');
   if(!$('voice-list').value) throw new Error('请先选择参考音色');
   clearTTSPreview();
-  await request('/api/tts/generate',{product_id:currentProduct.id,script_id:currentScriptId,voice_id:$('voice-list').value,speed:Number($('tts-speed').value),language:'zh-CN',use_cache:false});
+  await request('/api/tts/generate',{product_id:currentProduct.id,script_id:currentScriptId,voice_id:$('voice-list').value,speed:Number($('tts-speed').value),language:'zh-CN',use_cache:$('tts-use-cache').checked});
   await loadTTS();
 }));
 $('tts-cancel').addEventListener('click',()=>ttsAction(async()=>{

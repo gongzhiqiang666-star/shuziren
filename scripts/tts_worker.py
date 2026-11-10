@@ -13,6 +13,7 @@ import wave
 from recovered.voice_infer_v3 import VoiceSynthesizer
 from scripts.voice_store import VoiceStore
 from scripts.v122_acceleration import configure_runtime
+from scripts.tts_cache import AudioCache,file_hash,key_for
 
 
 class OwnedSynthesizer(VoiceSynthesizer):
@@ -28,7 +29,19 @@ class TTSProvider:
         self.outputs=self.data_directory/'tts'
         self.outputs.mkdir(parents=True,exist_ok=True)
         self.internal=configure_runtime(Path(runtime_root).resolve())
-        self.synth=None;self.identity=None;self.loads=0
+        self.synth=None;self.identity=None;self.loads=0;self.inference_calls=0
+        self.cache=AudioCache(self.outputs/'content-cache');self.engine_stamp=None
+
+    def _engine_stamp(self):
+        if self.engine_stamp is None:
+            import yaml
+            model=self.internal/'assets/pretrained_models/indextts'
+            config=yaml.safe_load((model/'config.yaml').read_text(encoding='utf-8'))
+            files=[model/'config.yaml',model/config['gpt_checkpoint'],model/config['bigvgan_checkpoint'],model/'bpe.model',
+                   Path(__file__),Path(sys.modules[VoiceSynthesizer.__module__].__file__)]
+            files.extend(p for p in (self.internal/'bin/voice_infer_v3/indextts').rglob('*.py') if not p.name.startswith('._'))
+            self.engine_stamp=hashlib.sha256(json.dumps([(str(p),file_hash(p)) for p in sorted(files)],sort_keys=True).encode()).hexdigest()
+        return self.engine_stamp
 
     def close(self):
         if self.synth is not None:
@@ -45,10 +58,14 @@ class TTSProvider:
         if not isinstance(request['language'],str) or not request['language']:
             raise ValueError('请选择语言')
         if type(request['use_cache']) is not bool: raise ValueError('缓存参数须为布尔值')
+        validation_started=time.perf_counter()
         voice=self.voices.get(request['voice_id'])
+        cache_key=key_for(self._engine_stamp(),voice,request)
+        cached=self.cache.get(cache_key) if request['use_cache'] else None
+        validation_seconds=time.perf_counter()-validation_started
         identity=(voice['id'],voice['audio_sha256'],voice['text_sha256'])
         started=time.perf_counter();cold=False
-        if identity!=self.identity:
+        if cached is None and identity!=self.identity:
             self.close()
             synth=OwnedSynthesizer.from_voice_dir(str(self.internal/'assets/pretrained_models'),
                 str(self.voices.root),voice['id'],device='cuda',voice_infer_version='v3')
@@ -56,19 +73,27 @@ class TTSProvider:
             self.synth=synth;self.identity=identity;self.loads+=1;cold=True
         initialization=time.perf_counter()-started
         started=time.perf_counter()
-        path=self.synth.synthesize(request['text'],speed=speed,language=request['language'],use_cache=request['use_cache'])
+        if cached is None:
+            self.inference_calls+=1
+            path=self.synth.synthesize(request['text'],speed=speed,language=request['language'],use_cache=False)
+        else: path=cached
         if not path or not Path(path).is_file(): raise ValueError('TTS未生成有效文件')
         path=Path(path).resolve()
-        if path.parent!=(self.outputs/'cache').resolve(): raise ValueError('TTS输出越界')
+        if path.parent not in {(self.outputs/'cache').resolve(),self.cache.root}: raise ValueError('TTS输出越界')
         with wave.open(str(path),'rb') as reader:
             duration=reader.getnframes()/reader.getframerate()
             if duration<=0: raise ValueError('TTS输出为空')
             rate=reader.getframerate()
+        if cached is None: self.cache.put(cache_key,path)
         target=self.outputs/(str(uuid.uuid4())+'.wav');shutil.copy2(path,target)
+        if cached is None: path.unlink(missing_ok=True)  # Only this request's owned scratch output.
         return {'output':str(target),'duration':duration,'sample_rate':rate,'seconds':time.perf_counter()-started,
                 'initialization_seconds':initialization,'model_loaded':cold,'model_load_count':self.loads,
                 'sha256':hashlib.sha256(target.read_bytes()).hexdigest(),'voice_id':voice['id'],
-                'provider':'recovered-voice-infer-v3','use_cache':request['use_cache'],'device':self.synth.device}
+                'provider':'recovered-voice-infer-v3','use_cache':request['use_cache'],
+                'device':self.synth.device if self.synth is not None else 'cache',
+                'cache_hit':cached is not None,'cache_key':cache_key,'inference_calls':self.inference_calls,
+                'validation_seconds':validation_seconds,'request_seconds':time.perf_counter()-validation_started}
 
 
 def main(argv=None):
