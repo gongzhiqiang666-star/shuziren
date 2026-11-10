@@ -1,0 +1,74 @@
+import json
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from scripts.local_console_config import ConfigError, ConfigStore, preflight, validate
+from scripts.v122_package_policy import REQUIRED_RUNTIME_FILES
+
+
+class ConsoleConfigTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.store = ConfigStore(self.root / "用户配置")
+
+    def test_missing_config_does_not_create_or_start_anything(self):
+        value = self.store.load()
+        self.assertFalse(self.store.directory.exists())
+        self.assertFalse(preflight(value)["ready"])
+
+    def test_save_reopen_unicode_and_update(self):
+        value = {"version": 1, "runtime_root": str(self.root / "人物资源"), "port": 5158}
+        self.store.save(value)
+        self.assertEqual(ConfigStore(self.store.directory).load(), value)
+        value["port"] = 5160
+        self.store.save(value)
+        self.assertEqual(self.store.load(), value)
+        self.assertEqual(list(self.store.directory.glob("*.tmp")), [])
+
+    def test_corrupt_config_not_silently_reset(self):
+        self.store.directory.mkdir()
+        for content in ('{', '{"version":1,"version":1}', '[]'):
+            self.store.path.write_text(content, encoding="utf-8")
+            with self.assertRaises(ConfigError):
+                self.store.load()
+            self.assertEqual(self.store.path.read_text(encoding="utf-8"), content)
+
+    def test_invalid_settings_rejected_without_overwriting(self):
+        good = self.store.load()
+        self.store.save(good)
+        for update in ({"version": True}, {"port": True}, {"port": 1}, {"port": 65536},
+                       {"runtime_root": "relative"}, {"runtime_root": "\x00"}, {"extra": 1}):
+            with self.assertRaises(ConfigError):
+                self.store.save({**good, **update})
+            self.assertEqual(self.store.load(), good)
+
+    def test_replace_failure_preserves_previous_config(self):
+        old = self.store.load()
+        self.store.save(old)
+        with patch("scripts.local_console_config.os.replace", side_effect=PermissionError("locked")):
+            with self.assertRaises(PermissionError):
+                self.store.save({**old, "port": 5160})
+        self.assertEqual(self.store.load(), old)
+        self.assertFalse(list(self.store.directory.glob("*.tmp")))
+
+    def test_presence_does_not_claim_integrity_or_inference(self):
+        runtime = self.root / "runtime"
+        for relative in REQUIRED_RUNTIME_FILES:
+            target = runtime / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"test fixture")
+        config = {"version": 1, "runtime_root": str(runtime / "_internal"), "port": 5158}
+        report = preflight(config)
+        self.assertTrue(report["ready"])
+        self.assertFalse(report["integrity_verified"])
+        self.assertFalse(report["inference_verified"])
+        target.unlink()
+        self.assertFalse(preflight(config)["ready"])
+
+
+if __name__ == "__main__":
+    unittest.main()
