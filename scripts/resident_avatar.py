@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import struct
 import time
+import tempfile
 import wave
 
 from scripts.avatar_render import verify_media
@@ -24,7 +25,7 @@ class ResidentAvatar:
             self.synth=VideoSynthesizer(avatar,models/'image_infer_v2/unet_v2.onnx',models/'wenet/conf/train_conformer_multi_cn.yaml',models/'wenet/exp/conformer/wenetmodel.pt',batch_size=4)
         except BaseException:
             self.context.__exit__(None,None,None);raise
-        self.session=None;self.frame_offset=0;self.sample_offset=0;self.timed_mode=None;self.wenet_loads=0
+        self.session=None;self.frame_offset=0;self.sample_offset=0;self.timed_mode=None;self.wenet_loads=0;self.prepared=False;self.prepare_result=None
 
     def start(self,session):
         if not isinstance(session,str) or not session:raise ValueError('Session ID required')
@@ -37,6 +38,32 @@ class ResidentAvatar:
         fingerprint=hashlib.sha256()
         for feature in features:fingerprint.update(feature.tobytes())
         return features,fingerprint.hexdigest()
+
+    def prepare(self):
+        if self.prepared:return {**self.prepare_result,'reused':True}
+        started=time.perf_counter()
+        position=(self.synth.current_frame_position,self.synth.is_forward,self.frame_offset,self.sample_offset)
+        # Scratch is private and short-lived; prewarming never writes audible media.
+        with tempfile.TemporaryDirectory(prefix='shuziren-warm-') as temporary:
+            audio=Path(temporary)/'silence.wav'
+            with wave.open(str(audio),'wb') as writer:
+                writer.setparams((1,2,24000,0,'NONE','not compressed'));writer.writeframes(bytes(48000))
+            features,fingerprint=self.features(audio)
+            if len(features)<4:raise RuntimeError('Insufficient silence features for warmup')
+            sizes=[]
+            for size in [1,2,3,4]:
+                indices=[index%self.synth.total_frames for index in range(size)]
+                images,metadata=self.synth._load_batch_frames(indices)
+                frames=self.synth._process_batch(images,metadata,features[:size])
+                if len(frames)!=size:raise RuntimeError('Warmup dropped frames')
+                sizes.append(size)
+        after=(self.synth.current_frame_position,self.synth.is_forward,self.frame_offset,self.sample_offset)
+        if after!=position:raise RuntimeError('Warmup changed presentation position')
+        self.prepare_result={'model_ready':True,'warmed_batch_sizes':sizes,'wenet_load_count':self.wenet_loads,
+            'wenet_identity':id(self.synth.wenet_model),'unet_session_identity':id(self.sessions[0]),
+            'silence_features_sha256':fingerprint,'seconds':time.perf_counter()-started,
+            'frame_offset':self.frame_offset,'sample_offset':self.sample_offset,'output_generated':False}
+        self.prepared=True;return {**self.prepare_result,'reused':False}
 
     def render(self,session,task_id,audio,output,pcm_sha256,progress=None,timing=None):
         if session!=self.session:raise ValueError('Stale avatar session')

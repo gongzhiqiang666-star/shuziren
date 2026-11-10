@@ -19,7 +19,9 @@ def main():
             request=json.loads(line)
             try:
                 if request['operation']=='start':
-                    engine.start(request['session_id']);result={'session_id':engine.session}
+                    engine.start(request['session_id']);result={'session_id':engine.session,'model_ready':engine.prepared}
+                elif request['operation']=='prepare':
+                    with redirect_stdout(sys.stderr):result=engine.prepare()
                 elif request['operation']=='inspect':
                     with redirect_stdout(sys.stderr):features,fingerprint=engine.features(request['audio'])
                     result={'frames':len(features),'features_sha256':fingerprint}

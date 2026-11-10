@@ -17,7 +17,7 @@ class ResidentTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.root=Path(self.temp.name)
         provider=object.__new__(ResidentAvatar);self.provider=provider
-        provider.internal=self.root;provider.sessions=[object()];provider.frame_offset=0;provider.sample_offset=0;provider.timed_mode=None;provider.wenet_loads=0;provider.session='session'
+        provider.internal=self.root;provider.sessions=[object()];provider.frame_offset=0;provider.sample_offset=0;provider.timed_mode=None;provider.wenet_loads=0;provider.session='session';provider.prepared=False;provider.prepare_result=None
         synth=object.__new__(VideoSynthesizer);provider.synth=synth
         synth._closed=False;synth.executor=None;synth.batch_size=4;synth.total_frames=7;synth.current_frame_position=0;synth.is_forward=True;synth.wenet_model=None
         synth.engine=SimpleNamespace(perf_stats={'frames':0,'batches':0,'inference_ms':[],'prepare_ms':[],'paste_ms':[]})
@@ -74,3 +74,22 @@ class ResidentTests(unittest.TestCase):
         self.assertEqual(self.provider.sample_offset,15000);self.assertEqual(self.provider.frame_offset,16)
         with self.assertRaisesRegex(ValueError,'mix legacy'):
             self.provider.render('session','legacy',path,self.root/'legacy.mp4',sha)
+
+    def test_warmup_is_idempotent_and_preserves_nonzero_positions(self):
+        self.provider.frame_offset=31;self.provider.sample_offset=30000
+        self.provider.synth.current_frame_position=5;self.provider.synth.is_forward=False
+        result=self.provider.prepare();again=self.provider.prepare()
+        self.assertEqual(result['warmed_batch_sizes'],[1,2,3,4]);self.assertFalse(result['output_generated'])
+        self.assertTrue(again['reused']);self.assertEqual(again['wenet_load_count'],1)
+        self.assertEqual((self.provider.frame_offset,self.provider.sample_offset),(31,30000))
+        self.assertEqual((self.provider.synth.current_frame_position,self.provider.synth.is_forward),(5,False))
+
+    def test_failed_warmup_never_declares_ready(self):
+        original=self.provider.synth._process_batch
+        def fail(images,metadata,features):
+            if len(images)==3:raise RuntimeError('GPU warmup fixture failure')
+            return original(images,metadata,features)
+        self.provider.synth._process_batch=fail
+        with self.assertRaisesRegex(RuntimeError,'warmup fixture'):self.provider.prepare()
+        self.assertFalse(self.provider.prepared);self.assertIsNone(self.provider.prepare_result)
+        self.assertEqual((self.provider.frame_offset,self.provider.sample_offset),(0,0))
