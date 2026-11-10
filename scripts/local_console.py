@@ -72,6 +72,7 @@ def create_server(store, port=None):
     def products():
         return ProductStore(store.directory)
     task_manager = None
+    tts_manager = None
     tasks_closed = False
     def tasks():
         nonlocal task_manager
@@ -86,6 +87,19 @@ def create_server(store, port=None):
         with lock:
             tasks_closed = True
             if task_manager is not None: task_manager.close()
+            if tts_manager is not None: tts_manager.close()
+    def tts():
+        nonlocal tts_manager
+        with lock:
+            if tasks_closed: raise ProductError('控制台正在退出')
+            root=preflight(store.load())['runtime_root']
+            if not root: raise ProductError('请先配置TTS运行资源目录')
+            if tts_manager is None:
+                from scripts.tts_tasks import TTSTasks
+                tts_manager=TTSTasks(root,store.directory)
+            elif Path(root).resolve()!=tts_manager.runtime:
+                raise Conflict('运行资源目录已修改，请重启控制台后合成')
+            return tts_manager
     try:
         settings = store.load()
         configured_port = settings["port"]
@@ -103,7 +117,7 @@ def create_server(store, port=None):
             self.send_header("Content-Length", str(len(content)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'")
+            self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'")
             self.end_headers()
             self.wfile.write(content)
 
@@ -126,6 +140,12 @@ def create_server(store, port=None):
                 if path == '/api/voices':
                     voices=VoiceStore(store.directory)
                     return self.respond(200,{'voices':voices.list(),'selected':voices.selected()})
+                if path == '/api/tts/state':
+                    return self.respond(200,{'task':tts().state()})
+                if path == '/api/tts/audio':
+                    ids=parse_qs(urlsplit(self.path).query).get('task_id',[])
+                    if len(ids)!=1: raise ProductError('音频任务参数无效')
+                    return self.respond(200,tts().audio(ids[0]),'audio/wav')
                 if path == '/api/voices/audio':
                     ids=parse_qs(urlsplit(self.path).query).get('id',[])
                     if len(ids)!=1: raise VoiceError('请选择音色')
@@ -148,6 +168,8 @@ def create_server(store, port=None):
                     mime = {"index.html": "text/html", "app.js": "text/javascript", "style.css": "text/css",'voice-recorder.js':'text/javascript'}[filename]
                     return self.respond(200, (WEB / filename).read_bytes(), mime + "; charset=utf-8")
                 return self.respond(404, {"error": "页面不存在"})
+            except Conflict as error:
+                self.respond(409,{'error':str(error)})
             except sqlite3.Error:
                 self.respond(503, {"error": "商品数据库无法读取，请检查文件与权限；原数据未重置"})
             except (ValueError, OSError) as error:
@@ -206,6 +228,15 @@ def create_server(store, port=None):
                             raise VoiceError('音色选择字段无效')
                         VoiceStore(store.directory).select(value['voice_id'])
                         return self.respond(200,{'selected':value['voice_id']})
+                    if path == '/api/tts/generate':
+                        if set(value)!={'product_id','script_id','voice_id','speed','language','use_cache'}:
+                            raise ProductError('TTS字段不完整')
+                        if not all(isinstance(value[k],str) for k in ('product_id','script_id','voice_id')):
+                            raise ProductError('TTS输入ID无效')
+                        return self.respond(202,{'task':tts().start(**value)})
+                    if path == '/api/tts/cancel':
+                        if set(value)!={'task_id'} or not isinstance(value['task_id'],str): raise ProductError('TTS取消字段无效')
+                        return self.respond(200,{'task':tts().cancel(value['task_id'])})
                     if path == "/api/products":
                         allowed = {"title", "content", "product_index", "product_id", "version"}
                         if not {"title", "content", "product_index"} <= value.keys() or value.keys() - allowed:

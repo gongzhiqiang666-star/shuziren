@@ -16,7 +16,7 @@ async function action(work) {
   $('error').textContent = ''; $('message').textContent = '';
   document.querySelectorAll('button').forEach(b => b.disabled = true);
   try { await work(); } catch(error) { $('error').textContent = error.message || '无法连接本地服务'; }
-  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); renderRecordingButtons(); }
+  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); renderRecordingButtons(); renderTTSButtons(); }
 }
 async function load() {
   clearChecks();
@@ -43,6 +43,7 @@ $('shutdown').addEventListener('click', () => action(async () => {
   await request('/api/shutdown', {confirm:true});
   consoleClosed = true; clearTimeout(taskTimer);
   recorder.discard();
+  clearTimeout(ttsTimer);clearTTSPreview();$('tts-panel').hidden=true;
   $('live-status').textContent = '控制台已退出';
   $('message').textContent = '本地服务已收到退出请求，可以关闭本页。';
   $('settings').hidden = true; $('shutdown').hidden = true;
@@ -51,6 +52,8 @@ $('shutdown').addEventListener('click', () => action(async () => {
 }));
 let currentProduct = null;
 let savedProducts = [];
+let currentScriptId=null;
+let ttsTimer=null,ttsState=null,ttsPreviewTask=null;
 let parentScriptId = null;
 let currentTask = null;
 let taskTimer = null;
@@ -78,6 +81,7 @@ async function productAction(work) {
   finally { $('products-panel').querySelectorAll('button,select').forEach(b => b.disabled = false); }
 }
 function showProduct(product) {
+  clearTTSPreview();currentScriptId=null;
   currentProduct = product;
   parentScriptId = null;
   $('product-index').value = product?.product_index ?? '';
@@ -89,6 +93,7 @@ function showProduct(product) {
 async function showScripts() {
   if (!currentProduct) return;
   const result = await request('/api/scripts?product_id=' + encodeURIComponent(currentProduct.id));
+  currentScriptId=result.selected;
   $('scripts-list').replaceChildren(...result.scripts.map(script => {
     const item = document.createElement('li');
     const content = document.createElement('p');
@@ -104,6 +109,7 @@ async function showScripts() {
       select.addEventListener('click', () => productAction(async () => {
         requireSavedProduct();
         await request('/api/scripts/select',{product_id:currentProduct.id,script_id:script.id});
+        clearTTSPreview();
         await showScripts(); $('product-message').textContent='当前话术已保存；尚未启动播放。';
       }));
       item.append(select);
@@ -151,6 +157,7 @@ $('cancel-generation').addEventListener('click', () => productAction(async () =>
 }));
 let voiceRecords=[];
 function showVoice(id) {
+  clearTTSPreview();
   const voice=voiceRecords.find(v => v.id===id);
   $('voice-preview').pause();
   if (voice) {
@@ -214,4 +221,48 @@ $('record-save').addEventListener('click',()=>voiceAction(async()=>{
 }));
 window.addEventListener('pagehide',()=>recorder.discard());
 renderRecordingButtons();
-action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices); });
+function clearTTSPreview() {
+  $('tts-preview').pause();$('tts-preview').removeAttribute('src');$('tts-preview').load();ttsPreviewTask=null;
+}
+function renderTTSButtons() {
+  $('tts-generate').disabled=ttsState?.status==='running';
+  $('tts-cancel').disabled=ttsState?.status!=='running';
+}
+async function loadTTS() {
+  clearTimeout(ttsTimer);if(consoleClosed) return;
+  const response=await request('/api/tts/state');if(consoleClosed) return;
+  ttsState=response.task;
+  const labels={running:'正在合成',succeeded:'语音已生成',cancelled:'已取消合成',interrupted:'上次合成已中断',failed:'语音不可用'};
+  $('tts-status').textContent=ttsState ? (labels[ttsState.status] || ttsState.status)+' · '+(ttsState.product_title || '商品')+' · 版本 '+ttsState.product_version+(ttsState.error ? '：'+ttsState.error : '') : '暂无合成任务';
+  const saved=currentProduct && $('product-title').value===currentProduct.title && $('product-content').value===currentProduct.content && $('product-index').value===String(currentProduct.product_index);
+  const matches=ttsState?.status==='succeeded' && saved && ttsState.product_id===currentProduct.id && ttsState.script_id===currentScriptId && ttsState.voice_id===$('voice-list').value && ttsState.speed===Number($('tts-speed').value);
+  if(matches) {
+    if(ttsPreviewTask!==ttsState.id) {$('tts-preview').src='/api/tts/audio?task_id='+encodeURIComponent(ttsState.id);$('tts-preview').load();ttsPreviewTask=ttsState.id;}
+  } else if(ttsPreviewTask) clearTTSPreview();
+  renderTTSButtons();
+  if(['running','succeeded'].includes(ttsState?.status)) ttsTimer=setTimeout(()=>loadTTS().catch(error=>{$('tts-error').textContent=error.message;clearTTSPreview();}),1000);
+}
+async function ttsAction(work) {
+  $('tts-error').textContent='';$('tts-generate').disabled=true;$('tts-cancel').disabled=true;
+  try {await work();} catch(error) {$('tts-error').textContent=error.message || '语音服务无法连接';clearTTSPreview();}
+  finally {renderTTSButtons();}
+}
+$('tts-generate').addEventListener('click',()=>ttsAction(async()=>{
+  requireSavedProduct();
+  if(!currentScriptId) throw new Error('请先将一条当前版本的话术设为当前话术');
+  if(!$('voice-list').value) throw new Error('请先选择参考音色');
+  clearTTSPreview();
+  await request('/api/tts/generate',{product_id:currentProduct.id,script_id:currentScriptId,voice_id:$('voice-list').value,speed:Number($('tts-speed').value),language:'zh-CN',use_cache:false});
+  await loadTTS();
+}));
+$('tts-cancel').addEventListener('click',()=>ttsAction(async()=>{
+  if(!ttsState) throw new Error('暂无合成任务');
+  await request('/api/tts/cancel',{task_id:ttsState.id});clearTTSPreview();await loadTTS();
+}));
+$('tts-refresh').addEventListener('click',()=>ttsAction(loadTTS));
+$('tts-preview').addEventListener('error',()=>{if($('tts-preview').getAttribute('src')) $('tts-error').textContent='音频已失效或无法加载，请刷新任务状态。';});
+for(const id of ['product-title','product-content','product-index']) $(id).addEventListener('input',clearTTSPreview);
+$('tts-speed').addEventListener('input',clearTTSPreview);
+window.addEventListener('pagehide',()=>{clearTimeout(ttsTimer);clearTTSPreview();});
+renderTTSButtons();
+action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices);await ttsAction(loadTTS); });

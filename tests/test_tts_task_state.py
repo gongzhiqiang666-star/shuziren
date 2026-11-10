@@ -6,7 +6,7 @@ import tempfile
 import unittest
 import uuid
 
-from scripts.product_store import ProductStore,Conflict
+from scripts.product_store import ProductStore,Conflict,ProductError
 from scripts.tts_tasks import TTSTasks
 from scripts.voice_store import VoiceStore
 
@@ -51,6 +51,17 @@ class TTSStateTests(unittest.TestCase):
         self.tasks.task=None
         with self.assertRaises(Conflict): self.tasks.start(self.product['id'],'wrong-script',self.voice_id)
         self.assertIsNone(self.tasks.process)
+
+    def test_audio_requires_current_task_owned_path_and_unchanged_hash(self):
+        output=self.root/'tts'/'test.wav';output.parent.mkdir(exist_ok=True);content=b'audio-access-fixture'
+        output.write_bytes(content)
+        self.tasks.task['result']={'output':str(output),'sha256':hashlib.sha256(content).hexdigest()}
+        self.assertEqual(self.tasks.audio('state-fixture'),content)
+        with self.assertRaises(Conflict): self.tasks.audio('other-task')
+        output.write_bytes(b'changed')
+        with self.assertRaises(Conflict): self.tasks.audio('state-fixture')
+        self.tasks.task['result']['output']=str(self.root/'outside.wav')
+        with self.assertRaises(ProductError): self.tasks.audio('state-fixture')
 
 
 if __name__=='__main__': unittest.main()

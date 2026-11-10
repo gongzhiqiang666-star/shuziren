@@ -62,6 +62,18 @@ class TTSTasks:
         self.worker_usable=True
         return self.process
 
+    def audio(self,task_id):
+        with self.lock:
+            state=self.state()
+            if not state or state['id']!=task_id or state['status']!='succeeded':
+                raise Conflict('音频任务不存在、未完成或已失效')
+            result=state['result'];path=Path(result['output']).resolve()
+            if path.parent!=(self.data/'tts').resolve(): raise ProductError('音频路径越界')
+            content=path.read_bytes()
+            if hashlib.sha256(content).hexdigest()!=result['sha256']:
+                raise Conflict('音频文件已变化，请重新合成')
+            return content
+
     def _stop_worker(self):
         self.worker_usable=False
         if self.process:
@@ -89,6 +101,7 @@ class TTSTasks:
             self.task={'id':str(uuid.uuid4()),'status':'running','product_id':product_id,
                 'product_version':product['version'],'script_id':script_id,'voice_id':voice_id}
             self.task.update(voice_audio_sha256=voice['audio_sha256'],voice_text_sha256=voice['text_sha256'])
+            self.task.update(product_title=product['title'],speed=speed,language=language,use_cache=use_cache)
             self._save()
             request={'voice_id':voice_id,'text':script['text'],'speed':speed,'language':language,'use_cache':use_cache}
             task_id=self.task['id']

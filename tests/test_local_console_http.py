@@ -75,6 +75,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         with urlopen(self.base + '/', timeout=3) as response:
             self.assertIn('数字人工作台', response.read().decode())
             self.assertIn("frame-ancestors 'none'", response.headers['Content-Security-Policy'])
+            self.assertIn("media-src 'self' blob:", response.headers['Content-Security-Policy'])
         self.assertEqual(self.call('/console.json')[0], 404)
 
     def test_shutdown_requires_explicit_request_and_stops_server(self):
@@ -141,6 +142,15 @@ class ConsoleHTTPTests(unittest.TestCase):
             self.assertEqual(status,400)
             self.assertIn('尚未配置',value['error'])
             self.assertIsNone(self.call('/api/llm/state')[1]['task'])
+
+    def test_tts_state_and_audio_require_valid_task_and_selected_inputs(self):
+        self.store.save({'version':1,'runtime_root':self.directory.name,'port':5158})
+        self.assertEqual(self.call('/api/tts/state')[1]['task'],None)
+        self.assertEqual(self.call('/api/tts/audio?task_id=../console.json')[0],409)
+        self.assertEqual(self.call('/api/tts/generate',{})[0],400)
+        self.assertEqual(self.call('/api/tts/generate',{'product_id':'missing','script_id':'missing',
+            'voice_id':'missing','speed':1,'language':'zh-CN','use_cache':False})[0],400)
+        self.assertIsNone(self.call('/api/tts/state')[1]['task'])
 
     def test_voice_import_selection_audio_and_invalid_id(self):
         ffmpeg=os.environ.get('SHUZIREN_TEST_FFMPEG')
