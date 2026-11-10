@@ -1,5 +1,6 @@
 """Explicit camera and audio devices; no silent fallback to default hardware."""
 import hashlib
+import time
 import numpy as np
 
 
@@ -7,8 +8,17 @@ class VirtualCameraOutput:
     def __init__(self,width,height,backend='obs',device=None):
         import pyvirtualcam
         self.width=width;self.height=height;self.closed=False;self.frames=0
-        self.camera=pyvirtualcam.Camera(width=width,height=height,fps=25,
-            fmt=pyvirtualcam.PixelFormat.BGR,backend=backend,device=device)
+        started=time.perf_counter();self.open_attempts=0
+        for attempt in range(11):
+            self.open_attempts+=1
+            try:
+                self.camera=pyvirtualcam.Camera(width=width,height=height,fps=25,
+                    fmt=pyvirtualcam.PixelFormat.BGR,backend=backend,device=device)
+                break
+            except RuntimeError as error:
+                if attempt==10 or 'virtual camera output could not be started' not in str(error):raise
+                time.sleep(.05)
+        self.open_seconds=time.perf_counter()-started
         self.device=self.camera.device
 
     def send(self,index,image):

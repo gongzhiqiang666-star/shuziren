@@ -66,6 +66,7 @@ class AVDeviceSink:
 
     def submit(self,index,image,pcm):
         if self.closed or self.error:raise RuntimeError(self.error or 'Combined output stopped')
+        if self.draining:raise RuntimeError('Combined output input sealed')
         if type(index) is not int or index!=self.frames or image.shape!=(self.height,self.width,3) or image.dtype!=np.uint8 or not isinstance(pcm,bytes) or len(pcm)!=1920:
             raise ValueError('Next BGR frame and 960 PCM16 samples required')
         if not self.started and self.frames==1 and threading.get_ident()!=self.owner_thread:

@@ -7,6 +7,19 @@ from scripts.live_device_output import VirtualAudioOutput,VirtualCameraOutput
 
 
 class DeviceOutputTests(unittest.TestCase):
+    def test_camera_release_retry_is_bounded_and_does_not_hide_other_errors(self):
+        module=SimpleNamespace(Camera=Mock(),PixelFormat=SimpleNamespace(BGR='BGR'))
+        busy=RuntimeError('virtual camera output could not be started')
+        with patch.dict(sys.modules,{'pyvirtualcam':module}),patch('scripts.live_device_output.time.sleep') as sleep:
+            module.Camera.side_effect=[busy,Mock()]
+            output=VirtualCameraOutput(24,32);self.assertEqual(output.open_attempts,2);output.close()
+            module.Camera.reset_mock();module.Camera.side_effect=busy
+            with self.assertRaises(RuntimeError):VirtualCameraOutput(24,32)
+            self.assertEqual(module.Camera.call_count,11)
+            module.Camera.reset_mock();module.Camera.side_effect=RuntimeError('unsupported format')
+            with self.assertRaisesRegex(RuntimeError,'unsupported format'):VirtualCameraOutput(24,32)
+            self.assertEqual(module.Camera.call_count,1)
+
     def test_camera_enforces_order_shape_and_stop(self):
         camera=Mock();module=SimpleNamespace(Camera=Mock(return_value=camera),PixelFormat=SimpleNamespace(BGR='BGR'))
         with patch.dict(sys.modules,{'pyvirtualcam':module}):

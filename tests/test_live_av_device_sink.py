@@ -12,6 +12,11 @@ class AbortCallback(Exception):pass
 
 
 class CombinedCallbackTests(unittest.TestCase):
+    def test_sealed_input_rejects_late_packet(self):
+        sink=self.sink();sink.closed=False;sink.finish_input()
+        with self.assertRaisesRegex(RuntimeError,'input sealed'):
+            sink.submit(0,np.zeros((32,24,3),np.uint8),bytes(1920))
+
     def sink(self):
         sink=AVDeviceSink.__new__(AVDeviceSink)
         sink.sd=SimpleNamespace(CallbackStop=StopCallback,CallbackAbort=AbortCallback)

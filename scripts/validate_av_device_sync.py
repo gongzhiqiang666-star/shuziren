@@ -9,6 +9,7 @@ import uuid
 import av
 import numpy as np
 from scripts.live_av_device_sink import AVDeviceSink
+from scripts.av_sync_markers import is_flash,analyze_markers
 
 
 def main():
@@ -28,6 +29,7 @@ def main():
                 for index in range(2,150):
                     image=np.full((1280,720,3),96,np.uint8)
                     for bit in range(8):image[80:160,40+bit*80:100+bit*80]=224 if index&(1<<bit) else 32
+                    image[200:320,40:680]=224 if is_flash(index) else 32
                     pcm=np.zeros(960,dtype='<i2')
                     if index in [25,65,105]:pcm=np.asarray(5000*np.sin(2*np.pi*1000*np.arange(960)/24000),dtype='<i2')
                     sink.submit(index,image,pcm.tobytes())
@@ -57,7 +59,7 @@ def main():
                         image=frame.to_ndarray(format='bgr24');value=0
                         for bit in range(8):
                             if image[90:150,50+bit*80:90+bit*80].mean()>128:value|=1<<bit
-                        markers.append((value,float(frame.pts*frame.time_base)))
+                        markers.append((value,float(frame.pts*frame.time_base),bool(image[220:300,60:660].mean()>128)))
                     else:
                         samples=frame.to_ndarray().reshape(-1,frame.layout.nb_channels).mean(axis=1)
                         rate=frame.sample_rate;audio.append(samples)
@@ -68,18 +70,12 @@ def main():
         pulses=[float(times[index]) for index in starts];offsets=[]
         report.update(audio_marker_times=pulses,markers=markers,video_delay_ms=args.video_delay_ms,
             receiver_audio_buffer_ms=20,queue_peak=sink.peak,underflows=sink.underflows,
-            received_video_frames=len(markers),unique_markers=len(set(value for value,_ in markers)))
-        for index,pulse in zip([25,65,105],pulses):
-            matches=[stamp for value,stamp in markers if value==index]
-            if not matches:
-                report['missing_visual_marker']=index
-                raise RuntimeError('Receiver missed a visual sync marker')
-            offsets.append((pulse-matches[0])*1000)
+            received_video_frames=len(markers),unique_markers=len(set(value for value,_,_ in markers)))
+        report.update(analyze_markers(markers,pulses))
         report.update(sent_frames=sink.frames,presented_frames=sink.presented,queue_peak=sink.peak,underflows=sink.underflows,
             video_delay_ms=args.video_delay_ms,receiver_audio_buffer_ms=20,
-            received_video_frames=len(markers),unique_markers=len(set(value for value,_ in markers)),
-            audio_marker_times=pulses,av_offset_ms=offsets,markers=markers,
-            receiver_sync_passed=len(pulses)==3 and len(offsets)==3 and max(abs(x) for x in offsets)<=80,
+            received_video_frames=len(markers),unique_markers=len(set(value for value,_,_ in markers)),
+            audio_marker_times=pulses,markers=markers,
             timing_acceptance=False)
         if not report['receiver_sync_passed']:raise RuntimeError('Combined receiver exceeds 80ms A/V marker tolerance')
         report['status']='passed'
