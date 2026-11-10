@@ -18,11 +18,14 @@ def main():
     parser.add_argument('--audio', required=True, type=Path)
     parser.add_argument('--report-directory', required=True, type=Path)
     parser.add_argument('--backend', choices=['cuda', 'tensorrt'], default='cuda')
+    parser.add_argument('--engine-cache', type=Path)
+    parser.add_argument('--profile', action='store_true')
     args = parser.parse_args()
     audio = args.audio.resolve(strict=True)
     avatar = args.avatar_directory.resolve(strict=True)
     root = (args.report_directory/('run-'+uuid.uuid4().hex)).resolve()
     root.mkdir(parents=True)
+    cache = args.engine_cache.resolve() if args.engine_cache else root/'engine-cache'
     result = {'status': 'failed', 'provider': 'restored-offline-avatar', 'backend': args.backend,
               'live_tested': False, 'visual_quality_verified': False}
     with (root/'generation.log').open('w', encoding='utf-8') as log, redirect_stdout(log), redirect_stderr(log):
@@ -33,7 +36,8 @@ def main():
             models = internal/'assets/pretrained_models'
             output = root/'output.mp4'
             started = time.perf_counter()
-            with accelerated_unet(root/'engine-cache', backend=args.backend) as sessions:
+            with accelerated_unet(cache, backend=args.backend,
+                                  profile_directory=root/'profiles' if args.profile else None) as sessions:
                 with VideoSynthesizer(avatar, models/'image_infer_v2/unet_v2.onnx',
                     models/'wenet/conf/train_conformer_multi_cn.yaml',
                     models/'wenet/exp/conformer/wenetmodel.pt', device='cuda:0', batch_size=4) as synth:
@@ -41,8 +45,21 @@ def main():
                     synth.process_single_file(audio, output)
                     stats = synth.engine.perf_stats
                     providers = [session.get_providers() for session in sessions]
+                    if args.profile:
+                        counts = {}
+                        for session in sessions:
+                            events = json.loads(Path(session.end_profiling()).read_text(encoding='utf-8'))
+                            for event in events:
+                                provider = event.get('args', {}).get('provider')
+                                if provider:
+                                    counts[provider] = counts.get(provider, 0)+1
+                        result['executed_node_provider_counts'] = counts
+                        expected = 'TensorrtExecutionProvider' if args.backend=='tensorrt' else 'CUDAExecutionProvider'
+                        assert counts.get(expected, 0)>0, 'Requested provider executed no nodes'
             result.update(initialization_seconds=initialized-started, total_seconds=time.perf_counter()-started,
-                          providers=providers, synthesis_batches=stats['batches'], synthesized_frames=stats['frames'])
+                          providers=providers, synthesis_batches=stats['batches'], synthesized_frames=stats['frames'],
+                          engine_cache=str(cache), inference_ms=sum(stats['inference_ms']),
+                          prepare_ms=sum(stats['prepare_ms']), paste_ms=sum(stats['paste_ms']))
             assert providers and stats['frames'] > 0, 'No actual model inference'
             ffmpeg = internal/'env/ffmpeg/bin/ffmpeg.exe'
             probe = json.loads(subprocess.check_output([str(ffmpeg.with_name('ffprobe.exe')), '-v', 'error',

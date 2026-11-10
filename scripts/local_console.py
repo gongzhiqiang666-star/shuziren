@@ -16,6 +16,7 @@ from urllib.parse import urlsplit, parse_qs
 from scripts.local_console_config import ConfigError, ConfigStore, preflight
 from scripts.product_store import ProductStore, Conflict, ProductError
 from scripts.voice_store import VoiceStore, VoiceError
+from scripts.avatar_store import AvatarStore, AvatarError
 
 WEB = Path(__file__).parent / "local-console"
 
@@ -140,6 +141,13 @@ def create_server(store, port=None):
                 if path == '/api/voices':
                     voices=VoiceStore(store.directory)
                     return self.respond(200,{'voices':voices.list(),'selected':voices.selected()})
+                if path == '/api/avatars':
+                    avatars=AvatarStore(store.directory)
+                    return self.respond(200,{'avatars':avatars.list(),'selected':avatars.selected()})
+                if path == '/api/avatars/sample':
+                    ids=parse_qs(urlsplit(self.path).query).get('id',[])
+                    if len(ids)!=1: raise AvatarError('请选择形象')
+                    return self.respond(200,AvatarStore(store.directory).sample(ids[0]),'image/jpeg')
                 if path == '/api/tts/state':
                     return self.respond(200,{'task':tts().state()})
                 if path == '/api/tts/audio':
@@ -208,6 +216,16 @@ def create_server(store, port=None):
                         return self.respond(200, {"config": store.save(value), "message": "已保存；端口修改在下次启动生效"})
                     if path == "/api/preflight":
                         return self.respond(200, preflight(value))
+                    if path == '/api/avatars/import':
+                        if set(value)!={'source','name'} or not isinstance(value['source'],str):
+                            raise AvatarError('形象导入字段无效')
+                        avatar=AvatarStore(store.directory).import_prepared(value['source'],value['name'])
+                        return self.respond(201,{'avatar':avatar})
+                    if path == '/api/avatars/select':
+                        if set(value)!={'avatar_id'} or not isinstance(value['avatar_id'],str):
+                            raise AvatarError('形象选择字段无效')
+                        AvatarStore(store.directory).select(value['avatar_id'])
+                        return self.respond(200,{'selected':value['avatar_id']})
                     if path in {'/api/voices/import','/api/voices/recorded'}:
                         field='source' if path.endswith('/import') else 'audio_base64'
                         if set(value)!={field,'transcript','name'} or not isinstance(value[field],str):

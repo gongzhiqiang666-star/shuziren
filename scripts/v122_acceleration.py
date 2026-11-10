@@ -46,7 +46,7 @@ def configure_runtime(runtime_root):
 
 
 @contextmanager
-def accelerated_unet(cache_directory, backend="tensorrt", memory_gb=4):
+def accelerated_unet(cache_directory, backend="tensorrt", memory_gb=4, profile_directory=None):
     """Select validated providers for UNet only; fail on provider fallback.
 
     This patches ORT's Python constructor in this process, not installed files.
@@ -86,6 +86,16 @@ def accelerated_unet(cache_directory, backend="tensorrt", memory_gb=4):
             }))
         kwargs["providers"] = providers
         kwargs.pop("provider_options", None)
+        if profile_directory is not None:
+            profile = Path(profile_directory).resolve()
+            profile.mkdir(parents=True, exist_ok=True)
+            options = kwargs.get('sess_options') or (args[0] if args else ort.SessionOptions())
+            options.enable_profiling = True
+            options.profile_file_prefix = str(profile/'unet')
+            if args:
+                args = (options,)
+            else:
+                kwargs['sess_options'] = options
         original(session, model, *args, **kwargs)
         expected = providers[0][0]
         if expected not in session.get_providers():

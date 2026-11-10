@@ -63,10 +63,10 @@
 | MED-004 | 本地音色克隆预处理 | `clone_voice_local` Ghidra 主体 | `voice_clone_infer_api.py`, `clone_manager.py` | 静态验证通过 | 真实 FFmpeg/ASR、模型资源、坏音频和中文路径 |
 | MED-005 | ZipVoice 本地语音推理 | `voice_infer.pyd` | `voice_infer.py` | 静态验证通过 | 真实权重、CPU/GPU、缓存、并发和音质 |
 | MED-006 | OmniVoice 本地语音推理 | `voice_infer_v2.pyd` | `voice_infer_v2.py` | 静态验证通过 | 真实权重、显存、参考音隔离、缓存和音质 |
-| MED-007 | IndexTTS 本地语音推理 | `voice_infer_v3.pyd` | `voice_infer_v3.py` | 开发中 | V03修复音色子目录选择，两个音色原生路径差分通过；真实重建合成、缓存、显存、长文本、速度和音质仍待验收 |
+| MED-007 | IndexTTS 本地语音推理 | `voice_infer_v3.pyd` | `voice_infer_v3.py` | 开发中 | V03真实CUDA新文本、缓存/取消/恢复、双参考A/B/A和ASR/声纹自动核验已通过对应范围；人工听感、长文本、峰值/长稳及录音实机仍待验收 |
 | MED-008 | 马来语/越南语本地语音 | 对应 `voice_infer_*_local.pyd` | `voice_infer_malai_local.py`, `voice_infer_vietnam_local.py` | 开发中 | 真实模型、语言发音、CPU/GPU |
 | MED-009 | Minimax/CosyVoice 在线音色克隆与生成 | `start_voice_clone_*`、在线语音模块 | `online_voice_generate.py`, `cosyvoice.py` | 静态验证通过 | 真实账号、区域端点、上传、鉴权和计费错误 |
-| MED-010 | 离线形象克隆 | `start_clone_local/clone_video_local` | `clone_manager.py`, `image_clone_*` | 静态验证通过 | 真实模型、GPU、不同分辨率、KT 板和资源回收 |
+| MED-010 | 离线形象克隆 | `start_clone_local/clone_video_local` | `clone_manager.py`, `image_clone_*`、`scripts/avatar_store.py` | 开发中 | V04修复WeNet路径误作模型，恢复版新语音CUDA/TRT离线84帧含声视频通过，TRT节点执行已profile；已有形象导入/选择/预览/重启通过。新视频制作、多分辨率/KT板、质量/50条语料与实际实时输出仍待验收 |
 | MED-011 | 人脸检测、关键点、口型特征与遮挡处理 | SCRFD/S3FD/PFLD/WeNet/Hubert 链 | `image_*`, `s3fd_*`, `pfld_mobileone.py`, `hubert_extractor.py` | 静态验证通过 | 真实权重、GPU、遮挡/侧脸/多人和性能 |
 | MED-012 | 商品图抠图及 KT 板覆盖 | `product_cutout/product_kt_overlay.pyd` | `product_cutout.py`, `product_kt_overlay.py` | 静态验证通过 | 真实模型、透明边缘、尺寸/旋转和直播叠加 |
 
@@ -97,8 +97,8 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 41 |
-| 开发中 | 7 |
+| 静态验证通过 | 40 |
+| 开发中 | 8 |
 | 已分析 | 10 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |

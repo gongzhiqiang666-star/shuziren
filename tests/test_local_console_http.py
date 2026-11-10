@@ -17,6 +17,27 @@ from scripts.local_console_config import ConfigStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_owned_avatar_import_selection_and_preview(self):
+        import cv2
+        import numpy as np
+        root=Path(self.directory.name)/'source-avatar'
+        (root/'frames').mkdir(parents=True);(root/'positions').mkdir()
+        cv2.imwrite(str(root/'frames/000000.jpg'),np.full((32,24,3),100,np.uint8))
+        (root/'positions/000000.txt').write_text('fps: 25\nwidth: 24\nheight: 32\nis_no_face: False\nbounding_box: [2, 20, 3, 22]\n')
+        status,value=self.call('/api/avatars/import',{'source':str(root),'name':'HTTP媒体测试形象'})
+        self.assertEqual(status,201,value)
+        avatar_id=value['avatar']['id']
+        self.assertEqual(self.call('/api/avatars/select',{'avatar_id':avatar_id})[0],200)
+        self.assertEqual(self.call('/api/avatars')[1]['selected'],avatar_id)
+        with urlopen(self.base+'/api/avatars/sample?id='+avatar_id,timeout=3) as response:
+            self.assertEqual(response.headers['Content-Type'],'image/jpeg')
+            self.assertEqual(response.read(2),b'\xff\xd8')
+        self.assertEqual(self.call('/api/avatars/sample?id=../console.json')[0],400)
+        self.assertEqual(self.call('/api/avatars/import',{'source':str(root),'name':'坏请求','extra':1})[0],400)
+        self.assertEqual(self.call('/api/avatars/select',{'avatar_id':'invalid'})[0],400)
+        (Path(self.directory.name)/'avatars'/avatar_id/'frames/000000.jpg').unlink()
+        self.assertEqual(self.call('/api/avatars/sample?id='+avatar_id)[0],400)
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

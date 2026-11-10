@@ -44,6 +44,7 @@ $('shutdown').addEventListener('click', () => action(async () => {
   consoleClosed = true; clearTimeout(taskTimer);
   recorder.discard();
   clearTimeout(ttsTimer);clearTTSPreview();$('tts-panel').hidden=true;
+  $('avatar-preview').removeAttribute('src');$('avatar-panel').hidden=true;
   $('live-status').textContent = '控制台已退出';
   $('message').textContent = '本地服务已收到退出请求，可以关闭本页。';
   $('settings').hidden = true; $('shutdown').hidden = true;
@@ -265,4 +266,42 @@ for(const id of ['product-title','product-content','product-index']) $(id).addEv
 $('tts-speed').addEventListener('input',clearTTSPreview);
 window.addEventListener('pagehide',()=>{clearTimeout(ttsTimer);clearTTSPreview();});
 renderTTSButtons();
-action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices);await ttsAction(loadTTS); });
+let avatarRecords=[],avatarBusy=false;
+function showAvatar(id) {
+  const avatar=avatarRecords.find(item=>item.id===id);
+  $('avatar-preview').hidden=!avatar;
+  $('avatar-preview').removeAttribute('src');
+  $('avatar-info').textContent=avatar ? avatar.name+' · '+avatar.width+'×'+avatar.height+' · '+avatar.frames+'帧' : '尚未选择形象';
+  if(avatar) $('avatar-preview').src='/api/avatars/sample?id='+encodeURIComponent(id);
+}
+async function loadAvatars() {
+  if(consoleClosed) return;
+  const result=await request('/api/avatars');if(consoleClosed) return;avatarRecords=result.avatars;
+  const empty=document.createElement('option');empty.value='';empty.textContent='请选择形象';
+  $('avatar-list').replaceChildren(empty,...avatarRecords.map(avatar=>{
+    const option=document.createElement('option');option.value=avatar.id;option.textContent=avatar.name;return option;
+  }));
+  $('avatar-list').value=result.selected || '';showAvatar(result.selected);
+}
+async function avatarAction(work) {
+  if(avatarBusy || consoleClosed) return;avatarBusy=true;
+  $('avatar-error').textContent='';$('avatar-message').textContent='';$('avatar-import').disabled=true;
+  try {await work();} catch(error) {$('avatar-error').textContent=error.message || '形象服务无法连接';}
+  finally {avatarBusy=false;$('avatar-import').disabled=consoleClosed;}
+}
+$('avatar-form').addEventListener('submit',event=>{event.preventDefault();avatarAction(async()=>{
+  $('avatar-message').textContent='正在导入并检查形象素材…';
+  const result=await request('/api/avatars/import',{source:$('avatar-source').value,name:$('avatar-name').value});
+  await request('/api/avatars/select',{avatar_id:result.avatar.id});await loadAvatars();$('avatar-message').textContent='形象已导入并选中。';
+});});
+$('reload-avatars').addEventListener('click',()=>avatarAction(loadAvatars));
+$('avatar-list').addEventListener('change',()=>avatarAction(async()=>{
+  const id=$('avatar-list').value;if(!id) {showAvatar(null);return;}
+  showAvatar(null);
+  await request('/api/avatars/select',{avatar_id:id});showAvatar(id);
+}));
+$('avatar-preview').addEventListener('error',()=>{
+  if($('avatar-preview').getAttribute('src')) {$('avatar-preview').hidden=true;$('avatar-error').textContent='形象预览已失效，请重读形象检查素材完整性。';}
+});
+
+action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars); });
