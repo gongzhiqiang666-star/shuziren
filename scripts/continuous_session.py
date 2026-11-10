@@ -1,0 +1,125 @@
+"""Live idle/speech jobs, bounded raw frames and one PCM/video presentation clock."""
+from dataclasses import asdict
+from pathlib import Path
+import queue
+import threading
+import time
+from scripts.pcm_timeline import PCMTimeline
+from scripts.sample_timeline import SampleTimeline,FramePacer
+from scripts.speech_assembler import Utterance
+from scripts.v122_acceleration import windows_timer_precision
+
+
+class ContinuousSession:
+    def __init__(self,session_id,client,receiver,sink,source_directory,on_source_complete=None,on_present=None,on_started=None):
+        self.session_id=session_id;self.client=client;self.receiver=receiver;self.sink=sink
+        self.root=Path(source_directory).resolve();self.clock=SampleTimeline(session_id)
+        self.ready=queue.Queue(maxsize=4);self.stop_event=threading.Event();self.producer=None;self.pacer=None;self.errors=[]
+        self.on_source_complete=on_source_complete;self.on_present=on_present;self.on_started=on_started
+        self.leases={};self.lease_lock=threading.RLock();self.pcm=PCMTimeline(session_id,self._audio_done)
+        self.frames_written=0;self.started=threading.Event();self.finished=threading.Event();self.consumer_thread=None
+
+    def submit(self,utterance):
+        if not isinstance(utterance,Utterance) or utterance.session_id!=self.session_id or utterance.path.resolve().parent!=self.root:
+            raise ValueError('Owned utterance for this session required')
+        with self.lease_lock:
+            if self.stop_event.is_set():raise RuntimeError('Continuous session stopped')
+            if utterance.task_id in self.leases:raise ValueError('Utterance already pending')
+            self.ready.put_nowait(utterance)
+            self.leases[utterance.task_id]={'path':utterance.path,'model':False,'audio':False}
+
+    def _release(self,source_id,part):
+        with self.lease_lock:
+            lease=self.leases.get(source_id)
+            if not lease:return
+            lease[part]=True
+            if lease['model'] and lease['audio']:
+                lease['path'].unlink(missing_ok=True);del self.leases[source_id]
+
+    def _audio_done(self,event):
+        self._release(event['source_id'],'audio')
+        if self.on_source_complete:self.on_source_complete(event)
+
+    def _produce(self):
+        try:
+            while not self.stop_event.is_set():
+                try:utterance=self.ready.get_nowait()
+                except queue.Empty:utterance=None
+                if utterance:
+                    span=self.clock.reserve(self.session_id,utterance.samples);timing=asdict(span)
+                    self.pcm.append(timing,utterance.task_id,utterance.path,utterance.pcm_sha256)
+                    self.client.request('stream',timeout=max(360,utterance.samples/24000+60),session_id=self.session_id,task_id=utterance.task_id,
+                        audio=str(utterance.path),pcm_sha256=utterance.pcm_sha256,timing=timing)
+                    self._release(utterance.task_id,'model')
+                else:
+                    span=self.clock.reserve(self.session_id,8*960);timing=asdict(span);source_id='idle-'+str(span.frame_start)
+                    self.pcm.append(timing,source_id)
+                    self.client.request('idle',session_id=self.session_id,task_id=source_id,timing=timing)
+        except BaseException as error:
+            if not self.stop_event.is_set():self.errors.append(str(error));self.stop_event.set()
+
+    def _write(self,index):
+        frame=self.receiver.take(timeout=10)
+        if frame.frame_index!=index or frame.session_id!=self.session_id:raise ValueError('Presentation frame/session mismatch')
+        pcm=self.pcm.read(960)
+        if self.stop_event.is_set():raise RuntimeError('Presentation stopped')
+        self.sink.submit(index,frame.image,pcm);self.frames_written+=1
+
+    def run(self,frames=None):
+        if frames is not None and (type(frames) is not int or frames<9):raise ValueError('At least nine frames required for prebuffered output')
+        if self.producer is not None:raise RuntimeError('Session cannot be run twice')
+        self.consumer_thread=threading.current_thread();success=False
+        try:
+            self.producer=threading.Thread(target=self._produce,name='continuous-avatar-producer');self.producer.start()
+            startup_deadline=time.monotonic()+30
+            while not self.receiver.full.wait(.05):
+                if self.stop_event.is_set():raise RuntimeError('Presentation stopped during startup')
+                if time.monotonic()>=startup_deadline:raise TimeoutError('Eight real initial frames were not ready')
+            with windows_timer_precision():
+                # These initial idle frames initialize the real encoder. They are
+                # explicitly startup preroll, not steady deadline measurements.
+                for index in range(8):self._write(index)
+                origin=time.perf_counter_ns()-8*40000000
+                self.pacer=FramePacer(self.session_id,origin,start_frame=8);self.started.set()
+                if self.on_started:self.on_started()
+                index=8
+                while not self.stop_event.is_set() and (frames is None or index<frames):
+                    frame=self.receiver.take(timeout=10)
+                    if frame.frame_index!=index:raise ValueError('Output frame order changed')
+                    pcm=self.pcm.read(960);deadline=self.pacer.wait_for(self.session_id,index)
+                    if self.stop_event.is_set():break
+                    self.sink.submit(index,frame.image,pcm);self.frames_written+=1
+                    stamp=self.pacer.presented(deadline)
+                    if self.on_present:self.on_present({**stamp,'task_id':frame.task_id})
+                    index+=1
+            if self.errors:raise RuntimeError(self.errors[0])
+            success=True
+        finally:
+            self.stop_event.set()
+            if self.pacer:self.pacer.stop()
+            self.receiver.close();self.client.close();self.pcm.close()
+            if self.producer:self.producer.join(timeout=10)
+            if self.producer and self.producer.is_alive():success=False
+            try:
+                if success:self.sink.close()
+                else:self.sink.abort()
+            finally:
+                with self.lease_lock:
+                    for lease in self.leases.values():lease['path'].unlink(missing_ok=True)
+                    self.leases.clear()
+                self.finished.set()
+
+    def stop(self):
+        self.stop_event.set()
+        if self.pacer:self.pacer.stop()
+        self.receiver.close();self.client.close();self.pcm.close()
+        if self.consumer_thread is None:
+            self.sink.abort()
+            with self.lease_lock:
+                for lease in self.leases.values():lease['path'].unlink(missing_ok=True)
+                self.leases.clear()
+            self.finished.set()
+            return
+        if self.consumer_thread is not threading.current_thread() and not self.finished.wait(5):
+            self.sink.abort()
+            if not self.finished.wait(5):raise RuntimeError('Continuous output did not stop')

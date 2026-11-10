@@ -15,17 +15,18 @@ class LiveSpeechIngress:
         self.lock=threading.RLock();self.session=None;self.context=None;self.pending=None
         self.last_task_id=None;self.error=None
 
-    def _binding(self):
+    def _binding(self, verify_assets=False):
         product_id=self.tts.products.selected();voice_id=self.tts.voices.selected();avatar_id=self.avatars.selected_id()
         if not all([product_id,voice_id,avatar_id]):raise Conflict('请先选择商品、音色和形象')
-        product=self.tts.products.get(product_id);voice=self.tts.voices.get(voice_id);avatar=self.avatars.get(avatar_id)
+        product=self.tts.products.get(product_id);voice=self.tts.voices.get(voice_id)
+        avatar=(self.avatars.get if verify_assets else self.avatars.identity)(avatar_id)
         return {'product_id':product_id,'product_version':product['version'],'voice_id':voice_id,'avatar_id':avatar_id,
             'voice_audio_sha256':voice['audio_sha256'],'voice_text_sha256':voice['text_sha256'],
             'avatar_manifest_sha256':avatar['manifest_sha256']}
 
     def start(self):
         with self.lock:
-            self.stop();binding=self._binding()
+            self.stop();binding=self._binding(verify_assets=True)
             self.session=self.queue.start({key:binding[key] for key in ['product_id','product_version','voice_id','avatar_id']})
             self.context=binding;self.last_task_id=None;self.error=None
             return self.session

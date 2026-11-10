@@ -53,9 +53,9 @@ class LiveAvatarClient:
                 if self.closed:raise RuntimeError('Stopped avatar result cannot be accepted')
                 if response.get('ok') is not True:raise RuntimeError(str(response))
                 value=response['result']
-                if operation in {'render','stream'}:
+                if operation in {'render','stream','idle'}:
                     if any(value.get(key)!=values.get(key) for key in ['session_id','task_id','pcm_sha256']):raise ValueError('Avatar response binding mismatch')
-                    if digest(values['audio'])!=value['audio_sha256']:raise ValueError('Avatar audio fingerprint mismatch')
+                    if operation!='idle' and digest(values['audio'])!=value['audio_sha256']:raise ValueError('Avatar audio fingerprint mismatch')
                     if operation=='render':
                         if Path(value['output']).resolve()!=Path(values['output']).resolve():raise ValueError('Avatar output path mismatch')
                         if digest(value['output'])!=value['output_sha256']:raise ValueError('Avatar media fingerprint mismatch')

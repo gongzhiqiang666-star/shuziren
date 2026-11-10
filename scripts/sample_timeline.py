@@ -73,11 +73,12 @@ class FrameDeadline:
 
 class FramePacer:
     """Interruptible deadlines. Caller records actual sink completion separately."""
-    def __init__(self,session_id,origin_ns,fps=25,now=None):
+    def __init__(self,session_id,origin_ns,fps=25,now=None,start_frame=0):
         if not isinstance(session_id,str) or not session_id or type(origin_ns) is not int or type(fps) is not int or fps<=0:
             raise ValueError('Explicit session, integer origin and fps required')
         self.session_id=session_id;self.origin_ns=origin_ns;self.fps=fps;self.now=now or time.perf_counter_ns
-        self.stop_event=threading.Event();self.lock=threading.Lock();self.next_frame=0;self.pending=None
+        if type(start_frame) is not int or start_frame<0:raise ValueError('Nonnegative first frame required')
+        self.stop_event=threading.Event();self.lock=threading.Lock();self.next_frame=start_frame;self.pending=None
 
     def wait_for(self,session_id,frame_index):
         with self.lock:

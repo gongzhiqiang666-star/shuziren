@@ -23,9 +23,11 @@ class ResidentAvatar:
             from recovered.image_clone_video_synthesizer import VideoSynthesizer
             models=self.internal/'assets/pretrained_models'
             self.synth=VideoSynthesizer(avatar,models/'image_infer_v2/unet_v2.onnx',models/'wenet/conf/train_conformer_multi_cn.yaml',models/'wenet/exp/conformer/wenetmodel.pt',batch_size=4)
+            from scripts.verified_avatar_reader import VerifiedAvatarReader
+            self.synth._load_single_frame=VerifiedAvatarReader(avatar,self.synth.total_frames).load
         except BaseException:
             self.context.__exit__(None,None,None);raise
-        self.session=None;self.frame_offset=0;self.sample_offset=0;self.timed_mode=None;self.wenet_loads=0;self.prepared=False;self.prepare_result=None
+        self.session=None;self.frame_offset=0;self.sample_offset=0;self.timed_mode=None;self.wenet_loads=0;self.prepared=False;self.prepare_result=None;self.silence_features=None
 
     def start(self,session):
         if not isinstance(session,str) or not session:raise ValueError('Session ID required')
@@ -59,11 +61,37 @@ class ResidentAvatar:
                 sizes.append(size)
         after=(self.synth.current_frame_position,self.synth.is_forward,self.frame_offset,self.sample_offset)
         if after!=position:raise RuntimeError('Warmup changed presentation position')
+        self.silence_features=tuple(feature.copy() for feature in features)
+        for feature in self.silence_features:feature.setflags(write=False)
         self.prepare_result={'model_ready':True,'warmed_batch_sizes':sizes,'wenet_load_count':self.wenet_loads,
             'wenet_identity':id(self.synth.wenet_model),'unet_session_identity':id(self.sessions[0]),
             'silence_features_sha256':fingerprint,'seconds':time.perf_counter()-started,
             'frame_offset':self.frame_offset,'sample_offset':self.sample_offset,'output_generated':False}
         self.prepared=True;return {**self.prepare_result,'reused':False}
+
+    def idle(self,session,task_id,timing,frame_channel):
+        if not self.prepared or not self.silence_features:raise ValueError('Prepare silence features before idle output')
+        span=parse_span(timing)
+        if session!=self.session or span.session_id!=session or span.sample_start!=self.sample_offset or span.frame_start!=self.frame_offset:
+            raise ValueError('Idle session/timing mismatch')
+        if not 1<=span.frames<=8 or span.samples!=span.frames*960 or self.timed_mode is False:raise ValueError('Idle chunk must be one to eight timed frames')
+        self.timed_mode=True;sequence=self.synth._generate_frame_sequence(span.frames);offset=self.frame_offset
+        stats=self.synth.engine.perf_stats
+        for key in ['inference_ms','prepare_ms','paste_ms']:stats[key].clear()
+        stats['frames']=stats['batches']=0
+        written=0
+        try:
+            for start in range(0,len(sequence),self.synth.batch_size):
+                indices=sequence[start:start+self.synth.batch_size];images,metadata=self.synth._load_batch_frames(indices)
+                features=[self.silence_features[(start+index)%len(self.silence_features)] for index in range(len(indices))]
+                frames=self.synth._process_batch(images,metadata,features)
+                if len(frames)!=len(indices):raise RuntimeError('Idle frame missing')
+                for frame in frames:frame_channel.send(session,task_id,offset+written,frame);written+=1
+        except BaseException:frame_channel.close();raise
+        self.frame_offset+=written;self.sample_offset+=span.samples
+        return {'session_id':session,'task_id':task_id,'timing':timing,'frames':written,'raw_frames_sent':written,
+            'output':None,'output_mode':'raw-frame-stream','audio_data_sent':False,'idle':True,
+            'frame_offset':offset,'next_frame_offset':self.frame_offset,'source_first':sequence[0],'source_last':sequence[-1]}
 
     def render(self,session,task_id,audio,output,pcm_sha256,progress=None,timing=None,frame_channel=None):
         if session!=self.session:raise ValueError('Stale avatar session')

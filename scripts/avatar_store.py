@@ -50,7 +50,8 @@ class AvatarStore:
             db.row_factory = sqlite3.Row
             return [dict(row) for row in db.execute('SELECT * FROM avatars ORDER BY rowid')]
 
-    def get(self, avatar_id):
+    def identity(self, avatar_id):
+        """Verify selection identity; frame bytes must still be verified on use."""
         directory = self._directory(avatar_id)
         with sqlite3.connect(self.path) as db:
             db.row_factory = sqlite3.Row
@@ -62,6 +63,15 @@ class AvatarStore:
             manifest_path = directory/'manifest.json'
             if digest(manifest_path) != record['manifest_sha256']:
                 raise AvatarError('形象清单已变化，请重新导入')
+        except OSError:
+            raise AvatarError('形象清单缺失，请重新导入') from None
+        return record
+
+    def get(self, avatar_id):
+        record = self.identity(avatar_id)
+        directory = self._directory(avatar_id)
+        try:
+            manifest_path = directory/'manifest.json'
             manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
             for relative, expected in manifest['files'].items():
                 path = (directory/relative).resolve()
