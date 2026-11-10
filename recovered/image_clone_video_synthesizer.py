@@ -22,6 +22,7 @@ class VideoSynthesizer:
         self.engine=FrameSynthesizer(self.data_dir,model_path,device);self.engine.batch_size=self.batch_size
         self.executor=ThreadPoolExecutor(max_workers=max(1,self.batch_size),thread_name_prefix="image-clone-frame")
         self.silence_feature_path=silence_feature_path
+        self.wenet_model=None
         self._closed=False
 
     def tensor_norm_no_training(self,img_tensor,mask=None):return self.engine.tensor_norm_no_training(img_tensor,mask)
@@ -67,10 +68,16 @@ class VideoSynthesizer:
         return self._process_batch(images,metadata,audio_info[:this_batch])
 
     def extract_audio_features(self,audio_path):
-        try:from bin.image_clone.wenet.compute_ctc_att_bnf import get_weget
+        if self._closed:raise RuntimeError("VideoSynthesizer 已关闭")
+        try:from bin.image_clone.wenet.compute_ctc_att_bnf import get_weget,load_ppg_model
         except ImportError as error:raise RuntimeError("离线克隆需要 WeNet 特征提取模块") from error
-        probe=subprocess.run([shutil.which("ffprobe") or "ffprobe","-v","error","-show_entries","format=duration","-of","default=nw=1:nk=1",str(audio_path)],capture_output=True,text=True)
-        duration=float(probe.stdout.strip());frame_count=max(1,round(duration*25));features=np.asarray(get_weget(str(audio_path),self.wenet_model_path,560000))
+        probe=subprocess.run([shutil.which("ffprobe") or "ffprobe","-v","error","-show_entries","format=duration","-of","default=nw=1:nk=1",str(audio_path)],capture_output=True,text=True,check=True,timeout=30)
+        duration=float(probe.stdout.strip());frame_count=max(1,round(duration*25))
+        if self.wenet_model is None:
+            self.wenet_model=load_ppg_model(self.wenet_conf_path,self.wenet_model_path,self.device)
+        features=np.asarray(get_weget(str(audio_path),self.wenet_model,560000))
+        if features.ndim!=2 or features.shape[0]<20 or features.shape[1]!=256:
+            raise ValueError(f"WeNet特征形状无效: {features.shape}")
         max_start=max(0,len(features)-20);denominator=max(frame_count-1,1)
         return [features[int(i/denominator*max_start):int(i/denominator*max_start)+20] for i in range(frame_count)]
 
@@ -105,6 +112,7 @@ class VideoSynthesizer:
         engine=getattr(self,"engine",None);self.engine=None
         close=getattr(engine,"close",None)
         if callable(close):close()
+        self.wenet_model=None
 
     def __enter__(self):return self
     def __exit__(self,_type,_value,_traceback):self.close()
