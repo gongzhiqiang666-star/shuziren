@@ -2,7 +2,6 @@
 import os
 from urllib.parse import urlsplit
 
-from recovered.generate_structured_speech import generate_structured_speech_with_config
 from scripts.product_store import Conflict, ProductError
 
 
@@ -50,6 +49,7 @@ def generate(store, product_id, expected_version, instructions='', *, config=Non
         raise Conflict('商品已修改，请重新读取后生成')
     settings = environment_config() if config is None else config
     try:
+        from recovered.generate_structured_speech import generate_structured_speech_with_config
         result = generate_structured_speech_with_config({'title': snapshot['title'], 'content': snapshot['content']},
                                             instructions, llm_config=settings)
     except Exception:

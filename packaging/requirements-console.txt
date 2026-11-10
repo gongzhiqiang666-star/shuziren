@@ -1,0 +1,3 @@
+# HTTP model adapter. Console startup uses the standard library.
+requests==2.32.3
+PyYAML==6.0.2
