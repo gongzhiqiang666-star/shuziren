@@ -1,4 +1,5 @@
 """Owned reference voices: normalize media, pair transcript, verify fingerprints."""
+from contextlib import closing
 import hashlib
 from array import array
 import math
@@ -25,7 +26,7 @@ class VoiceStore:
         self.root=(Path(directory)/'voices').resolve()
         self.root.mkdir(parents=True,exist_ok=True)
         self.path=self.root/'voices.sqlite3'
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             version=db.execute('PRAGMA user_version').fetchone()[0]
             if version not in (0,1): raise VoiceError('不支持的音色数据库版本')
             db.executescript('''CREATE TABLE IF NOT EXISTS voices(
@@ -44,13 +45,13 @@ class VoiceStore:
         return target
 
     def list(self):
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.row_factory=sqlite3.Row
             return [dict(row) for row in db.execute('SELECT * FROM voices ORDER BY rowid')]
 
     def get(self, voice_id):
         directory=self._directory(voice_id)
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.row_factory=sqlite3.Row
             row=db.execute('SELECT * FROM voices WHERE id=?',(voice_id,)).fetchone()
         if row is None: raise VoiceError('音色不存在')
@@ -89,7 +90,7 @@ class VoiceStore:
             rms=math.sqrt(sum(value*value for value in samples)/len(samples))/32768
             if rms<.001: raise VoiceError('参考音无声或音量过低，请选择清晰的人声录音')
             text=directory/'ref_text.txt';text.write_text(transcript.strip(),encoding='utf-8')
-            with sqlite3.connect(self.path) as db:
+            with closing(sqlite3.connect(self.path)) as db, db:
                 db.execute('INSERT INTO voices VALUES(?,?,?,?,?,?)',(voice_id,name.strip(),transcript.strip(),
                     fingerprint(audio),fingerprint(text),duration))
             registered=True
@@ -104,11 +105,11 @@ class VoiceStore:
 
     def select(self, voice_id):
         self.get(voice_id)
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.execute('INSERT OR REPLACE INTO selection VALUES(1,?)',(voice_id,))
 
     def selected(self):
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             row=db.execute('SELECT voice_id FROM selection WHERE singleton=1').fetchone()
         if row: self.get(row[0])
         return row[0] if row else None

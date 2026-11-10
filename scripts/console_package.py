@@ -248,7 +248,14 @@ def main():
             command.add_argument('--archive', required=True, type=Path)
         if name == 'run':
             command.add_argument('--port', type=int)
+    migration = commands.add_parser('migrate-data')
+    migration.add_argument('--root', type=Path, required=True)
+    migration.add_argument('--source', type=Path, required=True)
     args = parser.parse_args()
+    if args.command == 'migrate-data':
+        from scripts.console_data_migration import migrate_data
+        print(json.dumps(migrate_data(args.source, args.root), ensure_ascii=False))
+        return 0
     if args.command == 'run':
         return run_release(args.root, args.port)
     if args.command in {'deploy', 'rollback'}:

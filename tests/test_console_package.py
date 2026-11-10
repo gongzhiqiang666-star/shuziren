@@ -5,9 +5,38 @@ import unittest
 from zipfile import ZipFile
 
 from scripts.console_package import MANIFEST, REQUIRED, digest, install
+from scripts.console_data_migration import migrate_data
+from scripts.local_console import InstanceLock
+from scripts.local_console_config import ConfigStore
+from scripts.product_store import ProductStore
 
 
 class ConsolePackageTests(unittest.TestCase):
+    def test_migration_snapshots_data_and_rejects_existing_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, managed = root / 'source', root / 'managed'
+            config = {'version': 1, 'port': 5218, 'runtime_root': ''}
+            ConfigStore(source).save(config)
+            products = ProductStore(source)
+            product = products.save(title='测试商品', content='迁移验证', product_index=1)
+            products.select(product['id'])
+            script = products.add_script(product, '原有话术')
+            products.select_script(product['id'], script)
+            (source / 'console.log').write_text('excluded', encoding='utf-8')
+
+            with InstanceLock(source), self.assertRaises(OSError):
+                migrate_data(source, managed)
+            self.assertFalse((managed / 'data').exists())
+            migrate_data(source, managed)
+            target = managed / 'data'
+            self.assertEqual(ConfigStore(target).load(), config)
+            self.assertEqual(ProductStore(target).selected(), product['id'])
+            self.assertEqual(ProductStore(target).selected_script(product['id']), products.selected_script(product['id']))
+            self.assertFalse((target / 'console.log').exists())
+            with self.assertRaises(FileExistsError):
+                migrate_data(source, managed)
+
     def test_install_validates_hash_and_never_overwrites_directory(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

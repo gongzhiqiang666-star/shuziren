@@ -1,4 +1,5 @@
 """Owned compatible avatar assets; never register a mutable external directory."""
+from contextlib import closing
 from ast import literal_eval
 import hashlib
 import json
@@ -25,7 +26,7 @@ class AvatarStore:
         self.root = (Path(directory)/'avatars').resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root/'avatars.sqlite3'
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             if db.execute('PRAGMA user_version').fetchone()[0] not in (0, 1):
                 raise AvatarError('不支持的形象数据库版本')
             db.executescript('''CREATE TABLE IF NOT EXISTS avatars(
@@ -46,14 +47,14 @@ class AvatarStore:
         return target
 
     def list(self):
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.row_factory = sqlite3.Row
             return [dict(row) for row in db.execute('SELECT * FROM avatars ORDER BY rowid')]
 
     def identity(self, avatar_id):
         """Verify selection identity; frame bytes must still be verified on use."""
         directory = self._directory(avatar_id)
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.row_factory = sqlite3.Row
             row = db.execute('SELECT * FROM avatars WHERE id=?', (avatar_id,)).fetchone()
         if row is None:
@@ -158,7 +159,7 @@ class AvatarStore:
             shutil.copyfile(target/'frames/000000.jpg', target/'sample.jpg')
             hashes['sample.jpg'] = digest(target/'sample.jpg')
             (target/'manifest.json').write_text(json.dumps({'version': 1, 'files': hashes}, sort_keys=True), encoding='utf-8')
-            with sqlite3.connect(self.path) as db:
+            with closing(sqlite3.connect(self.path)) as db, db:
                 db.execute('INSERT INTO avatars VALUES(?,?,?,?,?,?)',
                     (avatar_id, name.strip(), len(files), *dimensions, digest(target/'manifest.json')))
             registered = True
@@ -171,7 +172,7 @@ class AvatarStore:
 
     def select(self, avatar_id):
         self.get(avatar_id)
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.execute('INSERT OR REPLACE INTO selection VALUES(1,?)', (avatar_id,))
 
     def selected(self):
@@ -181,7 +182,7 @@ class AvatarStore:
 
     def selected_id(self):
         """Selection metadata only; callers must validate assets with get before use."""
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             row = db.execute('SELECT avatar_id FROM selection WHERE singleton=1').fetchone()
         return row[0] if row else None
 
