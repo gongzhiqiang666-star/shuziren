@@ -12,6 +12,7 @@ from scripts.live_avatar_client import LiveAvatarClient
 FIXTURE='''import json,os,sys,time
 for line in sys.stdin:
  request=json.loads(line)
+ if request['operation']=='crash':os._exit(7)
  if request['operation']=='timeout':time.sleep(30)
  if request['operation']=='big':print('x'*1048580,flush=True);time.sleep(30)
  print(json.dumps({'event':'first_frame_written'}),flush=True)
@@ -40,6 +41,18 @@ class ClientTests(unittest.TestCase):
         events=[];first=self.client.request('echo',progress=events.append);second=self.client.request('echo')
         self.assertEqual(first['pid'],second['pid']);self.assertEqual(len(events),1)
         self.client.close();self.assertEqual(self.client.process.poll(),0)
+
+    def test_crashed_worker_rejects_late_use_and_a_new_worker_runs(self):
+        with self.assertRaisesRegex(RuntimeError, 'exited before responding'):
+            self.client.request('crash', timeout=2)
+        self.assertEqual(self.client.process.poll(), 7)
+        self.assertTrue(self.client.log.closed)
+        with self.assertRaises(RuntimeError):
+            self.client.request('echo')
+        replacement = self.make_client()
+        self.assertEqual(replacement.request('echo', timeout=2)['pid'], replacement.process.pid)
+        replacement.close()
+        self.assertEqual(replacement.process.poll(), 0)
 
     def test_timeout_reaps_owned_worker(self):
         started=time.monotonic()

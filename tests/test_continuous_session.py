@@ -13,6 +13,27 @@ from scripts.speech_assembler import Utterance
 
 
 class SessionLifecycleTests(unittest.TestCase):
+    def test_cleanup_failure_does_not_hide_output_fault_or_skip_other_releases(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            audio = root / 'owned.wav'
+            audio.touch()
+            receiver, client, sink = Mock(), Mock(), Mock()
+            receiver.full = threading.Event()
+            receiver.full.set()
+            receiver.take.side_effect = RuntimeError('original output fault')
+            receiver.close.side_effect = OSError('close fault')
+            session = ContinuousSession('s', client, receiver, sink, root)
+            session._produce = lambda: None
+            session.pcm = Mock()
+            session.leases['owned'] = {'path': audio, 'model': False, 'audio': False}
+            with self.assertLogs(level='WARNING'), self.assertRaisesRegex(RuntimeError, 'original output fault'):
+                session.run(frames=9)
+            client.close.assert_called_once()
+            session.pcm.close.assert_called_once()
+            sink.abort.assert_called_once()
+            self.assertTrue(session.finished.is_set())
+            self.assertFalse(audio.exists())
     def test_reply_dropped_if_capture_stops_or_control_revision_changes(self):
         for cause in ('capture', 'automatic', 'takeover', 'expiry'):
             with self.subTest(cause=cause), tempfile.TemporaryDirectory() as temporary:

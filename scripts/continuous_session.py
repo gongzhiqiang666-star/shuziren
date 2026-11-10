@@ -1,9 +1,11 @@
 """Live idle/speech jobs, bounded raw frames and one PCM/video presentation clock."""
 from dataclasses import asdict
 from collections import deque
+import logging
 from pathlib import Path
 import queue
 import statistics
+import sys
 import threading
 import time
 from scripts.pcm_timeline import PCMTimeline
@@ -187,22 +189,40 @@ class ContinuousSession:
             if self.errors:raise RuntimeError(self.errors[0])
             success=True
         finally:
+            primary_error = sys.exc_info()[1]
+            cleanup_errors = []
+
+            def cleanup(action):
+                try:
+                    action()
+                except Exception as error:
+                    cleanup_errors.append(error)
+                    logging.warning('场次资源清理失败：%s', type(error).__name__)
+
             self.stop_event.set()
-            if self.pacer:self.pacer.stop()
+            if self.pacer:cleanup(self.pacer.stop)
             if getattr(self.sink,'clock_mode',None)=='audio':
-                if success:self.sink.finish_input()
-                else:self.sink.abort()
-            self.receiver.close();self.client.close();self.pcm.close()
-            if self.producer:self.producer.join(timeout=10)
-            if self.producer and self.producer.is_alive():success=False
+                if success:cleanup(self.sink.finish_input)
+                else:cleanup(self.sink.abort)
+            for action in (self.receiver.close, self.client.close, self.pcm.close):
+                cleanup(action)
+            if self.producer:
+                cleanup(lambda: self.producer.join(timeout=10))
+                if self.producer.is_alive():
+                    cleanup_errors.append(RuntimeError('Avatar producer did not stop'))
             try:
-                if success:self.sink.close()
-                else:self.sink.abort()
+                if success and not cleanup_errors:
+                    cleanup(self.sink.close)
+                if not success or cleanup_errors:
+                    cleanup(self.sink.abort)
             finally:
                 with self.lease_lock:
-                    for lease in self.leases.values():lease['path'].unlink(missing_ok=True)
+                    for lease in self.leases.values():
+                        cleanup(lambda: lease['path'].unlink(missing_ok=True))
                     self.leases.clear()
                 self.finished.set()
+            if cleanup_errors and primary_error is None:
+                raise RuntimeError('场次资源未能正常清理') from cleanup_errors[0]
 
     def stop(self):
         self.stop_event.set()

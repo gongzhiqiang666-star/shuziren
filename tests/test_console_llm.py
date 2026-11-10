@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from scripts.console_llm import LLMError, environment_config, generate
+from scripts.console_comment_reply import generate_reply
 from scripts.product_store import ProductStore, Conflict
 from scripts.llm_tasks import LLMTasks
 
@@ -67,6 +68,20 @@ class ConsoleLLMTests(unittest.TestCase):
         self.on_request = lambda: time.sleep(.05)
         with self.assertRaises(LLMError): self.run_generation()
         self.assertEqual(self.store.scripts(self.product['id']),[])
+
+    def test_comment_reply_recovers_after_timeout_and_service_unavailable(self):
+        self.config['timeout'] = .01
+        self.on_request = lambda: time.sleep(.08)
+        with self.assertRaises(LLMError):
+            generate_reply(self.product, '容量多少？', self.config)
+        self.on_request = None
+        self.config['timeout'] = 2
+        self.responses = [(503, 'unavailable')]
+        with self.assertRaises(LLMError):
+            generate_reply(self.product, '容量多少？', self.config)
+        self.responses = [(200, '这款茶杯容量为300毫升。')]
+        self.assertEqual(generate_reply(self.product, '容量多少？', self.config), self.responses[0][1])
+        self.assertEqual(self.store.scripts(self.product['id']), [])
 
     def test_language_retry_uses_explicit_config(self):
         self.responses = [(200,'中文不应出现在英文输出'),(200,'This ceramic cup holds three hundred millilitres.')]

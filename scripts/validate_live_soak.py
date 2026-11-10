@@ -9,7 +9,7 @@ import time
 import psutil
 
 from scripts.console_live import ConsoleLive
-from scripts.product_store import ProductStore
+from scripts.product_store import Conflict, ProductStore
 from scripts.tts_tasks import TTSTasks
 
 
@@ -31,6 +31,8 @@ def main():
     parser.add_argument('--report-directory', type=Path, required=True)
     parser.add_argument('--audio-device', type=int, required=True)
     parser.add_argument('--seconds', type=int, default=28800)
+    parser.add_argument('--verify-worker-recovery', action='store_true',
+                        help='Terminate this run’s avatar worker and restart the scene before sampling')
     args = parser.parse_args()
     if args.seconds < 1:
         parser.error('Duration must be positive')
@@ -74,17 +76,49 @@ def main():
                 continue
         return {'process_count': len(processes), 'process_tree_rss_bytes': rss, 'process_tree_cpu_percent': cpu}
 
+    def wait_for(status, timeout):
+        deadline = time.monotonic() + timeout
+        while True:
+            current = live.state()
+            if current['status'] == status:
+                return current
+            if current['status'] in {'failed', 'stopped'} or time.monotonic() >= deadline:
+                raise RuntimeError(f'Live session did not reach {status}: {current}')
+            time.sleep(.1)
+
+    def recover_worker(session):
+        with live.lock:
+            if live.client is None or live.client.process.poll() is not None:
+                raise RuntimeError('No active avatar worker owned by this scene')
+            worker = live.client.process
+            injected = time.monotonic()
+            worker.terminate()
+        worker.wait(timeout=10)
+        failed = wait_for('failed', 30)
+        failure_seconds = time.monotonic() - injected
+        replacement = live.start(args.audio_device)
+        recovered = wait_for('running', 360)
+        if replacement['id'] == session['id'] or recovered['id'] != replacement['id']:
+            raise RuntimeError('Restart did not create a new scene')
+        try:
+            live.stop(session['id'])
+        except Conflict:
+            pass
+        else:
+            raise RuntimeError('Previous scene control survived restart')
+        report['worker_recovery'] = {'terminated_pid': worker.pid, 'exit_code': worker.returncode,
+                                     'failed': failed, 'recovered': recovered, 'failure_seconds': failure_seconds,
+                                     'total_recovery_seconds': time.monotonic() - injected}
+        report['faults_tested'] = True
+        save()
+        return replacement, recovered
+
     try:
         session = live.start(args.audio_device)
         save()
-        ready_deadline = time.monotonic() + 360
-        while True:
-            state = live.state()
-            if state['status'] == 'running':
-                break
-            if state['status'] in {'failed', 'stopped'} or time.monotonic() >= ready_deadline:
-                raise RuntimeError(f'Live startup did not complete: {state}')
-            time.sleep(.2)
+        state = wait_for('running', 360)
+        if args.verify_worker_recovery:
+            session, state = recover_worker(session)
         live.configure_rotation(session['id'], [primary_id, second['id']])
         started = time.monotonic()
         tick = started
