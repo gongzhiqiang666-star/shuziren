@@ -14,6 +14,16 @@ import numpy as np
 from .image_frame_synthesizer_runtime import FrameSynthesizer
 
 
+def _mux_video_audio(video_path,audio_path,output_path):
+    # Keep the complete speech track: rounding to a 25fps frame grid can make
+    # video a few milliseconds shorter, and -shortest drops the final AAC packet.
+    result=subprocess.run([shutil.which("ffmpeg") or "ffmpeg","-nostdin","-y","-v","error",
+        "-i",str(video_path),"-i",str(audio_path),"-map","0:v:0","-map","1:a:0",
+        "-c:v","libx264","-pix_fmt","yuv420p","-c:a","aac","-movflags","+faststart",str(output_path)],
+        capture_output=True,text=True,timeout=300)
+    if result.returncode:raise RuntimeError(result.stderr[-2000:])
+
+
 class VideoSynthesizer:
     def __init__(self,data_dir,model_path,wenet_conf_path,wenet_model_path,device="cuda:0",batch_size=8,silence_feature_path=None):
         self.data_dir=Path(data_dir);self.frames_dir=self.data_dir/"frames";self.positions_dir=self.data_dir/"positions"
@@ -97,10 +107,8 @@ class VideoSynthesizer:
                     writer.write(frame)
                     if save_dir:cv2.imwrite(str(save_dir/f"frame_{start+offset:06d}.jpg"),frame)
         finally:writer.release()
-        result=subprocess.run([shutil.which("ffmpeg") or "ffmpeg","-y","-i",str(temp_video),"-i",str(audio_path),"-map","0:v:0","-map","1:a:0",
-                               "-c:v","libx264","-pix_fmt","yuv420p","-c:a","aac","-shortest","-movflags","+faststart",str(output_path)],capture_output=True,text=True)
-        temp_video.unlink(missing_ok=True)
-        if result.returncode:raise RuntimeError(result.stderr[-2000:])
+        try:_mux_video_audio(temp_video,audio_path,output_path)
+        finally:temp_video.unlink(missing_ok=True)
         return str(output_path)
 
     def close(self,wait=True):

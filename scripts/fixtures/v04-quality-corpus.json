@@ -1,0 +1,588 @@
+{
+  "version": "V04-Q1.2",
+  "purpose": "synthetic local validation only; not product facts or live scripts",
+  "thresholds": {
+    "max_normalized_cer": 0.15,
+    "min_decoded_audio_sample_ratio": 1.0,
+    "max_av_duration_difference_seconds": 0.08,
+    "required_fps": 25,
+    "min_warm_render_capacity_fps": 25,
+    "fp16_roi_mae_mean_max": 4.0,
+    "fp16_roi_mae_p95_max": 8.0,
+    "warm_frame_ms_p95_max": 40,
+    "roi_coverage_min": 0.95
+  },
+  "manual_quality_required": true,
+  "items": [
+    {
+      "id": "Q001",
+      "category": "numbers",
+      "text": "测试容量是530毫升。",
+      "expected": "测试容量是五百三十毫升。",
+      "speed": 1.0,
+      "equivalences": [
+        [
+          "五百三十",
+          "530"
+        ]
+      ],
+      "required_tokens": [
+        "五百三十毫升"
+      ]
+    },
+    {
+      "id": "Q002",
+      "category": "numbers",
+      "text": "测试尺寸是85厘米乘135厘米。",
+      "expected": "测试尺寸是八十五厘米乘一百三十五厘米。",
+      "speed": 1.0,
+      "equivalences": [
+        [
+          "一百三十五",
+          "135"
+        ],
+        [
+          "八十五",
+          "85"
+        ]
+      ],
+      "required_tokens": [
+        "八十五厘米",
+        "一百三十五厘米"
+      ]
+    },
+    {
+      "id": "Q003",
+      "category": "numbers",
+      "text": "测试重量是0.75千克。",
+      "expected": "测试重量是零点七五千克。",
+      "speed": 1.0,
+      "equivalences": [
+        [
+          "零点七五",
+          "0.75"
+        ]
+      ],
+      "required_tokens": [
+        "零点七五千克"
+      ]
+    },
+    {
+      "id": "Q004",
+      "category": "numbers",
+      "text": "测试温度是26.8摄氏度。",
+      "expected": "测试温度是二十六点八摄氏度。",
+      "speed": 1.0,
+      "equivalences": [
+        [
+          "二十六点八",
+          "26.8"
+        ]
+      ],
+      "required_tokens": [
+        "二十六点八摄氏度"
+      ]
+    },
+    {
+      "id": "Q005",
+      "category": "numbers",
+      "text": "测试电压是220伏。",
+      "expected": "测试电压是二百二十伏。",
+      "speed": 1.0,
+      "equivalences": [
+        [
+          "二百二十",
+          "两百二十",
+          "220"
+        ]
+      ],
+      "required_tokens": [
+        "二百二十伏"
+      ]
+    },
+    {
+      "id": "Q006",
+      "category": "numbers",
+      "text": "测试功率是1200瓦。",
+      "expected": "测试功率是一千二百瓦。",
+      "speed": 1.0,
+      "equivalences": [
+        [
+          "一千二百",
+          "一千两百",
+          "1200"
+        ]
+      ],
+      "required_tokens": [
+        "一千二百瓦"
+      ]
+    },
+    {
+      "id": "Q007",
+      "category": "numbers",
+      "text": "测试价格是99.90元。",
+      "expected": "测试价格是九十九点九零元。",
+      "speed": 1.0,
+      "equivalences": [
+        [
+          "九十九点九零元",
+          "九十九点九元",
+          "九十九元九角",
+          "九十九元九毛",
+          "九十九块九毛",
+          "99.90元",
+          "99.9元"
+        ]
+      ],
+      "required_tokens": [
+        "九十九点九零元"
+      ]
+    },
+    {
+      "id": "Q008",
+      "category": "numbers",
+      "text": "测试日期是2026年11月10日。",
+      "expected": "测试日期是二零二六年十一月十日。",
+      "speed": 1.0,
+      "equivalences": [
+        [
+          "二零二六",
+          "二〇二六",
+          "2026"
+        ],
+        [
+          "十一月",
+          "11月"
+        ],
+        [
+          "十日",
+          "10日"
+        ]
+      ],
+      "required_tokens": [
+        "二零二六年十一月十日"
+      ]
+    },
+    {
+      "id": "Q009",
+      "category": "numbers",
+      "text": "测试编号是九八一零二六，请逐位朗读。",
+      "expected": "测试编号是九八一零二六，请逐位朗读。",
+      "speed": 1.0,
+      "equivalences": [
+        [
+          "九八一零二六",
+          "981026"
+        ]
+      ],
+      "required_tokens": [
+        "九八一零二六"
+      ]
+    },
+    {
+      "id": "Q010",
+      "category": "numbers",
+      "text": "测试折扣是20%。",
+      "expected": "测试折扣是百分之二十。",
+      "speed": 1.0,
+      "equivalences": [
+        [
+          "百分之二十",
+          "百分之20",
+          "20%"
+        ]
+      ],
+      "required_tokens": [
+        "百分之二十"
+      ]
+    },
+    {
+      "id": "Q011",
+      "category": "brands",
+      "text": "这是华为品牌名称的读音测试。",
+      "expected": "这是华为品牌名称的读音测试。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "华为"
+      ]
+    },
+    {
+      "id": "Q012",
+      "category": "brands",
+      "text": "这是小米品牌名称的读音测试。",
+      "expected": "这是小米品牌名称的读音测试。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "小米"
+      ]
+    },
+    {
+      "id": "Q013",
+      "category": "brands",
+      "text": "这是苹果品牌名称的读音测试。",
+      "expected": "这是苹果品牌名称的读音测试。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "苹果"
+      ]
+    },
+    {
+      "id": "Q014",
+      "category": "brands",
+      "text": "这是海尔品牌名称的读音测试。",
+      "expected": "这是海尔品牌名称的读音测试。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "海尔"
+      ]
+    },
+    {
+      "id": "Q015",
+      "category": "brands",
+      "text": "这是美的品牌名称的读音测试。",
+      "expected": "这是美的品牌名称的读音测试。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "美的"
+      ]
+    },
+    {
+      "id": "Q016",
+      "category": "brands",
+      "text": "这是联想品牌名称的读音测试。",
+      "expected": "这是联想品牌名称的读音测试。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "联想"
+      ]
+    },
+    {
+      "id": "Q017",
+      "category": "brands",
+      "text": "这是佳能品牌名称的读音测试。",
+      "expected": "这是佳能品牌名称的读音测试。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "佳能"
+      ]
+    },
+    {
+      "id": "Q018",
+      "category": "brands",
+      "text": "这是索尼品牌名称的读音测试。",
+      "expected": "这是索尼品牌名称的读音测试。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "索尼"
+      ]
+    },
+    {
+      "id": "Q019",
+      "category": "brands",
+      "text": "这是特斯拉品牌名称的读音测试。",
+      "expected": "这是特斯拉品牌名称的读音测试。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "特斯拉"
+      ]
+    },
+    {
+      "id": "Q020",
+      "category": "brands",
+      "text": "这是比亚迪品牌名称的读音测试。",
+      "expected": "这是比亚迪品牌名称的读音测试。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "比亚迪"
+      ]
+    },
+    {
+      "id": "Q021",
+      "category": "mixed",
+      "text": "这个接口叫USB，请听清每个字母。",
+      "expected": "这个接口叫USB，请听清每个字母。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "USB"
+      ]
+    },
+    {
+      "id": "Q022",
+      "category": "mixed",
+      "text": "现在测试Wi-Fi连接这个词。",
+      "expected": "现在测试Wi-Fi连接这个词。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "Wi-Fi"
+      ]
+    },
+    {
+      "id": "Q023",
+      "category": "mixed",
+      "text": "现在测试Bluetooth这个英文名称。",
+      "expected": "现在测试Bluetooth这个英文名称。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "Bluetooth"
+      ]
+    },
+    {
+      "id": "Q024",
+      "category": "mixed",
+      "text": "请读出Type-C接口这个名称。",
+      "expected": "请读出Type-C接口这个名称。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "Type-C"
+      ]
+    },
+    {
+      "id": "Q025",
+      "category": "mixed",
+      "text": "现在测试HDMI接口这个名称。",
+      "expected": "现在测试HDMI接口这个名称。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "HDMI"
+      ]
+    },
+    {
+      "id": "Q026",
+      "category": "mixed",
+      "text": "这个名称读作DeepSeek。",
+      "expected": "这个名称读作DeepSeek。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "DeepSeek"
+      ]
+    },
+    {
+      "id": "Q027",
+      "category": "mixed",
+      "text": "这个名称读作OpenAI。",
+      "expected": "这个名称读作OpenAI。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "OpenAI"
+      ]
+    },
+    {
+      "id": "Q028",
+      "category": "mixed",
+      "text": "Hello，欢迎来到本机测试。",
+      "expected": "Hello，欢迎来到本机测试。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "Hello"
+      ]
+    },
+    {
+      "id": "Q029",
+      "category": "mixed",
+      "text": "Good morning，现在开始声音测试。",
+      "expected": "Good morning，现在开始声音测试。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "Good morning"
+      ]
+    },
+    {
+      "id": "Q030",
+      "category": "mixed",
+      "text": "这段文字同时包含中文和Windows。",
+      "expected": "这段文字同时包含中文和Windows。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "Windows"
+      ]
+    },
+    {
+      "id": "Q031",
+      "category": "pause",
+      "text": "欢迎来到直播间。先看材质，再看尺寸。",
+      "expected": "欢迎来到直播间。先看材质，再看尺寸。",
+      "speed": 1.0,
+      "equivalences": []
+    },
+    {
+      "id": "Q032",
+      "category": "pause",
+      "text": "别着急，停顿一下，再继续说。",
+      "expected": "别着急，停顿一下，再继续说。",
+      "speed": 1.0,
+      "equivalences": []
+    },
+    {
+      "id": "Q033",
+      "category": "pause",
+      "text": "第一，检查声音；第二，检查画面；第三，结束测试。",
+      "expected": "第一，检查声音；第二，检查画面；第三，结束测试。",
+      "speed": 1.0,
+      "equivalences": []
+    },
+    {
+      "id": "Q034",
+      "category": "pause",
+      "text": "你听清楚了吗？我们再说一遍。",
+      "expected": "你听清楚了吗？我们再说一遍。",
+      "speed": 1.0,
+      "equivalences": []
+    },
+    {
+      "id": "Q035",
+      "category": "pause",
+      "text": "请注意：这只是测试，不是商品承诺。",
+      "expected": "请注意：这只是测试，不是商品承诺。",
+      "speed": 1.0,
+      "equivalences": []
+    },
+    {
+      "id": "Q036",
+      "category": "pause",
+      "text": "请先看左边，再看右边，最后看中间。",
+      "expected": "请先看左边，再看右边，最后看中间。",
+      "speed": 1.0,
+      "equivalences": []
+    },
+    {
+      "id": "Q037",
+      "category": "pause",
+      "text": "春天到了，花开了。今天的语气要自然。",
+      "expected": "春天到了，花开了。今天的语气要自然。",
+      "speed": 1.0,
+      "equivalences": []
+    },
+    {
+      "id": "Q038",
+      "category": "pause",
+      "text": "现在开始。现在暂停。现在继续。现在结束。",
+      "expected": "现在开始。现在暂停。现在继续。现在结束。",
+      "speed": 1.0,
+      "equivalences": []
+    },
+    {
+      "id": "Q039",
+      "category": "pause",
+      "text": "杯子、桌布、台灯，三个词依次读完。",
+      "expected": "杯子、桌布、台灯，三个词依次读完。",
+      "speed": 1.0,
+      "equivalences": []
+    },
+    {
+      "id": "Q040",
+      "category": "pause",
+      "text": "这句带有括号（这里只做语音测试），请自然朗读。",
+      "expected": "这句带有括号（这里只做语音测试），请自然朗读。",
+      "speed": 1.0,
+      "equivalences": []
+    },
+    {
+      "id": "Q041",
+      "category": "speed",
+      "text": "这段话用于检查快慢语速和句尾是否完整。",
+      "expected": "这段话用于检查快慢语速和句尾是否完整。",
+      "speed": 0.5,
+      "equivalences": []
+    },
+    {
+      "id": "Q042",
+      "category": "speed",
+      "text": "这段话用于检查快慢语速和句尾是否完整。",
+      "expected": "这段话用于检查快慢语速和句尾是否完整。",
+      "speed": 0.75,
+      "equivalences": []
+    },
+    {
+      "id": "Q043",
+      "category": "speed",
+      "text": "这段话用于检查快慢语速和句尾是否完整。",
+      "expected": "这段话用于检查快慢语速和句尾是否完整。",
+      "speed": 1.0,
+      "equivalences": []
+    },
+    {
+      "id": "Q044",
+      "category": "speed",
+      "text": "这段话用于检查快慢语速和句尾是否完整。",
+      "expected": "这段话用于检查快慢语速和句尾是否完整。",
+      "speed": 1.25,
+      "equivalences": []
+    },
+    {
+      "id": "Q045",
+      "category": "speed",
+      "text": "这段话用于检查快慢语速和句尾是否完整。",
+      "expected": "这段话用于检查快慢语速和句尾是否完整。",
+      "speed": 1.5,
+      "equivalences": []
+    },
+    {
+      "id": "Q046",
+      "category": "speed",
+      "text": "这段话用于检查快慢语速和句尾是否完整。",
+      "expected": "这段话用于检查快慢语速和句尾是否完整。",
+      "speed": 2.0,
+      "equivalences": []
+    },
+    {
+      "id": "Q047",
+      "category": "long",
+      "text": "现在开始一段稍长的测试。我们先检查声音是否清晰，再检查语句之间的停顿，最后检查数字人画面是否跟随声音变化。整段内容只用于本机验收，不会自动发布或开播。请把最后这句话也完整读完。",
+      "expected": "现在开始一段稍长的测试。我们先检查声音是否清晰，再检查语句之间的停顿，最后检查数字人画面是否跟随声音变化。整段内容只用于本机验收，不会自动发布或开播。请把最后这句话也完整读完。",
+      "speed": 1.0,
+      "equivalences": []
+    },
+    {
+      "id": "Q048",
+      "category": "ending",
+      "text": "爸爸、妈妈、宝宝，分清每个字，最后说完不要截断。",
+      "expected": "爸爸、妈妈、宝宝，分清每个字，最后说完不要截断。",
+      "speed": 1.0,
+      "equivalences": []
+    },
+    {
+      "id": "Q049",
+      "category": "negation",
+      "text": "请保留不能发货这句话，不要改成可以发货。",
+      "expected": "请保留不能发货这句话，不要改成可以发货。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "不能发货",
+        "不要",
+        "可以发货"
+      ]
+    },
+    {
+      "id": "Q050",
+      "category": "ending",
+      "text": "验收最后一句：现在结束，测试完毕。",
+      "expected": "验收最后一句：现在结束，测试完毕。",
+      "speed": 1.0,
+      "equivalences": [],
+      "required_tokens": [
+        "测试完毕"
+      ]
+    }
+  ]
+}

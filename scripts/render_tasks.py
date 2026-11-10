@@ -30,6 +30,10 @@ class RenderTasks:
     def _save(self):
         temporary=self.path.with_suffix('.tmp')
         temporary.write_text(json.dumps(self.task,ensure_ascii=False),encoding='utf-8');temporary.replace(self.path)
+        job=(self.jobs/self.task['id']).resolve()
+        if job.parent==self.jobs and job.is_dir():
+            snapshot=job/'task.json';temporary=job/'task.tmp'
+            temporary.write_text(json.dumps(self.task,ensure_ascii=False),encoding='utf-8');temporary.replace(snapshot)
 
     def _inputs(self,tts_task_id,avatar_id):
         audio=self.tts.state()
@@ -47,6 +51,8 @@ class RenderTasks:
         return binding,content,audio,avatar
 
     def _validate(self,task):
+        if task['status']=='succeeded' and task.get('result',{}).get('audio_complete') is not True:
+            raise Conflict('旧视频未通过新版音轨完整性检查，请重新生成')
         binding,_,_,_=self._inputs(task['tts_task_id'],task['avatar_id'])
         if any(task.get(key)!=value for key,value in binding.items()):
             raise Conflict('视频输入已变化，请重新生成')
@@ -57,7 +63,7 @@ class RenderTasks:
                 try:self._validate(self.task)
                 except (ValueError,OSError) as error:
                     self.task.update(status='failed',error='商品、语音或形象已变化，本次视频已失效')
-                    self.task.pop('result',None);self._save()
+                    self.task['previous_result']=self.task.pop('result',None);self._save()
                     if self.process:AvatarTasks._terminate(self.process)
             return dict(self.task) if self.task else None
 
@@ -108,7 +114,7 @@ class RenderTasks:
                 self._validate(self.task)
                 if path!=(work/'output.mp4').resolve() or result['audio_sha256']!=self.task['audio_sha256']:
                     raise ProductError('视频结果路径或输入音频不符')
-                if not result.get('full_decode_passed') or digest(path)!=result['output_sha256']:
+                if not result.get('full_decode_passed') or result.get('audio_complete') is not True or digest(path)!=result['output_sha256']:
                     raise ProductError('视频产物校验失败')
                 self.task.update(status='succeeded',result=result);self._save();accepted=True
         except Exception as error:

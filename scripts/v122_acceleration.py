@@ -46,13 +46,15 @@ def configure_runtime(runtime_root):
 
 
 @contextmanager
-def accelerated_unet(cache_directory, backend="tensorrt", memory_gb=4, profile_directory=None):
+def accelerated_unet(cache_directory, backend="tensorrt", memory_gb=4, profile_directory=None, strict_fp32=False):
     """Select validated providers for UNet only; fail on provider fallback.
 
     This patches ORT's Python constructor in this process, not installed files.
     Session creation must not run concurrently with entering/leaving this scope.
     FP16 changes numerical results; evaluate quality against the CUDA baseline.
     """
+    if strict_fp32 and os.environ.get('NVIDIA_TF32_OVERRIDE')!='0':
+        raise RuntimeError('严格FP32测试需在新进程加载CUDA前设置NVIDIA_TF32_OVERRIDE=0')
     import cv2
     import onnxruntime as ort
     import torch
@@ -60,8 +62,12 @@ def accelerated_unet(cache_directory, backend="tensorrt", memory_gb=4, profile_d
     if backend not in {"cuda", "tensorrt"}:
         raise ValueError("backend must be cuda or tensorrt")
     cache = Path(cache_directory).resolve()
+    if strict_fp32:cache=cache/'tf32-disabled'
     cache.mkdir(parents=True, exist_ok=True)
     torch.set_num_threads(4)
+    if strict_fp32:
+        torch.backends.cuda.matmul.allow_tf32=False
+        torch.backends.cudnn.allow_tf32=False
     cv2.setNumThreads(2)
     original = ort.InferenceSession.__init__
     sessions = []
@@ -76,6 +82,8 @@ def accelerated_unet(cache_directory, backend="tensorrt", memory_gb=4, profile_d
             "gpu_mem_limit": str(int(memory_gb * 1024**3)),
             "arena_extend_strategy": "kSameAsRequested",
         })
+        if strict_fp32 and tuple(int(part) for part in ort.__version__.split('.')[:2])>=(1,18):
+            cuda[1]['use_tf32']='0'
         providers = [cuda, "CPUExecutionProvider"]
         if backend == "tensorrt":
             providers.insert(0, ("TensorrtExecutionProvider", {
@@ -100,6 +108,10 @@ def accelerated_unet(cache_directory, backend="tensorrt", memory_gb=4, profile_d
         expected = providers[0][0]
         if expected not in session.get_providers():
             raise RuntimeError("Requested provider failed to load: " + expected)
+        actual=session.get_provider_options().get('CUDAExecutionProvider',{})
+        for key in ('cudnn_conv_algo_search','gpu_mem_limit','arena_extend_strategy'):
+            if actual.get(key)!=cuda[1][key]:
+                raise RuntimeError('CUDA配置发生回退或未生效: '+key)
         session.disable_fallback()
         sessions.append(session)
 

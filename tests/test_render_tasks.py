@@ -40,7 +40,8 @@ class RenderTests(unittest.TestCase):
         task={'id':str(uuid.uuid4()),'status':'running',**binding};self.tasks.task=task
         work=self.tasks.jobs/task['id'];work.mkdir();(work/'audio.wav').write_bytes(b'input fixture')
         path=work/'output.mp4';path.write_bytes(b'video transport fixture')
-        result={'output':str(path),'output_sha256':digest(path),'audio_sha256':binding['audio_sha256'],'full_decode_passed':True}
+        result={'output':str(path),'output_sha256':digest(path),'audio_sha256':binding['audio_sha256'],
+                'full_decode_passed':True,'audio_complete':True}
         return task,work,result
 
     def finish(self,task,work,result):
@@ -91,6 +92,15 @@ class RenderTests(unittest.TestCase):
         reopened=RenderTasks(self.root/'runtime',self.root,self.audio)
         self.assertEqual(reopened.state()['status'],'interrupted')
         with self.assertRaises(Conflict):reopened.video_path(task['id'])
+
+    def test_legacy_unverified_tail_result_invalidated_and_record_preserved(self):
+        task,work,result=self.pending();self.finish(task,work,result)
+        self.tasks.task['result'].pop('audio_complete')
+        state=self.tasks.state()
+        self.assertEqual(state['status'],'failed');self.assertIn('previous_result',state)
+        self.assertTrue((work/'output.mp4').exists())
+        saved=json.loads((work/'task.json').read_text(encoding='utf-8'))
+        self.assertEqual(saved['id'],task['id']);self.assertEqual(saved['status'],'failed')
 
 
 if __name__=='__main__':unittest.main()
