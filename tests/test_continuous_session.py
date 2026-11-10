@@ -14,18 +14,21 @@ from scripts.speech_assembler import Utterance
 
 class SessionLifecycleTests(unittest.TestCase):
     def test_reply_dropped_if_capture_stops_or_control_revision_changes(self):
-        for cause in ('capture', 'takeover', 'expiry'):
+        for cause in ('capture', 'automatic', 'takeover', 'expiry'):
             with self.subTest(cause=cause), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
                 session = ContinuousSession('s', Mock(), Mock(), Mock(), root)
                 path = root / 'reply.wav'
                 path.touch()
                 cancelled = threading.Event()
+                automatic = threading.Event()
                 deadline = time.monotonic() + (-1 if cause == 'expiry' else 30)
                 session.submit(Utterance('s','reply','script',path,960,'wav','pcm'), priority=True,
-                               reply_guard=(cancelled,0,deadline))
+                               reply_guard=((cancelled,automatic),0,deadline))
                 if cause == 'capture':
                     cancelled.set()
+                if cause == 'automatic':
+                    automatic.set()
                 if cause == 'takeover':
                     session.set_manual(True, 0)
                     session.set_manual(False, 1)

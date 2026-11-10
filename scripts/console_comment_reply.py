@@ -31,16 +31,20 @@ class ConsoleCommentReply:
         self.closed = threading.Event()
         self.origin = None
         self.replied = deque(maxlen=50)
+        self.auto_stop = None
+        self.auto_error = None
 
     def state(self):
         with self.lock:
-            return dict(self.job)
+            return {**self.job, 'automatic': self.auto_stop is not None, 'automatic_error': self.auto_error}
 
-    def start(self, capture, live, capture_id, comment_id):
+    def start(self, capture, live, capture_id, comment_id, *, automatic_stop=None):
         with self.lock:
             if self.closed.is_set() or (self.thread and self.thread.is_alive()):
                 raise Conflict('已有评论回复任务')
             comment, origin = capture.reply_context(capture_id, comment_id)
+            if automatic_stop is not None and (self.auto_stop is not automatic_stop or automatic_stop.is_set()):
+                raise Conflict('自动回复已停止')
             binding = live.reply_context()
             settings = environment_config()
             if self.origin is not origin:
@@ -52,19 +56,20 @@ class ConsoleCommentReply:
                 if live.reply_context() != binding:
                     raise Conflict('场次已变化，请重新选择评论')
                 live.reply_session = binding[0]
-            self.job = {'status': 'generating', 'comment_id': comment_id}
-            self.thread = threading.Thread(target=self._run, args=(live, comment, origin, binding, settings),
+            self.job = {'status': 'generating', 'comment_id': comment_id, 'source': 'manual' if automatic_stop is None else 'automatic'}
+            cancellations = (origin,) if automatic_stop is None else (origin, automatic_stop)
+            self.thread = threading.Thread(target=self._run, args=(live, comment, cancellations, binding, settings),
                                            name='console-comment-reply', daemon=True)
             self.thread.start()
             return self.state()
 
-    def _run(self, live, comment, origin, binding, settings):
+    def _run(self, live, comment, cancellations, binding, settings):
         session_id, revision, voice_id, product = binding
         deadline = time.monotonic() + 90
-        guard = (origin, revision, deadline)
+        guard = (cancellations, revision, deadline)
 
         def validate():
-            if self.closed.is_set() or origin.is_set() or time.monotonic() >= deadline or live.reply_context() != binding:
+            if self.closed.is_set() or any(event.is_set() for event in cancellations) or time.monotonic() >= deadline or live.reply_context() != binding:
                 raise Conflict('场次、采集或接管状态已变化，回复已取消')
 
         def wait():
@@ -111,3 +116,53 @@ class ConsoleCommentReply:
 
     def close(self):
         self.closed.set()
+        self.stop_automatic()
+
+    def start_automatic(self, capture, live):
+        with self.lock:
+            if self.closed.is_set() or self.auto_stop is not None:
+                raise Conflict('自动回复已启动或服务正在退出')
+            capture_id, origin, cursor = capture.auto_reply_cursor()
+            binding = live.reply_context()
+            environment_config()
+            stop = threading.Event()
+            self.auto_stop = stop
+            self.auto_error = None
+            threading.Thread(target=self._automatic, args=(capture, live, capture_id, origin, cursor, binding, stop),
+                             name='console-automatic-reply', daemon=True).start()
+            return self.state()
+
+    def stop_automatic(self):
+        with self.lock:
+            if self.auto_stop is not None:
+                self.auto_stop.set()
+                self.auto_stop = None
+            self.auto_error = None
+            return self.state()
+
+    def _automatic(self, capture, live, capture_id, origin, cursor, binding, stop):
+        error = None
+        try:
+            while not stop.wait(.2):
+                with self.lock:
+                    if origin.is_set() or live.reply_context() != binding:
+                        raise Conflict('采集或场次状态已变化，请重新启用自动回复')
+                    if self.thread and self.thread.is_alive():
+                        continue
+                    comment_id = capture.next_reply_comment(capture_id, cursor)
+                    if comment_id is None:
+                        continue
+                    cursor = comment_id
+                    if self.origin is origin and comment_id in self.replied:
+                        continue
+                    self.start(capture, live, capture_id, comment_id, automatic_stop=stop)
+        except (Conflict, LLMError) as exc:
+            error = str(exc)
+        except Exception:
+            error = '自动回复调度失败，请检查采集和语音服务'
+        finally:
+            with self.lock:
+                stop.set()
+                if self.auto_stop is stop:
+                    self.auto_stop = None
+                    self.auto_error = error

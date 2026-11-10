@@ -246,7 +246,7 @@ class ConsoleLive:
             if self.session.queue_full(manual_revision):
                 raise Conflict('待播队列已满')
             control = self.session.control_state()
-            if reply_guard is not None and (reply_guard[0].is_set() or reply_guard[1] != control['control_revision']):
+            if reply_guard is not None and (any(event.is_set() for event in reply_guard[0]) or reply_guard[1] != control['control_revision']):
                 raise Conflict('评论回复已失效')
             task = self.tts.state()
             if task and task['id'] == task_id and task.get('kind') == 'reply' and reply_guard is None:

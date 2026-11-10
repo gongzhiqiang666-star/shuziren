@@ -93,8 +93,8 @@ class ContinuousSession:
                 lease=self.leases[entry[2].task_id]
                 guard=lease.get('reply_guard')
                 if guard is not None:
-                    cancelled,revision,deadline=guard
-                    if cancelled.is_set() or revision!=self.control_revision or time.monotonic()>=deadline:
+                    cancellations,revision,deadline=guard
+                    if any(event.is_set() for event in cancellations) or revision!=self.control_revision or time.monotonic()>=deadline:
                         lease['path'].unlink(missing_ok=True)
                         del self.leases[entry[2].task_id]
                         continue

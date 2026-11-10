@@ -3,6 +3,7 @@ from collections import deque
 import logging
 from pathlib import Path
 import threading
+import time
 import uuid
 
 from recovered.taobao_control_capture import TaobaoControlDanmuCapture
@@ -29,7 +30,8 @@ class ConsoleTaobao:
         with self.lock:
             return {'status': self.status, 'error': self.error, 'live_id': self.live_id, 'capture_id': self.capture_id,
                     'saved_login': self.storage.is_file(), 'count': self.count,
-                    'comments': list(self.comments)}
+                    'comments': [{key: value for key, value in item.items() if key != 'received_at'}
+                                 for item in self.comments]}
 
     def login(self):
         return self._start(None)
@@ -83,7 +85,8 @@ class ConsoleTaobao:
                             break
                         self.count += 1
                         self.comments.append({'id': self.count, 'nickname': comment['nickname'][:120],
-                                              'content': comment['content'][:500], 'time': comment['time'][:80]})
+                                              'content': comment['content'][:500], 'time': comment['time'][:80],
+                                              'received_at': time.monotonic()})
         except TaobaoLoginRequired:
             final, error = 'login_required', '淘宝登录已失效，请重新登录'
         except Exception as exc:
@@ -110,6 +113,20 @@ class ConsoleTaobao:
             if comment is None:
                 raise Conflict('评论已离开当前采集列表')
             return dict(comment), self.cancel
+
+    def auto_reply_cursor(self):
+        with self.lock:
+            if self.status != 'capturing' or self.cancel.is_set():
+                raise Conflict('请先启动淘宝评论采集')
+            return self.capture_id, self.cancel, self.count
+
+    def next_reply_comment(self, capture_id, after):
+        with self.lock:
+            if self.capture_id != capture_id or self.status != 'capturing' or self.cancel.is_set():
+                raise Conflict('评论采集已停止或切换')
+            cutoff = time.monotonic() - 30
+            return next((item['id'] for item in self.comments
+                         if item['id'] > after and item['received_at'] >= cutoff), None)
 
     def stop(self):
         with self.lock:

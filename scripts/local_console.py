@@ -287,6 +287,14 @@ def create_server(store, port=None):
                     raise ConfigError("请求必须为对象")
                 path = urlsplit(self.path).path
                 with lock:
+                    if path == '/api/taobao/auto-reply':
+                        if set(value) != {'enabled'} or type(value['enabled']) is not bool:
+                            raise ProductError('自动回复设置无效')
+                        if not value['enabled']:
+                            return self.respond(200, {'reply': replies.stop_automatic()})
+                        if live_manager is None:
+                            raise Conflict('请先启动本机场次')
+                        return self.respond(202, {'reply': replies.start_automatic(taobao, live_manager)})
                     if path == '/api/taobao/reply':
                         if set(value) != {'capture_id', 'comment_id'} or not isinstance(value['capture_id'], str) or type(value['comment_id']) is not int or value['comment_id'] < 1:
                             raise ProductError('请选择有效评论')
