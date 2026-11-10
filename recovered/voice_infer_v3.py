@@ -37,7 +37,7 @@ class VoiceSynthesizer(CacheMixin):
 
     @classmethod
     def from_voice_dir(cls, models_base_path, voice_base_dir, voice_id, device="cuda", voice_infer_version=None):
-        audio, text = resolve_reference(voice_base_dir)
+        audio, text = resolve_reference(Path(voice_base_dir) / voice_id)
         return cls(models_base_path, audio, text, device, voice_id, voice_infer_version)
 
     def _get_temp_path(self):

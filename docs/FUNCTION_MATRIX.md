@@ -63,7 +63,7 @@
 | MED-004 | 本地音色克隆预处理 | `clone_voice_local` Ghidra 主体 | `voice_clone_infer_api.py`, `clone_manager.py` | 静态验证通过 | 真实 FFmpeg/ASR、模型资源、坏音频和中文路径 |
 | MED-005 | ZipVoice 本地语音推理 | `voice_infer.pyd` | `voice_infer.py` | 静态验证通过 | 真实权重、CPU/GPU、缓存、并发和音质 |
 | MED-006 | OmniVoice 本地语音推理 | `voice_infer_v2.pyd` | `voice_infer_v2.py` | 静态验证通过 | 真实权重、显存、参考音隔离、缓存和音质 |
-| MED-007 | IndexTTS 本地语音推理 | `voice_infer_v3.pyd` | `voice_infer_v3.py` | 静态验证通过 | 真实权重、显存、长文本、速度变化和音质 |
+| MED-007 | IndexTTS 本地语音推理 | `voice_infer_v3.pyd` | `voice_infer_v3.py` | 开发中 | V03修复音色子目录选择，两个音色原生路径差分通过；真实重建合成、缓存、显存、长文本、速度和音质仍待验收 |
 | MED-008 | 马来语/越南语本地语音 | 对应 `voice_infer_*_local.pyd` | `voice_infer_malai_local.py`, `voice_infer_vietnam_local.py` | 开发中 | 真实模型、语言发音、CPU/GPU |
 | MED-009 | Minimax/CosyVoice 在线音色克隆与生成 | `start_voice_clone_*`、在线语音模块 | `online_voice_generate.py`, `cosyvoice.py` | 静态验证通过 | 真实账号、区域端点、上传、鉴权和计费错误 |
 | MED-010 | 离线形象克隆 | `start_clone_local/clone_video_local` | `clone_manager.py`, `image_clone_*` | 静态验证通过 | 真实模型、GPU、不同分辨率、KT 板和资源回收 |
@@ -97,14 +97,14 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 42 |
-| 开发中 | 6 |
+| 静态验证通过 | 41 |
+| 开发中 | 7 |
 | 已分析 | 10 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |
 | 合计 | 58 |
 
-当前最大缺口不是模块是否存在，而是 Windows 原程序差分和真实环境验收尚未开始。下一阶段应优先闭环 P0 主路径：`SYS-001~005`、`LIV-001~005`、`MED-001~010`，同时为所有“开发中/已分析”条目补齐可重复测试。
+当前已有局部Windows原生差分和V00～V02本机流程证据，仍不足以将完整原功能标为端到端通过。下一阶段优先闭环 P0 主路径：`SYS-001~005`、`LIV-001~005`、`MED-001~010`，并为“开发中/已分析”条目补齐真实测试。
 
 ## 证据索引
 
