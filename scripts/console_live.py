@@ -1,7 +1,7 @@
 """Run a local live session from the console's existing selections."""
 import logging
 from pathlib import Path
-from queue import Full
+from queue import Empty, Full, SimpleQueue
 import sys
 import threading
 import uuid
@@ -22,11 +22,13 @@ class ConsoleLive:
         self.cancel = threading.Event()
         self.status = {'status': 'idle'}
         self.rotation = None
+        self.completed = SimpleQueue()
 
     def state(self):
         with self.lock:
             state = dict(self.status)
             if self.session is not None:
+                state['frames'] = self.session.frames_written
                 state.update(self.session.control_state())
             return state
 
@@ -40,6 +42,7 @@ class ConsoleLive:
             session_id = uuid.uuid4().hex
             self.status = {'id': session_id, 'status': 'preparing', 'audio_device': audio_device, 'frames': 0}
             self.rotation = None
+            self.completed = SimpleQueue()
             self.thread = threading.Thread(target=self._run, args=(session_id, audio_device), name='console-live')
             self.thread.start()
             return self.state()
@@ -94,22 +97,13 @@ class ConsoleLive:
                         self.status.update(status='running')
 
             def presented(row):
-                with self.lock:
-                    self.status['frames'] = row['frame_index'] + 1
                 if self.cancel.is_set():
                     session.stop_event.set()
 
             def source_complete(event):
                 source_id = event['source_id']
                 if not source_id.startswith('idle-'):
-                    with self.lock:
-                        self.status['last_completed_task_id'] = source_id
-                        if self.rotation and self.rotation['task_id'] == source_id:
-                            item = self.rotation['items'][self.rotation['index']]
-                            self.status['last_rotation_product_id'] = item['product_id']
-                            self.status['rotation_completed'] += 1
-                            self.rotation['index'] = (self.rotation['index'] + 1) % len(self.rotation['items'])
-                            self.rotation['task_id'] = None
+                    self.completed.put(source_id)
 
             session = ContinuousSession(binding.id, client, receiver, sink, assembler.root,
                                         on_started=started, on_present=presented,
@@ -129,6 +123,9 @@ class ConsoleLive:
         finally:
             rotation_stop.set()
             with self.lock:
+                self._record_completed()
+                if self.session is not None:
+                    self.status['frames'] = self.session.frames_written
                 self.session = None
                 self.client = None
                 self.status.update(status='stopping')
@@ -146,6 +143,20 @@ class ConsoleLive:
                 ole32.CoUninitialize()
             with self.lock:
                 self.status.update(status='failed' if error else 'stopped', error=error)
+
+    def _record_completed(self):
+        while True:
+            try:
+                source_id = self.completed.get_nowait()
+            except Empty:
+                return
+            self.status['last_completed_task_id'] = source_id
+            if self.rotation and self.rotation['task_id'] == source_id:
+                item = self.rotation['items'][self.rotation['index']]
+                self.status['last_rotation_product_id'] = item['product_id']
+                self.status['rotation_completed'] += 1
+                self.rotation['index'] = (self.rotation['index'] + 1) % len(self.rotation['items'])
+                self.rotation['task_id'] = None
 
     def set_manual(self, session_id, enabled, revision):
         with self.lock:
@@ -181,6 +192,7 @@ class ConsoleLive:
             with self.lock:
                 if self.cancel.is_set() or self.status['status'] != 'running' or self.session is None:
                     continue
+                self._record_completed()
                 rotation = self.rotation
                 control = self.session.control_state()
                 if pending is None and (not rotation or rotation['task_id'] or control['manual'] or self.session.queue_full()):
