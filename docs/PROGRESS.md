@@ -254,3 +254,5 @@ V02整关放行依据见[验收审计](evidence/v02-acceptance.md)。历史记�
 详见 [V00证据](evidence/v00-baseline.md)。日志/媒体仅保留本机被忽略目录，未提交商业包/权重/人物素材/凭据。每完成任务按编号汇报改动、实际结果、边界和下一项。
 
 V04-05f 已修正原版裁切轴、RGB输入、源图掩码和输出转回BGR。第39帧的两个图像张量与原版逐元素一致。CPU固定帧下两句语音的嘴周均值差由0.061增至14.05/255，语音与静音由0.046增至8.93/255，重复输入一致。帧诊断回归通过。证据见 logs/validation/v04-native-preprocess-15 和 v04-cpu-feature-response-04。GPU批次、融合画质与直播仍待复验。
+
+V04-05g GPU复验已启动。复用指纹一致的50条语音，按原协议依次重跑 CUDA FP32、TensorRT FP16 和逐条比较。CUDA 首三条的165个同源帧对，跨话术嘴周平均像素差由1.21～1.23/255增至9.82～11.97/255。此为编码后响应诊断，仍需全批结果及完整播放验收。证据见 logs/validation/v04-cuda-mouth-before-01、v04-cuda-mouth-after-01 和 v04-corrected-gpu/run-49832e1e562144a18031efb1c5e53a18。
