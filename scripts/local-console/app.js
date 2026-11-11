@@ -1,5 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
+const productFactsText = product => product?.extra?.product_facts === undefined ? '' : JSON.stringify(product.extra.product_facts, null, 2);
 let token = '';
 function clearChecks() { $('checks').replaceChildren(); $('scope').textContent = '尚未检查当前资源。'; }
 $('runtime-root').addEventListener('input', clearChecks);
@@ -65,7 +66,7 @@ let taskTimer = null;
 let consoleClosed = false;
 function requireSavedProduct() {
   if (!currentProduct) throw new Error('请先保存或选择商品');
-  if ($('product-title').value !== currentProduct.title || $('product-content').value !== currentProduct.content || $('product-index').value !== String(currentProduct.product_index))
+  if ($('product-title').value !== currentProduct.title || $('product-content').value !== currentProduct.content || $('product-index').value !== String(currentProduct.product_index) || $('product-facts').value !== productFactsText(currentProduct))
     throw new Error('商品有未保存修改，请先保存商品');
 }
 async function loadTask() {
@@ -92,6 +93,7 @@ function showProduct(product) {
   $('product-index').value = product?.product_index ?? '';
   $('product-title').value = product?.title ?? '';
   $('product-content').value = product?.content ?? '';
+  $('product-facts').value = productFactsText(product);
   $('product-version').textContent = product ? '当前商品：' + product.title + ' · 版本 ' + product.version : '正在新增商品';
   $('script-text').value = ''; $('scripts-list').replaceChildren();
 }
@@ -145,6 +147,13 @@ $('product-list').addEventListener('change', () => productAction(async () => {
 $('product-form').addEventListener('submit', event => { event.preventDefault(); productAction(async () => {
   const value = {title:$('product-title').value, content:$('product-content').value, product_index:$('product-index').value};
   if (currentProduct) Object.assign(value, {product_id:currentProduct.id,version:currentProduct.version});
+  const facts = $('product-facts').value.trim();
+  if (facts || productFactsText(currentProduct)) {
+    try { value.product_facts = facts ? JSON.parse(facts) : {}; }
+    catch { throw new Error('商品事实必须是有效的 JSON 对象'); }
+    if (!value.product_facts || typeof value.product_facts !== 'object' || Array.isArray(value.product_facts))
+      throw new Error('商品事实必须是有效的 JSON 对象');
+  }
   const result = await request('/api/products', value);
   await request('/api/products/select', {product_id:result.product.id});
   await loadProducts(); $('product-message').textContent = '商品已保存';
@@ -243,7 +252,7 @@ async function loadTTS() {
   ttsState=response.task;
   const labels={running:'正在合成',succeeded:'语音已生成',cancelled:'已取消合成',interrupted:'上次合成已中断',failed:'语音不可用'};
   $('tts-status').textContent=ttsState ? (labels[ttsState.status] || ttsState.status)+' · '+(ttsState.product_title || '商品')+' · 版本 '+ttsState.product_version+(ttsState.result?.cache_hit ? ' · 已复用相同输入的语音' : '')+(ttsState.error ? '：'+ttsState.error : '') : '暂无合成任务';
-  const saved=currentProduct && $('product-title').value===currentProduct.title && $('product-content').value===currentProduct.content && $('product-index').value===String(currentProduct.product_index);
+  const saved=currentProduct && $('product-title').value===currentProduct.title && $('product-content').value===currentProduct.content && $('product-index').value===String(currentProduct.product_index) && $('product-facts').value===productFactsText(currentProduct);
   const matches=ttsState?.status==='succeeded' && saved && ttsState.product_id===currentProduct.id && ttsState.script_id===currentScriptId && ttsState.voice_id===$('voice-list').value && ttsState.speed===Number($('tts-speed').value);
   if(matches) {
     if(ttsPreviewTask!==ttsState.id) {$('tts-preview').src='/api/tts/audio?task_id='+encodeURIComponent(ttsState.id);$('tts-preview').load();ttsPreviewTask=ttsState.id;}
@@ -270,7 +279,7 @@ $('tts-cancel').addEventListener('click',()=>ttsAction(async()=>{
 }));
 $('tts-refresh').addEventListener('click',()=>ttsAction(loadTTS));
 $('tts-preview').addEventListener('error',()=>{if($('tts-preview').getAttribute('src')) $('tts-error').textContent='音频已失效或无法加载，请刷新任务状态。';});
-for(const id of ['product-title','product-content','product-index']) $(id).addEventListener('input',clearTTSPreview);
+for(const id of ['product-title','product-content','product-index','product-facts']) $(id).addEventListener('input',clearTTSPreview);
 $('tts-speed').addEventListener('input',clearTTSPreview);
 window.addEventListener('pagehide',()=>{clearTimeout(ttsTimer);clearTTSPreview();});
 renderTTSButtons();
@@ -365,7 +374,7 @@ async function loadRender() {
   renderState=response.task;
   const labels={running:'正在生成视频',succeeded:'视频已生成',cancelled:'视频生成已取消',interrupted:'上次视频生成已中断',failed:'视频不可用'};
   $('render-status').textContent=renderState ? (labels[renderState.status] || renderState.status)+' · '+renderState.product_title+' · '+renderState.avatar_name+' · '+(renderState.render_profile==='trt-nvenc' ? '加速预览' : '标准生成')+(renderState.error ? '：'+renderState.error : '') : '暂无视频生成任务';
-  const saved=currentProduct && $('product-title').value===currentProduct.title && $('product-content').value===currentProduct.content && $('product-index').value===String(currentProduct.product_index);
+  const saved=currentProduct && $('product-title').value===currentProduct.title && $('product-content').value===currentProduct.content && $('product-index').value===String(currentProduct.product_index) && $('product-facts').value===productFactsText(currentProduct);
   const matches=renderState?.status==='succeeded' && saved && renderState.product_id===currentProduct.id && renderState.script_id===currentScriptId && renderState.tts_task_id===ttsState?.id && renderState.tts_task_id===ttsPreviewTask && renderState.avatar_id===$('avatar-list').value;
   if(matches) {
     if(renderPreviewTask!==renderState.id) {$('render-preview').src='/api/render/video?task_id='+encodeURIComponent(renderState.id);$('render-preview').load();renderPreviewTask=renderState.id;}
