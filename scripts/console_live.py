@@ -279,7 +279,11 @@ class ConsoleLive:
             while utterance is None:
                 utterance = self.assembler.push(self.ingress.take(timeout=2))
             try:
-                self.session.submit(utterance, priority=priority, manual_revision=manual_revision, reply_guard=reply_guard)
+                options = {}
+                if task and task['id'] == task_id and task.get('fact_deadline') is not None:
+                    options['fact_deadline'] = task['fact_deadline']
+                self.session.submit(utterance, priority=priority, manual_revision=manual_revision,
+                                    reply_guard=reply_guard, **options)
             except Full:
                 utterance.path.unlink(missing_ok=True)
                 raise Conflict('待播队列已满') from None

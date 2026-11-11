@@ -51,6 +51,16 @@ def script_facts_current(product, created_at):
     return product_prompt_info(product, now=created) == product_prompt_info(product)
 
 
+def product_fact_deadline(product):
+    now = datetime.now(timezone.utc)
+    names = json.loads(product_prompt_info(product, now=now)["content"]) if (
+        "product_facts" in (product.get("extra") or {})) else {}
+    facts = (product.get("extra") or {}).get("product_facts", {})
+    deadlines = [datetime.fromisoformat(facts[name]["expires_at"].replace("Z", "+00:00")).timestamp()
+                 for name in names if facts[name].get("expires_at") is not None]
+    return min(deadlines, default=None)
+
+
 def index_value(value):
     if isinstance(value, bool) or not isinstance(value, (str, int)):
         raise ProductError("商品编号必须为整数或整数字符串")

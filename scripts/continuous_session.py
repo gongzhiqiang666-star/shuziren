@@ -42,7 +42,7 @@ class ContinuousSession:
             context['pcm_read']={'stage':stage,'since_ns':since}
         return context
 
-    def submit(self,utterance,*,priority=False,manual_revision=None,reply_guard=None):
+    def submit(self,utterance,*,priority=False,manual_revision=None,reply_guard=None,fact_deadline=None):
         if not isinstance(utterance,Utterance) or utterance.session_id!=self.session_id or utterance.path.resolve().parent!=self.root:
             raise ValueError('Owned utterance for this session required')
         with self.lease_lock:
@@ -59,6 +59,7 @@ class ContinuousSession:
             self.submission_order+=1
             self.leases[utterance.task_id]={'path':utterance.path,'model':False,'audio':False}
             if reply_guard is not None:self.leases[utterance.task_id]['reply_guard']=reply_guard
+            if fact_deadline is not None:self.leases[utterance.task_id]['fact_deadline']=fact_deadline
 
     def control_state(self):
         with self.lease_lock:
@@ -109,6 +110,11 @@ class ContinuousSession:
                 entry=self.ready.get_nowait()
                 self.ready.task_done()
                 lease=self.leases[entry[2].task_id]
+                fact_deadline = lease.get('fact_deadline')
+                if fact_deadline is not None and time.time() >= fact_deadline:
+                    lease['path'].unlink(missing_ok=True)
+                    del self.leases[entry[2].task_id]
+                    continue
                 guard=lease.get('reply_guard')
                 if guard is not None:
                     cancellations,revision,deadline=guard

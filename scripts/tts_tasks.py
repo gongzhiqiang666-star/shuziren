@@ -8,7 +8,7 @@ import threading
 import time
 import uuid
 
-from scripts.product_store import Conflict, ProductError, ProductStore
+from scripts.product_store import Conflict, ProductError, ProductStore, product_fact_deadline
 from scripts.media_runtime import runtime_python
 from scripts.voice_store import VoiceStore
 
@@ -171,6 +171,9 @@ class TTSTasks:
         if kind:self.task['kind']=kind
         self.task.update(voice_audio_sha256=voice['audio_sha256'],voice_text_sha256=voice['text_sha256'])
         self.task.update(product_title=product['title'],speed=speed,language=language,use_cache=use_cache)
+        deadline = product_fact_deadline(product)
+        if deadline is not None:
+            self.task['fact_deadline'] = deadline
         self._save()
         self._retire_live_audio(previous)
         request={'voice_id':voice['id'],'text':text,'speed':speed,'language':language,'use_cache':use_cache}
