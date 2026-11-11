@@ -503,6 +503,12 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         data = products()
                         data.save_business_metrics(**value)
                         return self.respond(200, {"records": data.business_metrics(value["product_id"])})
+                    if path == "/api/products/business-metrics/import":
+                        if set(value) != {"product_id", "csv"} or not isinstance(value["product_id"], str):
+                            raise ProductError("经营报表导入字段无效")
+                        data = products()
+                        count = data.import_business_metrics(value["product_id"], value["csv"])
+                        return self.respond(200, {"imported": count, "records": data.business_metrics(value["product_id"])})
                     if path == "/api/llm/generate":
                         if set(value) != {"product_id", "version", "instructions"} or not isinstance(value['product_id'], str):
                             raise ProductError("生成字段无效")

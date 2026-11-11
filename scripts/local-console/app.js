@@ -100,6 +100,7 @@ function showProduct(product) {
   $('script-text').value = ''; $('scripts-list').replaceChildren();
   $('business-metrics').hidden = !product;
   $('business-metrics-form').reset();
+  $('business-import-form').reset();
   $('metrics-status').textContent = '';
   $('metrics-error').textContent = '';
   $('metrics-records').replaceChildren();
@@ -143,6 +144,31 @@ $('business-metrics-form').addEventListener('submit', async event => {
     if (currentProduct === product) {
       showBusinessMetrics(result.records);
       $('metrics-status').textContent = '经营数据已保存';
+    }
+  } catch (error) {
+    if (currentProduct === product) $('metrics-error').textContent = error.message;
+  } finally { button.disabled = false; }
+});
+$('business-import-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const product = currentProduct;
+  const file = $('metrics-csv').files[0];
+  if (!product || !file) return;
+  const button = event.currentTarget.querySelector('button[type="submit"]');
+  if (button.disabled) return;
+  button.disabled = true;
+  $('metrics-error').textContent = '';
+  $('metrics-status').textContent = '';
+  try {
+    if (file.size >= 1048576) throw new Error('CSV 文件必须小于 1 MiB');
+    const bytes = await file.arrayBuffer();
+    let csv;
+    try { csv = new TextDecoder('utf-8', {fatal:true}).decode(bytes); }
+    catch { throw new Error('请使用 UTF-8 编码的 CSV 文件'); }
+    const result = await request(metricsRoute + '/import', {product_id:product.id, csv});
+    if (currentProduct === product) {
+      showBusinessMetrics(result.records);
+      $('metrics-status').textContent = `已导入 ${result.imported} 行经营数据`;
     }
   } catch (error) {
     if (currentProduct === product) $('metrics-error').textContent = error.message;

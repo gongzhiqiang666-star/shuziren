@@ -31,6 +31,16 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(result['records'][0]['clicks'], 0)
         self.assertIsNone(result['records'][0]['orders'])
         self.assertEqual(self.call(route + '?product_id=' + product['id']), (200, result))
+        header = 'source,period_start,period_end,scope,clicks,stock\n'
+        report = header + '人工盘点,2026-11-02,2026-11-02,商品,,0\n'
+        upload = {'product_id': product['id'], 'csv': report}
+        self.assertEqual(self.call(route + '/import', upload, **{'X-Console-Token': 'bad'})[0], 403)
+        status, imported = self.call(route + '/import', upload)
+        self.assertEqual((status, imported['imported']), (200, 1))
+        self.assertEqual(imported['records'][0]['stock'], 0)
+        self.assertIsNone(imported['records'][0]['clicks'])
+        self.assertEqual(self.call(route + '/import', {**upload, 'csv': report + 'bad\n'})[0], 400)
+        self.assertEqual(len(self.call(route + '?product_id=' + product['id'])[1]['records']), 2)
 
     def test_rotation_event_pages_preserve_order_and_scene_isolation(self):
         store = ProductStore(self.directory.name)
