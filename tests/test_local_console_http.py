@@ -25,6 +25,15 @@ class ConsoleHTTPTests(unittest.TestCase):
         item = {'product_id': product['id'], 'product_version': product['version'], 'script_id': script}
         store.record_live_session('scene', 100, started_at=101, ended_at=110, status='stopped', frames=225)
         store.record_live_session('another-scene', 120)
+        store.record_live_control('scene', 1, True, 103)
+        store.record_live_control('scene', 2, False, 104)
+        store.record_live_control('another-scene', 1, True, 121)
+        status, controls = self.call('/api/live/control/events?session_id=scene')
+        self.assertEqual(status, 200)
+        self.assertEqual(controls['events'], [
+            {'revision': 1, 'manual': True, 'occurred_at': 103},
+            {'revision': 2, 'manual': False, 'occurred_at': 104},
+        ])
         status, history = self.call('/api/live/history')
         self.assertEqual(status, 200)
         self.assertEqual([row['session_id'] for row in history['sessions']], ['another-scene', 'scene'])

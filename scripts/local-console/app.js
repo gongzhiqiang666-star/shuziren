@@ -447,6 +447,7 @@ function resetRotationEvents() {
   $('live-rotation-events-list').replaceChildren();
   $('live-rotation-events-status').textContent = '';
   $('live-event-session').textContent = '';
+  $('live-event-controls').replaceChildren();
   $('live-rotation-events').textContent = '查看口播记录';
 }
 const shiftDrafts = new Map();
@@ -565,8 +566,16 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
   if ($('live-event-product').value) query.set('product_id', $('live-event-product').value);
   const taskId = $('live-event-task').value.trim();
   if (taskId) query.set('task_id', taskId);
-  const result = await request('/api/live/rotation/events?' + query);
+  const [result, controls] = await Promise.all([
+    request('/api/live/rotation/events?' + query),
+    request('/api/live/control/events?' + new URLSearchParams({session_id:sessionId})),
+  ]);
   if (($('live-event-scene').value || liveSession.id) !== sessionId) return;
+  $('live-event-controls').replaceChildren(...controls.events.map(event => {
+    const item = document.createElement('li');
+    item.textContent = `${new Date(event.occurred_at * 1000).toLocaleString()} · ${event.manual ? '手动接管' : '恢复自动调度'}`;
+    return item;
+  }));
   const history = result.session;
   $('live-event-session').textContent = history?.ended_at
     ? `${liveLabels[history.status]} · ${history.frames} 帧 · ${new Date((history.started_at ?? history.requested_at) * 1000).toLocaleString()} 至 ${new Date(history.ended_at * 1000).toLocaleString()}`

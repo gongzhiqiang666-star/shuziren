@@ -218,6 +218,12 @@ def main():
             call('/api/live/stop', {'session_id': session_id})
             stopped = live(lambda state: state['id'] == session_id and state['status'] == 'stopped')
             if cycle == 0 and interactions:
+                controls = call(f'/api/live/control/events?session_id={session_id}')['events']
+                if (stopped.get('session_event_error')
+                        or [event['manual'] for event in controls] != [True, False] * (interactions + 1)
+                        or [event['revision'] for event in controls] != list(range(1, len(controls) + 1))):
+                    raise RuntimeError('Control event history did not match manual takeover and resume')
+                report['control_event_count'] = len(controls)
                 events = []
                 cursor = 0
                 while True:

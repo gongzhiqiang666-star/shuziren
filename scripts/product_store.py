@@ -152,6 +152,14 @@ class ProductStore:
                 VALUES (?, ?, ?, ?) ON CONFLICT(session_id, revision) DO NOTHING
             """, (session_id, revision, manual, occurred_at))
 
+    def live_control_events(self, session_id):
+        with self.connect() as db:
+            rows = db.execute("""
+                SELECT revision, manual, occurred_at
+                FROM live_control_events WHERE session_id = ? ORDER BY revision
+            """, (session_id,)).fetchall()
+        return [{**dict(row), 'manual': bool(row['manual'])} for row in rows]
+
     def live_session_record(self, session_id):
         with self.connect() as db:
             row = db.execute('SELECT * FROM live_sessions WHERE session_id = ?', (session_id,)).fetchone()
