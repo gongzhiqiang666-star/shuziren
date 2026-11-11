@@ -5,6 +5,7 @@ from __future__ import annotations
 import queue
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import wave
@@ -153,7 +154,7 @@ class VideoStreamManager:
     def init_player(self):shared.initialize_output_player(self)
 
     def process_and_manage_audio(self):
-        current_path=None;self.tape.start(self.tape._play_index)
+        current_path=None
         while not self.stop_event.is_set() and self.player and self.player.running:
             tape_frames=self.tape.take_frames(self._batch_size,2.0)
             if not tape_frames:continue
@@ -178,9 +179,20 @@ class VideoStreamManager:
                 with self._seek_lock:self._consume_pending_seek_locked()
 
     def start_playing(self):
+        if self.worker_thread is not None and self.worker_thread.is_alive():
+            return True
         if self.player is None:self.init_player()
         self.stop_event.clear();self.tape.start(self.tape._play_index)
-        threading.Thread(target=self.player.start_playing,daemon=True).start();self.worker_thread=threading.Thread(target=self.process_and_manage_audio,daemon=True);self.worker_thread.start();return True
+        try:
+            if sys.platform == "win32":
+                self.player.start_playing()
+            else:
+                threading.Thread(target=self.player.start_playing,daemon=True).start()
+        except BaseException:
+            self.stop_event.set()
+            self.tape.stop()
+            raise
+        self.worker_thread=threading.Thread(target=self.process_and_manage_audio,daemon=True);self.worker_thread.start();return True
 
     def stop_playing(self):
         self.stop_event.set();self.tape.stop()
