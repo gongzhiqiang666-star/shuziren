@@ -1,6 +1,7 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
+import socket
 import tempfile
 import threading
 import time
@@ -22,6 +23,7 @@ class ConsoleLLMTests(unittest.TestCase):
         self.responses = [(200, '这款茶杯容量为300毫升，请按自己的需要选择。')]
         self.requests = []
         self.on_request = None
+        self.interrupt_response = False
         test = self
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *args): pass
@@ -30,10 +32,18 @@ class ConsoleLLMTests(unittest.TestCase):
                 if test.on_request: test.on_request()
                 status, content = test.responses.pop(0) if len(test.responses)>1 else test.responses[0]
                 try:
+                    body=json.dumps({'choices':[{'message':{'content':content}}]}).encode()
                     self.send_response(status)
                     self.send_header('Content-Type','application/json')
+                    self.send_header('Content-Length',str(len(body)))
                     self.end_headers()
-                    self.wfile.write(json.dumps({'choices':[{'message':{'content':content}}]}).encode())
+                    if test.interrupt_response:
+                        self.wfile.write(body[:len(body)//2])
+                        self.wfile.flush()
+                        self.connection.shutdown(socket.SHUT_RDWR)
+                        self.close_connection=True
+                        return
+                    self.wfile.write(body)
                 except OSError: pass  # Client intentionally disconnected in timeout cases.
         self.server = ThreadingHTTPServer(('127.0.0.1',0),Handler)
         self.server.daemon_threads = True
@@ -82,6 +92,22 @@ class ConsoleLLMTests(unittest.TestCase):
         self.responses = [(200, '这款茶杯容量为300毫升。')]
         self.assertEqual(generate_reply(self.product, '容量多少？', self.config), self.responses[0][1])
         self.assertEqual(self.store.scripts(self.product['id']), [])
+
+    def test_interrupted_http_body_never_becomes_a_script_or_reply(self):
+        self.interrupt_response = True
+        with self.assertRaises(LLMError):
+            self.run_generation()
+        with self.assertRaises(LLMError):
+            generate_reply(self.product, '容量多少？', self.config)
+        self.assertEqual(self.store.scripts(self.product['id']), [])
+        failed_requests=len(self.requests)
+        self.assertGreaterEqual(failed_requests,2)
+        self.interrupt_response = False
+        self.responses = [(200,'连接恢复后收到完整话术。'),(200,'这款茶杯容量为300毫升。')]
+        self.assertEqual(self.run_generation()['text'],'连接恢复后收到完整话术。')
+        self.assertEqual(generate_reply(self.product, '容量多少？', self.config),'这款茶杯容量为300毫升。')
+        self.assertEqual(len(self.store.scripts(self.product['id'])),1)
+        self.assertEqual(len(self.requests)-failed_requests,2)
 
     def test_language_retry_uses_explicit_config(self):
         self.responses = [(200,'中文不应出现在英文输出'),(200,'This ceramic cup holds three hundred millilitres.')]
