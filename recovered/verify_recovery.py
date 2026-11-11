@@ -3508,10 +3508,24 @@ def verify_origin_video_ffmpeg_reader():
             live.capture=live.ffmpeg_process=live.stderr_thread=live.capture_thread=live.preprocess_thread=None
             live.stop_event=threading.Event();live.video_path="";live.start_ms=0
             live.width=live.height=0;live.fps=25.;live.frame_count=0;live.internal_buffer=[]
-            live.start_capture(str(video));frames,detections=next(live)
-            assert len(frames)==len(detections)==4 and frames[0].shape==(48,64,3)
-            assert live.seek(120);frames,_=next(live);assert frames[0].shape==(48,64,3)
-            live.stop_capture();assert live.ffmpeg_process is None and live.capture_thread is None
+            try:
+                live.start_capture(str(video))
+                frames,detections=live.read_ahead(12)
+                assert len(frames)==len(detections)==12 and frames[0].shape==(48,64,3)
+                assert np.array_equal(frames[0],frames[10])
+                assert np.array_equal(frames[1],frames[11])
+                original_process=live.ffmpeg_process
+                assert live.seek(120) and original_process.poll() is not None
+                sought,_=live.read_ahead(1)
+                assert np.array_equal(sought[0],frames[3])
+                assert live.rewind()
+                rewound,_=live.read_ahead(1)
+                assert np.array_equal(rewound[0],frames[0])
+                threads=(live.capture_thread,live.preprocess_thread,live.stderr_thread)
+                process=live.ffmpeg_process
+            finally:
+                live.stop_capture()
+            assert process.poll() is not None and all(not thread.is_alive() for thread in threads)
 
 def verify_barrage_port_cleanup():
     from recovered.ws_capture import BarrageCapture
