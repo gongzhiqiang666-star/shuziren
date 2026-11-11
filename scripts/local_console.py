@@ -270,6 +270,11 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                 if path == "/api/products":
                     data = products()
                     return self.respond(200, {"products": data.list(), "selected": data.selected()})
+                if path == "/api/products/business-metrics":
+                    ids = parse_qs(urlsplit(self.path).query, keep_blank_values=True).get("product_id", [])
+                    if len(ids) != 1 or not ids[0]:
+                        raise ProductError("请选择有效商品")
+                    return self.respond(200, {"records": products().business_metrics(ids[0])})
                 if path == "/api/llm/state":
                     from scripts.console_llm import status
                     return self.respond(200, {**status(), "task":tasks().state()})
@@ -489,6 +494,15 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         if not {"title", "content", "product_index"} <= value.keys() or value.keys() - allowed:
                             raise ProductError("商品字段不完整或包含未知字段")
                         return self.respond(200, {"product": products().save(**value)})
+                    if path == "/api/products/business-metrics":
+                        required = {"product_id", "source", "period_start", "period_end", "scope"}
+                        if (not required <= value.keys()
+                                or value.keys() - (required | {"clicks", "orders", "refunds", "stock"})
+                                or not isinstance(value["product_id"], str)):
+                            raise ProductError("经营数据字段无效")
+                        data = products()
+                        data.save_business_metrics(**value)
+                        return self.respond(200, {"records": data.business_metrics(value["product_id"])})
                     if path == "/api/llm/generate":
                         if set(value) != {"product_id", "version", "instructions"} or not isinstance(value['product_id'], str):
                             raise ProductError("生成字段无效")

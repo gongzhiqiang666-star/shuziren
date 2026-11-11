@@ -18,6 +18,20 @@ from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_business_metrics_api_preserves_zero_and_unknown(self):
+        _, response = self.call('/api/products', {'title': '茶杯', 'content': '经营数据', 'product_index': 1})
+        product = response['product']
+        route = '/api/products/business-metrics'
+        payload = {'product_id': product['id'], 'source': '商家报表', 'scope': '商品日统计',
+                   'period_start': '2026-11-01', 'period_end': '2026-11-01', 'clicks': 0}
+        self.assertEqual(self.call(route, payload, **{'X-Console-Token': 'bad'})[0], 403)
+        self.assertEqual(self.call(route, {**payload, 'orders': True})[0], 400)
+        status, result = self.call(route, payload)
+        self.assertEqual(status, 200)
+        self.assertEqual(result['records'][0]['clicks'], 0)
+        self.assertIsNone(result['records'][0]['orders'])
+        self.assertEqual(self.call(route + '?product_id=' + product['id']), (200, result))
+
     def test_rotation_event_pages_preserve_order_and_scene_isolation(self):
         store = ProductStore(self.directory.name)
         product = store.save(title='茶杯', content='口播验收', product_index=1)
