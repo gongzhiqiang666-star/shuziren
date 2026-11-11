@@ -64,9 +64,12 @@ def main():
         if image is not None:
             faces = manager._ensure_face_pipeline().detect_frame(image)
             if faces:
-                manager.synthesizer.synthesize_batch(
-                    manager.silence_wenet_features[:1], [image], [manager._detection_to_meta(faces)],
-                )
+                sizes = (1, manager._batch_size) if backend == "tensorrt" else (1,)
+                for count in sizes:
+                    manager.synthesizer.synthesize_batch(
+                        [manager.silence_wenet_features[0]] * count, [image] * count,
+                        [manager._detection_to_meta(faces)] * count,
+                    )
         if stopped.is_set():
             return
         manager.start_playing()
