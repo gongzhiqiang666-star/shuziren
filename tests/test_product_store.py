@@ -13,6 +13,20 @@ from scripts.product_store import Conflict, ProductError, ProductStore, product_
 
 
 class ProductStoreTests(unittest.TestCase):
+    def test_rotation_completion_is_durable_and_deduplicated(self):
+        product = self.product()
+        script = self.store.add_script(product, '商品口播')
+        item = {'product_id': product['id'], 'product_version': product['version'], 'script_id': script}
+        self.store.record_rotation_completion('session', 'task', item, 1)
+        self.store.record_rotation_completion('session', 'task', item, 1)
+        with ProductStore(self.store.path.parent).connect() as db:
+            rows = db.execute('SELECT * FROM live_rotation_events').fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['script_id'], script)
+        self.assertEqual(rows[0]['product_version'], product['version'])
+        self.assertEqual(rows[0]['segment_index'], 1)
+        self.assertTrue(rows[0]['completed_at'])
+
     def test_selected_script_expires_with_its_product_facts(self):
         product = self.edit(self.product(), product_facts={
             'promotion': {'value': 'offer', 'status': 'verified', 'source': 'catalog',

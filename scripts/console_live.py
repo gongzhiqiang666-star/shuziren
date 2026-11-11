@@ -1,6 +1,7 @@
 """Run a local live session from the console's existing selections."""
 from collections import deque
 import logging
+import sqlite3
 from pathlib import Path
 from queue import Empty, Full, SimpleQueue
 import sys
@@ -180,6 +181,14 @@ class ConsoleLive:
                 return
             self.status['last_completed_task_id'] = source_id
             if self.rotation and self.rotation['task_id'] == source_id:
+                item = self.rotation['items'][self.rotation['index']]
+                try:
+                    self.tts.products.record_rotation_completion(
+                        self.status['id'], source_id, item, self.rotation['segment'],
+                    )
+                except sqlite3.Error:
+                    logging.exception('记录商品口播完成事件失败')
+                    self.status['rotation_event_error'] = '商品口播完成事件写入失败'
                 self.rotation['task_id'] = None
                 self._advance_rotation(self.rotation)
 

@@ -97,6 +97,12 @@ class ProductStore:
                 CREATE TABLE IF NOT EXISTS script_selection (
                     product_id TEXT PRIMARY KEY REFERENCES products(id),
                     script_id TEXT NOT NULL REFERENCES scripts(id));
+                CREATE TABLE IF NOT EXISTS live_rotation_events (
+                    session_id TEXT NOT NULL, task_id TEXT NOT NULL,
+                    product_id TEXT NOT NULL, product_version INTEGER NOT NULL,
+                    script_id TEXT NOT NULL, segment_index INTEGER NOT NULL,
+                    completed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                    PRIMARY KEY(session_id, task_id));
             ''')
             db.execute('BEGIN IMMEDIATE')
             columns = {row[1] for row in db.execute('PRAGMA table_info(scripts)')}
@@ -114,6 +120,16 @@ class ProductStore:
                 yield db
         finally:
             db.close()
+
+    def record_rotation_completion(self, session_id, task_id, item, segment_index):
+        with self.connect() as db:
+            db.execute("""
+                INSERT INTO live_rotation_events
+                    (session_id, task_id, product_id, product_version, script_id, segment_index)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(session_id, task_id) DO NOTHING
+            """, (session_id, task_id, item['product_id'], item['product_version'],
+                  item['script_id'], segment_index))
 
     @staticmethod
     def decode(row):
