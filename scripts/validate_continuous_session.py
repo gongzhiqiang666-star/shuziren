@@ -239,7 +239,9 @@ def main():
         if client:client.close()
         if tts:tts.close()
         if injector:injector.join(timeout=5)
-        if capture:capture.close()
+        if capture:
+            capture.close()
+            report['receiver_buffer_drop_reported'] = capture.reported_buffer_drop()
         if assembler:assembler.close()
         if ingress:ingress.stop()
         if sink and not sink.closed:sink.abort()

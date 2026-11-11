@@ -50,6 +50,10 @@ class DeviceCapture:
     def timestamp_origin(self):
         return receiver_origin(self.log_path,self.launched_unix_ns,time.time_ns())
 
+    def reported_buffer_drop(self):
+        with self.log_path.open(encoding='utf-8',errors='replace') as lines:
+            return any('real-time buffer' in line and 'frame dropped' in line for line in lines)
+
     def close(self):
         try:
             if self.process and self.process.poll() is None:self.process.kill();self.process.wait(timeout=5)
