@@ -160,6 +160,12 @@ class VideoStreamManager:
             if not tape_frames:continue
             interaction,current_path=self._get_next_audio_batch(current_path);has_interact=any(x is not None for x in interaction)
             if has_interact and not self._in_interact:self._in_interact=True;self._fade_out_remaining=self._fade_out_total
+            if has_interact and not self._has_queued_interact():
+                with self._seek_lock:
+                    if self._pending_seek_ms is not None:
+                        # The next iteration seeks before reading any resumed source audio.
+                        last_interaction=max(index for index,batch in enumerate(interaction) if batch is not None)
+                        tape_frames=tape_frames[:last_interaction+1]
             if self._in_interact and not has_interact and not self._has_queued_interact():
                 with self._seek_lock:
                     self._in_interact=False
