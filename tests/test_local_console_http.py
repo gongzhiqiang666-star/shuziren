@@ -36,6 +36,10 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual([row['task_id'] for row in second['events']], ['100'])
         self.assertTrue(all(row['session_id'] == 'scene' for row in first['events'] + second['events']))
         self.assertEqual(self.call(route + '&after=' + str(second['next_cursor']))[1]['events'], [])
+        filtered = self.call(route + '&product_id=' + product['id'] + '&task_id=100')[1]['events']
+        self.assertEqual([row['task_id'] for row in filtered], ['100'])
+        self.assertEqual(self.call(route + '&product_id=other&task_id=100')[1]['events'], [])
+        self.assertEqual(self.call(route + '&task_id=100&task_id=99')[0], 400)
 
     def test_taobao_routes_require_login_explicit_room_and_console_token(self):
         state = self.call('/api/taobao/state')[1]['capture']

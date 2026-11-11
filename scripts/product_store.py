@@ -131,15 +131,17 @@ class ProductStore:
             """, (session_id, task_id, item['product_id'], item['product_version'],
                   item['script_id'], segment_index))
 
-    def rotation_events(self, session_id, *, after=0):
+    def rotation_events(self, session_id, *, after=0, product_id=None, task_id=None):
         with self.connect() as db:
             rows = db.execute("""
                 SELECT rowid AS cursor, session_id, task_id, product_id, product_version,
                        script_id, segment_index, completed_at
                 FROM live_rotation_events
                 WHERE session_id = ? AND rowid > ?
+                  AND (? IS NULL OR product_id = ?)
+                  AND (? IS NULL OR task_id = ?)
                 ORDER BY rowid LIMIT 100
-            """, (session_id, after)).fetchall()
+            """, (session_id, after, product_id, product_id, task_id, task_id)).fetchall()
         return [dict(row) for row in rows]
 
     @staticmethod

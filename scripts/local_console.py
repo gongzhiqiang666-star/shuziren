@@ -195,12 +195,19 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                     sessions = query.get('session_id', [])
                     cursors = query.get('after', ['0'])
+                    filters = {}
+                    for name in ('product_id', 'task_id'):
+                        if name in query:
+                            values = query[name]
+                            if len(values) != 1 or not 1 <= len(values[0]) <= 64:
+                                raise ProductError('商品或任务筛选条件无效')
+                            filters[name] = values[0]
                     if (len(sessions) != 1 or not 1 <= len(sessions[0]) <= 64 or len(cursors) != 1
                             or not cursors[0].isascii() or not cursors[0].isdigit() or len(cursors[0]) > 19
                             or int(cursors[0]) >= 2**63):
                         raise ProductError('场次或轮播记录游标无效')
                     after = int(cursors[0])
-                    events = products().rotation_events(sessions[0], after=after)
+                    events = products().rotation_events(sessions[0], after=after, **filters)
                     return self.respond(200, {'events': events, 'next_cursor': events[-1]['cursor'] if events else after})
                 if path == '/api/taobao/state':
                     return self.respond(200, {'capture': taobao.state(), 'reply': replies.state()})
