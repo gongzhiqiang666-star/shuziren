@@ -12,7 +12,7 @@ import sys
 import tempfile
 import threading
 from urllib.request import Request, urlopen
-from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
+from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile, ZipInfo
 
 
 MANIFEST = 'package-manifest.json'
@@ -317,4 +317,8 @@ def main():
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except (BadZipFile, OSError, ValueError) as error:
+        print(f'Console package operation failed: {error}', file=sys.stderr)
+        raise SystemExit(1) from None

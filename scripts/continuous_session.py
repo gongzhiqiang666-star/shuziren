@@ -37,6 +37,9 @@ class ContinuousSession:
                 for name,(stage,since,position) in (
                     ('producer',self.producer_stage),('consumer',self.consumer_stage))}
         if self.last_idle_timing is not None:context['last_completed_idle']=self.last_idle_timing
+        if context['consumer']['stage']=='pcm':
+            stage,since=self.pcm.read_stage
+            context['pcm_read']={'stage':stage,'since_ns':since}
         return context
 
     def submit(self,utterance,*,priority=False,manual_revision=None,reply_guard=None):

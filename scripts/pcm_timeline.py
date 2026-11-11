@@ -11,6 +11,7 @@ class PCMTimeline:
     def __init__(self,session_id,on_complete=None):
         self.session_id=session_id;self.entries=deque();self.condition=threading.Condition()
         self.written=0;self.read_samples=0;self.closed=False;self.on_complete=on_complete
+        self.read_stage=('idle',time.perf_counter_ns())
 
     def append(self,timing,source_id,path=None,expected_pcm_sha256=None):
         span=parse_span(timing);reader=None
@@ -36,16 +37,19 @@ class PCMTimeline:
     def read(self,samples,timeout=2):
         if type(samples) is not int or samples<=0:raise ValueError('Positive integer PCM read required')
         deadline=time.monotonic()+timeout;blocks=[]
+        self.read_stage=('acquire',time.perf_counter_ns())
         with self.condition:
             while sum(entry['remaining'] for entry in self.entries)<samples:
                 if self.closed:raise RuntimeError('PCM output stopped')
                 remaining=deadline-time.monotonic()
                 if remaining<=0:raise TimeoutError('PCM source underrun')
+                self.read_stage=('wait_source',time.perf_counter_ns())
                 self.condition.wait(remaining)
             if self.closed:raise RuntimeError('PCM output stopped')
             needed=samples
             while needed:
                 entry=self.entries[0];count=min(needed,entry['remaining'])
+                self.read_stage=('read_file' if entry['reader'] else 'read_silence',time.perf_counter_ns())
                 block=entry['reader'].readframes(count) if entry['reader'] else bytes(count*2)
                 if len(block)!=count*2:raise ValueError('PCM snapshot truncated during playback')
                 blocks.append(block);entry['hash'].update(block);entry['remaining']-=count;needed-=count;self.read_samples+=count
@@ -53,7 +57,10 @@ class PCMTimeline:
                     if entry['reader']:entry['reader'].close()
                     self.entries.popleft();actual=entry['hash'].hexdigest()
                     if entry['expected'] and actual!=entry['expected']:raise ValueError('PCM playback source fingerprint changed')
-                    if self.on_complete:self.on_complete({'source_id':entry['id'],'samples':entry['samples'],'pcm_sha256':actual})
+                    if self.on_complete:
+                        self.read_stage=('source_complete',time.perf_counter_ns())
+                        self.on_complete({'source_id':entry['id'],'samples':entry['samples'],'pcm_sha256':actual})
+            self.read_stage=('returned',time.perf_counter_ns())
             self.condition.notify_all();return b''.join(blocks)
 
     def close(self):
