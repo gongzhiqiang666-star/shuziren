@@ -37,7 +37,7 @@ class DeviceCapture:
         self.launched_unix_ns=time.time_ns()
         try:
             self.process=subprocess.Popen([str(ffmpeg),'-nostdin','-y','-hide_banner','-loglevel','info','-nostats',
-                '-use_wallclock_as_timestamps','1','-f','dshow','-audio_buffer_size','20',
+                '-use_wallclock_as_timestamps','1','-f','dshow','-rtbufsize','16M','-audio_buffer_size','20',
                 '-video_size','720x1280','-framerate','25','-i','video=C920:audio=CABLE Output (VB-Audio Virtual Cable)',
                 '-t',str(seconds),'-fps_mode','passthrough','-c:v','ffv1','-c:a','pcm_s16le','-ar','48000','-ac','1',str(self.path)],
                 stdout=subprocess.DEVNULL,stderr=self.log)
