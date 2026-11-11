@@ -55,6 +55,13 @@ def main():
         manager.configure_console_audio_output(args.audio_device)
         manager.buffer_threshold = 8
         manager.wenet_model = load_ppg_model(manager.wenet_conf_path, manager.wenet_model_path, manager.device)
+        image = manager._read_warmup_image()
+        if image is not None:
+            faces = manager._ensure_face_pipeline().detect_frame(image)
+            if faces:
+                manager.synthesizer.synthesize_batch(
+                    manager.silence_wenet_features[:1], [image], [manager._detection_to_meta(faces)],
+                )
         if stopped.is_set():
             return
         manager.start_playing()
