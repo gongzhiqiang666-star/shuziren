@@ -162,6 +162,8 @@ def main():
         save()
         started=time.perf_counter()
         sampling_stop=threading.Event()
+        resource_report={'samples':0,'error':None}
+        report['resource_sampling']=resource_report
         def sample_resources():
             process=psutil.Process()
             previous_cpu={}
@@ -187,15 +189,25 @@ def main():
                          'device_queue_frames':sink.queue.qsize() if isinstance(sink,AVDeviceSink) else None,
                          'gpu':gpu_resources()}
                     samples.write(json.dumps(row)+'\n')
+                    resource_report['samples']+=1
                     previous_cpu=current_cpu
                     sampling_stop.wait(max(0,now+1-time.perf_counter()))
-        sampler=threading.Thread(target=sample_resources,name='receiver-resource-samples')
+
+        def collect_resources():
+            try:
+                sample_resources()
+            except (OSError, psutil.Error) as error:
+                resource_report['error']=str(error)
+
+        sampler=threading.Thread(target=collect_resources,name='receiver-resource-samples')
         sampler.start()
         try:session.run(frames=args.seconds*25)
         finally:
             sampling_stop.set()
             sampler.join()
             trace.close()
+        if args.first_output_corpus is not None and (resource_report['error'] is not None or not resource_report['samples']):
+            raise RuntimeError('Formal receiver validation requires resource samples')
         report['wall_seconds']=time.perf_counter()-started;injector.join(timeout=5)
         if injector.is_alive() or errors:raise RuntimeError('New speech injection failed: '+str(errors))
         done={event['source_id']:event for event in completed if not event['source_id'].startswith('idle-')}
