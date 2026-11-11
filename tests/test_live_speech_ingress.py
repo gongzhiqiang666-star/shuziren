@@ -76,6 +76,28 @@ class IngressTests(unittest.TestCase):
         self.assertEqual(self.ingress.take().origin.task_id, task)
         self.assertEqual(self.products.selected(), original)
 
+    def test_shift_audio_requires_the_bound_voice(self):
+        task, _, script = self.complete(1200)
+        alternate = str(uuid.uuid4())
+        directory = self.voices.root / alternate
+        directory.mkdir()
+        audio, transcript = self.wav(2100), '换班参考'
+        (directory / 'ref_audio.wav').write_bytes(audio)
+        (directory / 'ref_text.txt').write_text(transcript, encoding='utf-8')
+        audio_hash = hashlib.sha256(audio).hexdigest()
+        text_hash = hashlib.sha256(transcript.encode()).hexdigest()
+        with sqlite3.connect(self.voices.path) as db:
+            db.execute('INSERT INTO voices VALUES(?,?,?,?,?,?)',
+                       (alternate, '换班音色', transcript, audio_hash, text_hash, .1))
+        self.tts.task.update(kind='rotation', voice_id=alternate, selected_voice_id=self.voice_id,
+                             voice_audio_sha256=audio_hash, voice_text_sha256=text_hash)
+        item = {'product_id': self.product['id'], 'product_version': 1, 'script_id': script}
+        with self.assertRaisesRegex(Conflict, '音色'):
+            self.ingress.capture(task, rotation_item=item)
+        self.ingress.capture(task, rotation_item={**item, 'voice_id': alternate})
+        self.assertEqual(self.ingress.take().origin.task_id, task)
+        self.assertEqual(self.voices.selected(), self.voice_id)
+
     def test_long_audio_backpressure_and_new_task_after_snapshot(self):
         task,path,_=self.complete(6501);self.ingress.capture(task)
         self.assertEqual(self.ingress.state()['queued_items'],1);self.assertEqual(self.ingress.state()['pending_task_id'],task)
