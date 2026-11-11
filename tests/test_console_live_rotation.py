@@ -17,7 +17,9 @@ class LiveRotationTests(unittest.TestCase):
             live.status = {'id': 'scene', 'status': 'running'}
             live.session = Mock()
             live.session.control_state.return_value = {}
-            live.configure_rotation('scene', ['first', 'second'], shift_durations=[3, 5])
+            live.configure_rotation('scene', ['first', 'second'], shift_durations=[3, 5],
+                                    shift_voice_ids=[None, 'next-host'])
+            tts.voices.get.assert_called_once_with('next-host')
             rotation = live.rotation
             now = 100
             live._tick_rotation_shift(rotation, now)
@@ -30,6 +32,8 @@ class LiveRotationTests(unittest.TestCase):
                 live._advance_rotation(rotation)
                 live._tick_rotation_shift(rotation, now)
                 self.assertEqual(live.state()['shift_index'], 1 - index)
+                self.assertEqual(rotation['items'][rotation['index']].get('shift_voice_id'),
+                                 'next-host' if index == 0 else None)
 
     def test_segment_completion_keeps_product_until_last_segment(self):
         with tempfile.TemporaryDirectory() as directory:

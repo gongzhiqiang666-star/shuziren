@@ -137,7 +137,7 @@ class TTSTasks:
                 raise
 
     def start(self,product_id,script_id,voice_id,speed=1.0,language='zh-CN',use_cache=False,*,
-              rotation=False, segment_index=None, assistant_voice_id=None):
+              rotation=False, segment_index=None, assistant_voice_id=None, rotation_voice_id=None):
         with self.lock:
             if self.closed: raise Conflict('TTS服务正在退出')
             if self.task and self.task['status']=='running': raise Conflict('已有语音合成任务')
@@ -151,6 +151,8 @@ class TTSTasks:
                 raise ProductError('语速或缓存参数无效')
             if not isinstance(language,str) or not language: raise ProductError('请选择语言')
             text = script['text']
+            if rotation and rotation_voice_id is not None:
+                voice = self.voices.get(rotation_voice_id)
             if segment_index is not None:
                 from recovered.slice_content import slice_content
 

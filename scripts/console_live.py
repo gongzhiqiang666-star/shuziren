@@ -213,13 +213,19 @@ class ConsoleLive:
             return (self.status['id'], control['control_revision'], self.ingress.context['voice_id'],
                     self.tts.products.get(self.ingress.context['product_id']), self.status['rotation_language'])
 
-    def configure_rotation(self, session_id, product_ids, *, shift_durations=None):
+    def configure_rotation(self, session_id, product_ids, *, shift_durations=None, shift_voice_ids=None):
         if shift_durations is not None and (
             not isinstance(shift_durations, list) or len(shift_durations) != len(product_ids)
             or not all(type(duration) in (int, float) and 0 < duration <= 86400
                        for duration in shift_durations)
         ):
             raise ProductError('请为每个班次指定大于0且不超过86400秒的时长')
+        if shift_voice_ids is not None and (
+            shift_durations is None or not isinstance(shift_voice_ids, list)
+            or len(shift_voice_ids) != len(product_ids)
+            or not all(voice is None or isinstance(voice, str) and voice for voice in shift_voice_ids)
+        ):
+            raise ProductError('请为每个班次指定有效的主播音色或沿用场次主播')
         with self.lock:
             if self.status.get('id') != session_id or self.status['status'] != 'running' or self.session is None:
                 raise Conflict('场次已变化或尚未就绪')
@@ -232,6 +238,10 @@ class ConsoleLive:
                 item = {'product_id': product_id, 'product_version': product['version'], 'script_id': script_id}
                 if shift_durations is not None:
                     item['duration_seconds'] = shift_durations[index]
+                if shift_voice_ids is not None and shift_voice_ids[index] is not None:
+                    voice_id = shift_voice_ids[index]
+                    self.tts.voices.get(voice_id)
+                    item['shift_voice_id'] = voice_id
                 from recovered.slice_content import slice_content
 
                 script = next((row for row in self.tts.products.scripts(product_id) if row['id'] == script_id), None)
@@ -270,11 +280,12 @@ class ConsoleLive:
                             pending = None
                         elif state['status'] == 'succeeded' and not self.session.queue_full():
                             item = rotation['items'][rotation['index']]
+                            voice_id = item.get('shift_voice_id', self.ingress.context['voice_id'])
                             if 'segments' in item:
                                 segment = item['segments'][rotation['segment']]
-                                voice_id = self.ingress.context['voice_id']
                                 if segment['type'] == 'assistant':
                                     voice_id = self.status.get('assistant_voice_id') or voice_id
+                            if 'segments' in item or 'shift_voice_id' in item:
                                 item = {**item, 'voice_id': voice_id}
                             self.enqueue(session_id, task_id, rotation_item=item)
                             rotation['task_id'] = task_id
@@ -286,7 +297,7 @@ class ConsoleLive:
                         item = rotation['items'][rotation['index']]
                         if self.tts.products.get(item['product_id'])['version'] != item['product_version']:
                             raise Conflict('轮播商品已修改，请重新设置轮播')
-                        options = {}
+                        options = {'rotation_voice_id': item['shift_voice_id']} if 'shift_voice_id' in item else {}
                         if 'segments' in item:
                             if self.tts.products.selected_script(item['product_id']) != item['script_id']:
                                 raise Conflict('选用话术已变化，请重新设置轮播')
@@ -298,8 +309,8 @@ class ConsoleLive:
                                     rotation.pop('pause_until')
                                     self._advance_rotation(rotation)
                                 continue
-                            options = {'segment_index': rotation['segment'],
-                                       'assistant_voice_id': self.status.get('assistant_voice_id')}
+                            options.update(segment_index=rotation['segment'],
+                                           assistant_voice_id=self.status.get('assistant_voice_id'))
                         with self.tts.lock:
                             current = self.tts.state()
                             if current and current['status'] == 'running':

@@ -348,7 +348,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             value['audio_device'], language=language, assistant_voice_id=assistant_voice_id,
                         )})
                     if path == '/api/live/rotation':
-                        if (set(value) - {'session_id', 'product_ids', 'shift_durations'}
+                        if (set(value) - {'session_id', 'product_ids', 'shift_durations', 'shift_voice_ids'}
                                 or not isinstance(value.get('session_id'), str)):
                             raise ProductError('商品轮播字段无效')
                         ids = value.get('product_ids')
@@ -358,6 +358,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             raise Conflict('暂无场次')
                         return self.respond(200, {'session': live_manager.configure_rotation(
                             value['session_id'], ids, shift_durations=value.get('shift_durations'),
+                            shift_voice_ids=value.get('shift_voice_ids'),
                         )})
                     if path == '/api/live/control':
                         if set(value) != {'session_id', 'manual', 'revision'} or not isinstance(value['session_id'], str) or type(value['manual']) is not bool or type(value['revision']) is not int:

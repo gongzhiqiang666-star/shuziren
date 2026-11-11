@@ -54,6 +54,17 @@ class TTSStateTests(unittest.TestCase):
                 self.tasks.start(self.product['id'], script, self.voice_id, rotation=True, segment_index=2)
         self.assertEqual(self.voices.selected(), self.voice_id)
 
+    def test_shift_host_synthesizes_with_bound_reference(self):
+        host = self.voices.get(self.voice_id)
+        shift_host = {**host, 'id': 'shift-host'}
+        with patch.object(self.tasks.voices, 'get', side_effect={self.voice_id: host, 'shift-host': shift_host}.__getitem__), \
+                patch.object(self.tasks, '_submit') as submit:
+            self.tasks.start(self.product['id'], self.script, self.voice_id,
+                             rotation=True, rotation_voice_id='shift-host')
+        submit.assert_called_once_with(self.product, self.script, shift_host, '状态测试话术',
+                                       1.0, 'zh-CN', False, kind='rotation',
+                                       selected_voice_id=self.voice_id)
+
     def test_engine_change_invalidates_saved_result(self):
         self.tasks._save()
         alternate = TTSTasks(self.root/'no-runtime', self.root, engine='zipvoice')
