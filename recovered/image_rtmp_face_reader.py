@@ -30,14 +30,32 @@ class RtmpFaceReader(VideoFaceReader):
         super().__init__(device, 1, enable_occluder, occluder_model_path, face_model_dir)
         self.ffmpeg_process = None; self.stderr_thread = None; self.rtmp_url = ""
         self.first_frame = threading.Event()
+        self.capture_lock = threading.RLock()
 
     @staticmethod
     def _make_even(value, minimum=2): return max(minimum, int(value) // 2 * 2)
 
-    def _get_video_properties(self, rtmp_url):
+    def _get_video_properties(self, rtmp_url, cancel=None):
         command = [shutil.which("ffprobe") or "ffprobe", "-v", "error", "-select_streams", "v:0",
                    "-show_entries", "stream=width,height,avg_frame_rate", "-of", "json", rtmp_url]
-        result = subprocess.run(command, capture_output=True, text=True, timeout=15)
+        if cancel is None:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=15)
+        else:
+            with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as probe:
+                deadline = time.monotonic() + 15
+                try:
+                    while not cancel.is_set() and time.monotonic() < deadline:
+                        try:
+                            stdout, stderr = probe.communicate(timeout=.2)
+                        except subprocess.TimeoutExpired:
+                            continue
+                        result = subprocess.CompletedProcess(command, probe.returncode, stdout, stderr)
+                        break
+                    else:
+                        raise TimeoutError("RTMP 重连已取消或探测超时")
+                finally:
+                    if probe.poll() is None:
+                        probe.kill()
         if result.returncode: raise RuntimeError(result.stderr.strip())
         streams = json.loads(result.stdout).get("streams")
         if not streams:
@@ -67,7 +85,28 @@ class RtmpFaceReader(VideoFaceReader):
         self.processed_frames_queue = queue.Queue(self.queue_buffer_size)
 
     def start_capture(self, rtmp_url):
-        self.stop_capture(); self.rtmp_url = str(rtmp_url); self.width, self.height, self.fps = self._get_video_properties(self.rtmp_url)
+        return self._start_capture(rtmp_url)
+
+    def reconnect(self, cancel):
+        return self._start_capture(self.rtmp_url, cancel)
+
+    def _start_capture(self, rtmp_url, cancel=None):
+        self.stop_capture()
+        url = str(rtmp_url)
+        properties = self._get_video_properties(url, cancel)
+        with self.capture_lock:
+            if cancel is not None and cancel.is_set():
+                raise RuntimeError("RTMP 重连已取消")
+            self.rtmp_url = url
+            self.width, self.height, self.fps = properties
+            self._start_decoder()
+        timeout = _env_float("DH_LIVE_INITIAL_FRAME_WAIT_TIMEOUT", 10.0)
+        if not self._wait_for_initial_frame(timeout):
+            self.stop_capture()
+            raise TimeoutError("等待 RTMP 首帧超时")
+        return self
+
+    def _start_decoder(self):
         self.stop_event.clear(); self._reset_pipeline_state()
         self.first_frame.clear()
         self.ffmpeg_process = subprocess.Popen(self._build_ffmpeg_command(self.rtmp_url, self.fps), stdout=subprocess.PIPE,
@@ -76,13 +115,10 @@ class RtmpFaceReader(VideoFaceReader):
         self.capture_thread = threading.Thread(target=self._capture_thread, name="rtmp-face-capture", daemon=True)
         self.preprocess_thread = threading.Thread(target=self._preprocess_thread, name="rtmp-face-preprocess", daemon=True)
         self.stderr_thread.start(); self.capture_thread.start(); self.preprocess_thread.start()
-        timeout = _env_float("DH_LIVE_INITIAL_FRAME_WAIT_TIMEOUT", 10.0)
-        if not self._wait_for_initial_frame(timeout): self.stop_capture(); raise TimeoutError("等待 RTMP 首帧超时")
-        return self
 
     def _wait_for_initial_frame(self, timeout):
         deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
+        while not self.stop_event.is_set() and time.monotonic() < deadline:
             if self.first_frame.is_set(): return True
             if self.ffmpeg_process and self.ffmpeg_process.poll() is not None: return False
             time.sleep(.02)
@@ -125,6 +161,10 @@ class RtmpFaceReader(VideoFaceReader):
         return self.face_pipeline._attach_full_mask(frame, detection) if detection else detection
 
     def stop_capture(self):
+        with self.capture_lock:
+            self._stop_decoder()
+
+    def _stop_decoder(self):
         self.stop_event.set()
         process = self.ffmpeg_process
         if process and process.poll() is None:

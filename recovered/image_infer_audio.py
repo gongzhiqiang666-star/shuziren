@@ -560,19 +560,36 @@ def publish_live_frame_batch(manager, frames, detections) -> None:
 
 def run_live_frame_worker(manager) -> None:
     """Read and publish live batches until stopped or the input ends."""
-    while manager.live_frame_stop_event and not manager.live_frame_stop_event.is_set():
+    stop_event = manager.live_frame_stop_event
+    while stop_event and not stop_event.is_set():
         if not manager.face_reader_iterator:
             sleep(0.02)
             continue
 
         try:
             frames, detections = next(manager.face_reader_iterator)
-            if manager.live_frame_stop_event is None or manager.live_frame_stop_event.is_set():
+            if stop_event.is_set():
                 break
             publish_live_frame_batch(manager, frames, detections)
         except StopIteration:
-            if manager.live_frame_stop_event is None or manager.live_frame_stop_event.is_set():
+            if stop_event.is_set():
                 break
+            if manager.input_mode == "rtmp" and manager.face_reader:
+                reader = manager.face_reader
+                for _ in range(3):
+                    if stop_event.wait(.5):
+                        break
+                    try:
+                        reader.reconnect(stop_event)
+                    except (OSError, RuntimeError, ValueError, TimeoutError):
+                        continue
+                    if not stop_event.is_set():
+                        manager.face_reader_iterator = iter(reader)
+                    break
+                else:
+                    print("RTMP 输入重连失败。")
+                    break
+                continue
             if (
                 manager.input_mode == "video"
                 and manager.face_reader

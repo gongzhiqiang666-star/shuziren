@@ -2,7 +2,7 @@ import io
 import queue
 import threading
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 from types import SimpleNamespace
 
 from recovered import image_infer_audio
@@ -10,6 +10,20 @@ from recovered.image_rtmp_face_reader import RtmpFaceReader
 
 
 class RtmpFirstFrameTests(unittest.TestCase):
+    def test_live_worker_resumes_batches_after_rtmp_eof(self):
+        stopped = threading.Event()
+        reader = MagicMock()
+        manager = SimpleNamespace(
+            input_mode='rtmp', face_reader=reader, face_reader_iterator=iter(()),
+            live_frame_stop_event=stopped,
+        )
+        reader.__iter__.return_value = iter([(['frame'], ['face'])])
+        reader.reconnect.side_effect = [TimeoutError(), reader]
+        with patch.object(image_infer_audio, 'publish_live_frame_batch', side_effect=lambda *_: stopped.set()) as publish:
+            image_infer_audio.run_live_frame_worker(manager)
+        self.assertEqual(reader.reconnect.call_count, 2)
+        publish.assert_called_once_with(manager, ['frame'], ['face'])
+
     def test_stop_releases_blocking_reader_before_join_and_discards_late_frame(self):
         reading, released, stopped = threading.Event(), threading.Event(), threading.Event()
 
