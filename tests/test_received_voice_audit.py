@@ -6,10 +6,19 @@ import wave
 import av
 import numpy as np
 from scipy import signal
-from scripts.received_voice_audit import stamp_counter,read_counter,audit_received_voice,receiver_origin
+from scripts.received_voice_audit import stamp_counter,read_counter,audit_received_voice,receiver_origin,audit_device_deadlines
 
 
 class ReceivedVoiceTests(unittest.TestCase):
+    def test_device_deadlines_ignore_preroll_and_keep_tail_gate(self):
+        rows=[{'event':'video_sent','frame_index':index,'due_ns':index*40_000_000,
+               'camera_sent_ns':index*40_000_000+late*1_000_000}
+              for index,late in enumerate([100]*8+[1]*99+[40])]
+        self.assertTrue(audit_device_deadlines(rows)['passed'])
+        rows[-1]['camera_sent_ns']+=1_000_000
+        self.assertFalse(audit_device_deadlines(rows)['passed'])
+        self.assertFalse(audit_device_deadlines(rows[:8])['passed'])
+
     def fixture(self,root,delay,wrong_voice=False,replace_frame=None,origin_ns=None):
         source=np.random.default_rng(123).integers(-4000,4000,2400,dtype=np.int16)
         reference=root/'voice.wav'

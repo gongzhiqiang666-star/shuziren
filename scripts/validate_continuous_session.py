@@ -14,7 +14,7 @@ from scripts.avatar_render import verify_media
 from scripts.avatar_store import AvatarStore
 from scripts.continuous_av_sink import ContinuousAVSink
 from scripts.live_av_device_sink import AVDeviceSink
-from scripts.received_voice_audit import CounterDeviceSink,DeviceCapture,audit_received_voice
+from scripts.received_voice_audit import CounterDeviceSink,DeviceCapture,audit_device_deadlines,audit_received_voice
 from scripts.continuous_session import ContinuousSession
 from scripts.live_avatar_client import LiveAvatarClient
 from scripts.live_frame_channel import FrameReceiver
@@ -60,10 +60,10 @@ def main():
               (0,None,'这是运行中新生成的第二句话，前后保持音画连续。')]
     corpus_hash=None
     if args.first_output_corpus is not None:
-        if not args.capture_devices or args.seconds<1800 or args.speech_interval_seconds is not None:
-            parser.error('--first-output-corpus requires device capture, at least 1800 seconds and the fixed cohort cadence')
+        if not args.capture_devices or args.seconds<1840 or args.speech_interval_seconds is not None:
+            parser.error('--first-output-corpus requires device capture, at least 1840 seconds and the fixed cohort cadence')
         items,corpus_hash=load_first_output_corpus(args.first_output_corpus)
-        schedule=[(36*index,item['id'],item['text']) for index,item in enumerate(items)]
+        schedule=[(37*index,item['id'],item['text']) for index,item in enumerate(items)]
     elif args.speech_interval_seconds:
         interval=args.speech_interval_seconds
         schedule.extend((offset,None,f'持续输出第{offset}秒，验证这一条新语音和对应画面。')
@@ -172,16 +172,26 @@ def main():
                 output_closed=sink.closed,avatar_closed=client.process.poll() is not None,video_delay_ms=args.video_delay_ms,
                 timing_acceptance=False,receiver_sync_tested=False,smooth_device_clock=args.smooth_device_clock)
             report['checks'].update(all_scheduled_utterances_completed=True,source_pcm_exact=True,device_callbacks_complete=True)
+            report['device_submission_deadlines']=audit_device_deadlines(device_trace)
             if capture:
                 capture.wait()
                 report['receiver']=audit_received_voice(capture.path,completed,expected,capture.timestamp_origin())
                 report['receiver_sync_tested']=True
+                report['checks'].update(receiver_voice_sync=report['receiver']['voice_sync_passed'],
+                    receiver_speech_continuity=report['receiver']['speech_frame_continuity_passed'])
                 if corpus_hash:
                     latency=report['receiver']['receiver_latency_calibration']
                     report['checks']['first_output_cohort_within_budget']=all(
                         metric['count']==50 and metric['p95_ms']<=1000 for metric in latency.values())
-                    if not report['checks']['first_output_cohort_within_budget']:
-                        report['status']='failed';raise RuntimeError('50-utterance receiver latency cohort failed')
+                    span=report['receiver']['speech_measurement_span_seconds']
+                    drift=report['receiver']['speech_av_drift_ms']
+                    report['checks']['receiver_drift_within_budget']=(
+                        span is not None and span>=1800 and drift is not None and drift<=40
+                        and report['receiver']['received_video_span_seconds']>=1800)
+                    report['checks']['device_submission_within_budget']=report['device_submission_deadlines']['passed']
+                    failed=[check for check,value in report['checks'].items() if not value]
+                    if failed:
+                        report['status']='failed';raise RuntimeError('V05-T1 measurement failed: '+', '.join(failed))
                 if not report['receiver']['voice_sync_passed']:
                     report['status']='failed';raise RuntimeError('Real voice receiver correlation or A/V timing failed')
                 if not report['receiver']['speech_frame_continuity_passed']:

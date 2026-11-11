@@ -66,6 +66,18 @@ def receiver_origin(log,launched_ns,finished_ns):
     return None
 
 
+def audit_device_deadlines(trace):
+    rows=[row for row in trace if row['event']=='video_sent' and row['frame_index']>=8]
+    if not rows:
+        return {'count':0,'passed':False}
+    late=np.asarray([max(0,row['camera_sent_ns']-row['due_ns'])/1_000_000 for row in rows])
+    p95,p99=(float(value) for value in np.percentile(late,[95,99]))
+    maximum=float(late.max())
+    above=float(np.mean(late>5))
+    return {'count':len(rows),'p95_ms':p95,'p99_ms':p99,'max_ms':maximum,'above_5ms_ratio':above,
+            'passed':p95<=5 and p99<=20 and maximum<=40 and above<=.01}
+
+
 def audit_received_voice(path,completed,expected,origin_ns=None):
     video=[];blocks=[];block_times=[];block_offsets=[];sample_count=0
     with av.open(str(path)) as container:
@@ -148,6 +160,7 @@ def audit_received_voice(path,completed,expected,origin_ns=None):
         measurements=[voice[field] for voice in voices if voice.get(field) is not None and voice[field]>=0]
         latency[kind]={'count':len(measurements),'p95_ms':float(np.percentile(measurements,95)) if measurements else None}
     return {'voices':voices,'received_video_frames':len(video),'received_audio_samples':len(received),
+        'received_video_span_seconds':video[-1][1]-video[0][1],
         'missing_frames':sum(max(0,step-1) for step in steps),'repeated_frames':sum(step==0 for step in steps),
         'reordered_frames':sum(step<0 for step in steps),'frame_continuity_passed':bool(steps) and all(step==1 for step in steps),
         'voice_sync_passed':len(voices)==len(expected) and bool(voices) and all(voice['passed'] for voice in voices),
