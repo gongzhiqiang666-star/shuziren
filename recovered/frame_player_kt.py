@@ -144,6 +144,7 @@ class StreamPlayer:
         self._stream = None
         self._audio_backend = None
         self.SAMPLE_RATE = SAMPLE_RATE
+        self.audio_output_device = None
         self.samples_per_frame = self.SAMPLE_RATE // FPS
         self._queue_lock = Lock()
         self._playback_lock = Lock()
@@ -239,12 +240,18 @@ class StreamPlayer:
             return
         audio = pyaudio.PyAudio()
         try:
-            rate = _resolve_output_sample_rate(audio, self.SAMPLE_RATE)
+            options = {}
+            if self.audio_output_device is None:
+                rate = _resolve_output_sample_rate(audio, self.SAMPLE_RATE)
+            else:
+                rate = self.SAMPLE_RATE
+                options["output_device_index"] = self.audio_output_device
             samples_per_frame = max(1, rate // FPS)
             stream = audio.open(
                 format=pyaudio.paFloat32, channels=1, rate=rate, output=True,
                 frames_per_buffer=samples_per_frame,
                 stream_callback=self._audio_callback, start=False,
+                **options,
             )
         except BaseException:
             audio.terminate()
@@ -310,6 +317,8 @@ class StreamPlayer:
                 self._stream.start_stream()
             except (ImportError, OSError):
                 self._close_audio_stream()
+                if self.audio_output_device is not None:
+                    raise
                 silent_worker = Thread(target=self._silent_mode_loop, daemon=True)
                 silent_worker.start()
             if not self._stop_event.is_set():
