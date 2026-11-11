@@ -32,6 +32,8 @@ V08-01j 欠载快照补充 PCM 读取阶段和起始时刻，区分取锁、等�
 
 V08-01j 实机复测已启动，确认采样进程仍在运行。双商品轮播在第约1160秒累计提交29008帧、完成213条，采样时待播0、临时 WAV 1个。证据见 `logs/validation/v08-first-candidate-8h-02/samples.jsonl`。当前是发送侧中间采样，8小时结果、接收端和故障组合继续待验。
 
+V08-01j 最终在约22分钟因设备队列欠载退出，累计32926帧、242条轮播。欠载快照显示生产端已在 `idle_model` 约726毫秒，消费端在 `receive` 等帧约204毫秒。此前最近8次 PCM 读取均低于0.04毫秒。下轮应细分当前空闲模型请求的处理进度；上一次完成请求的耗时仅作对照。CPU 语音验证在同机并行运行，本轮无法单独判断其影响。证据见 `logs/validation/v08-first-candidate-8h-02/result.json`。
+
 V09-02 安装包命令行对预期的包校验及文件错误输出简洁错误信息，失败退出码保持1。损坏候选包验证返回具体文件指纹错误，原候选包校验及4项打包回归通过。
 
 N05 / V09 最新候选包 `253b3f7` 安装至新的本机隔离目录 `logs/validation/n05-first-console-install-253b3f7`，安装器复核438个文件并返回匹配的源码提交。干净 Windows 整机仍待验。
@@ -75,6 +77,8 @@ A01-02 禁用 GPU 可见性后，六项依赖实际导入通过。仅加入 `_in
 A01-02 复测用现有 `configure_runtime()` 初始化对照环境，再加入 `bin/voice_infer_v2`，OmniVoice 类正常导入，进程解析到随包 FFmpeg，未再出现 PyDub 路径告警。实际模型初始化与合成待验。
 
 A01-02 已将 ZipVoice 所需的 Vocos 24 kHz 配置和权重下载至本机验证目录 `logs/validation/a01-vocos-24khz`。来源为 [Charactr 固定版本](https://huggingface.co/charactr/vocos-mel-24khz/tree/0feb3fdd929bcd6649e0e7c5a688cf7dd012ef21)，权重 SHA-256 与发布记录一致（`97ec976ad1fd67a33ab2682d29c0ac7df85234fae875aefcc5fb215681a91b2a`）。下一步在隔离模型目录连接该声码器并进行真实生成验证。
+
+A01-02 首次隔离 CPU 合成退出码1，未生成 WAV 或结果 JSON。终端仅捕获依赖元数据编码警告，尚无证据将其认定为失败原因。复测需保留未缓冲输出、逐阶段标记和原生异常诊断。
 
 V05-04b-36 同场配对 `timeGetTime`、发送单调时钟和接收帧。12秒合成回采300帧，接收 PTS 加输入原点相对同帧发送 `timeGetTime` 的差值范围-11至47毫秒，中位数11.50毫秒，p95为31毫秒。该差值同时包含采集延迟和时钟读数误差，不能直接作为固定校准量。本轮还检出26次重复及22次跳帧，说明 V05-04b-34 的无缺失结果需复验。证据见 `logs/validation/v05-dshow-clock-calibration-01/calibration.json`。校准和接收连续性保持待验。
 
