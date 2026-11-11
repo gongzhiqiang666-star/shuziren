@@ -577,7 +577,10 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
     const item = document.createElement('li');
     const product = savedProducts.find(product => product.id === event.product_id);
     const completed = new Date(event.completed_at).toLocaleString();
-    item.textContent = `${completed} · ${product?.title || event.product_id} · 商品版本 ${event.product_version} · 第 ${event.segment_index + 1} 段 · 话术 ${event.script_id} · 任务 ${event.task_id}`;
+    const interval = Number.isInteger(event.sample_start) && Number.isInteger(event.sample_end)
+      ? ` · 发送时间线 ${(event.sample_start / 24000).toFixed(2)}–${(event.sample_end / 24000).toFixed(2)} 秒`
+      : '';
+    item.textContent = `${completed} · ${product?.title || event.product_id} · 商品版本 ${event.product_version} · 第 ${event.segment_index + 1} 段${interval} · 话术 ${event.script_id} · 任务 ${event.task_id}`;
     return item;
   }));
   rotationEventCursor = result.next_cursor;

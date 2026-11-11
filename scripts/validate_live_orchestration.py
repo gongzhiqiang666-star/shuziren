@@ -243,7 +243,14 @@ def main():
                                or (event['product_version'], event['script_id']) != expected_scripts[event['product_id']]
                                for event in events)):
                     raise RuntimeError('Rotation event history did not match completed playback')
+                previous_end = 0
+                for event in events:
+                    start, end = event['sample_start'], event['sample_end']
+                    if type(start) is not int or type(end) is not int or not previous_end <= start < end:
+                        raise RuntimeError('Rotation event PCM intervals are missing or out of order')
+                    previous_end = end
                 report['rotation_event_count'] = len(events)
+                report['rotation_event_last_sample'] = previous_end
             report['starts'].append({'cycle': cycle + 1, 'session': session_id, 'frames': stopped['frames']})
             old_session = session_id
             save()
