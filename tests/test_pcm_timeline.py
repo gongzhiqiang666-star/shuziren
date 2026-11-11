@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 import wave
 
 from scripts.pcm_timeline import PCMTimeline
@@ -11,6 +12,21 @@ from scripts.sample_timeline import SampleTimeline
 
 
 class PCMTests(unittest.TestCase):
+    def test_read_stage_distinguishes_source_wait_from_completion(self):
+        stages=[]
+        ledger=PCMTimeline('s',lambda event: stages.append(ledger.read_stage[0]))
+        self.addCleanup(ledger.close)
+        clock=SampleTimeline('s')
+
+        def supply_source(timeout):
+            stages.append(ledger.read_stage[0])
+            ledger.append(asdict(clock.reserve('s',960)),'idle')
+
+        with patch.object(ledger.condition,'wait',side_effect=supply_source):
+            self.assertEqual(ledger.read(960),bytes(1920))
+        self.assertEqual(stages,['wait_source','source_complete'])
+        self.assertEqual(ledger.read_stage[0],'returned')
+
     def test_read_crosses_speech_silence_boundary_without_rounding(self):
         with tempfile.TemporaryDirectory() as temporary:
             path=Path(temporary)/'speech.wav';pcm=b'\x01\x02'*1001
