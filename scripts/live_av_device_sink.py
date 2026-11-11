@@ -11,7 +11,7 @@ from scripts.audio_video_clock import AudioVideoClock,VideoDeadline
 class AVDeviceSink:
     clock_mode='audio'
 
-    def __init__(self,width,height,audio_device,on_present=None,video_delay_ms=0,smooth_clock=False,buffer_frames=2):
+    def __init__(self,width,height,audio_device,on_present=None,video_delay_ms=0,smooth_clock=False,buffer_frames=2,camera_i420=False):
         import sounddevice as sd
         if type(audio_device) is not int:raise ValueError('Explicit output device required')
         if type(smooth_clock) is not bool:raise ValueError('Explicit clock mode required')
@@ -34,7 +34,12 @@ class AVDeviceSink:
         settings=sd.WasapiSettings(auto_convert=True) if sd.query_hostapis(info['hostapi'])['name']=='Windows WASAPI' else None
         sd.check_output_settings(device=audio_device,channels=1,dtype='int16',samplerate=24000,extra_settings=settings)
         try:
-            self.camera=VirtualCameraOutput(width,height)
+            self.camera=VirtualCameraOutput(width,height,pixel_format='I420' if camera_i420 else 'BGR')
+            if camera_i420:
+                import cv2
+                self.prepare_camera_frame=lambda frame:cv2.cvtColor(frame,cv2.COLOR_BGR2YUV_I420)
+            else:
+                self.prepare_camera_frame=np.copy
             self.stream=sd.RawOutputStream(device=audio_device,samplerate=24000,channels=1,dtype='int16',
                 blocksize=960,latency='low',extra_settings=settings,callback=self._callback,finished_callback=self.finished.set)
             self.video_thread=threading.Thread(target=self._video,name='device-video-clock');self.video_thread.start()
@@ -92,7 +97,7 @@ class AVDeviceSink:
             raise ValueError('Next BGR frame and 960 PCM16 samples required')
         if not self.started and self.frames==self.buffer_frames-1 and threading.get_ident()!=self.owner_thread:
             raise RuntimeError('WASAPI stream must start on its creating thread')
-        packet=(index,image.copy(),pcm,time.perf_counter_ns());deadline=time.monotonic()+2
+        packet=(index,self.prepare_camera_frame(image),pcm,time.perf_counter_ns());deadline=time.monotonic()+2
         while True:
             if self.closed or self.error:raise RuntimeError(self.error or 'Combined output stopped')
             try:self.queue.put(packet,timeout=.02);break

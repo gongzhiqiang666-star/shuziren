@@ -5,15 +5,18 @@ import numpy as np
 
 
 class VirtualCameraOutput:
-    def __init__(self,width,height,backend='obs',device=None):
+    def __init__(self,width,height,backend='obs',device=None,pixel_format='BGR'):
         import pyvirtualcam
+        if pixel_format not in ('BGR','I420'):
+            raise ValueError('Unsupported camera pixel format')
+        self.pixel_format=pixel_format
         self.width=width;self.height=height;self.closed=False;self.frames=0
         started=time.perf_counter();self.open_attempts=0
         for attempt in range(11):
             self.open_attempts+=1
             try:
                 self.camera=pyvirtualcam.Camera(width=width,height=height,fps=25,
-                    fmt=pyvirtualcam.PixelFormat.BGR,backend=backend,device=device)
+                    fmt=getattr(pyvirtualcam.PixelFormat,pixel_format),backend=backend,device=device)
                 break
             except RuntimeError as error:
                 if attempt==10 or 'virtual camera output could not be started' not in str(error):raise
@@ -23,8 +26,9 @@ class VirtualCameraOutput:
 
     def send(self,index,image):
         if self.closed:raise RuntimeError('Camera output stopped')
-        if type(index) is not int or index!=self.frames or image.dtype!=np.uint8 or image.shape!=(self.height,self.width,3):
-            raise ValueError('Expected next correctly sized BGR frame')
+        expected=(self.height,self.width,3) if self.pixel_format=='BGR' else (self.height*3//2,self.width)
+        if type(index) is not int or index!=self.frames or image.dtype!=np.uint8 or image.shape!=expected:
+            raise ValueError('Expected next correctly sized camera frame')
         self.camera.send(np.ascontiguousarray(image));self.frames+=1
 
     def close(self):

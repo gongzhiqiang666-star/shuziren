@@ -47,6 +47,7 @@ def main():
     parser.add_argument('--capture-devices',action='store_true')
     parser.add_argument('--smooth-device-clock',action='store_true')
     parser.add_argument('--device-buffer-frames',type=int,choices=(2,4),default=2)
+    parser.add_argument('--camera-i420',action='store_true')
     parser.add_argument('--speech-interval-seconds',type=int,
                         help='Add a distinct uncached utterance at each interval, reserving the last 20 seconds for completion')
     parser.add_argument('--first-output-corpus',type=Path,help='Run the 50-utterance receiver latency cohort')
@@ -54,6 +55,8 @@ def main():
     if args.capture_devices and args.device_audio_output is None:parser.error('--capture-devices requires --device-audio-output')
     if args.device_buffer_frames != 2 and args.device_audio_output is None:
         parser.error('--device-buffer-frames requires --device-audio-output')
+    if args.camera_i420 and args.device_audio_output is None:
+        parser.error('--camera-i420 requires --device-audio-output')
     if args.speech_interval_seconds is not None and not 0<args.speech_interval_seconds<args.seconds-20:
         parser.error('--speech-interval-seconds requires room for an additional utterance before the final 20 seconds')
     schedule=[(0,None,'这是连续输出开始后新生成的第一条语音。'),
@@ -72,7 +75,7 @@ def main():
     report={'status':'failed','phase':'preparing','checks':{},'physical_device_tested':False,'platform_tested':False,
             'device_buffer_frames':args.device_buffer_frames if args.device_audio_output is not None else None,
             'scheduled_speech_count':len(schedule),'speech_interval_seconds':args.speech_interval_seconds,
-            'first_output_corpus_sha256':corpus_hash}
+            'first_output_corpus_sha256':corpus_hash,'camera_pixel_format':'I420' if args.camera_i420 else 'BGR'}
     tts=client=receiver=sink=session=ingress=assembler=injector=None
     completed=[];expected={};errors=[];presented=[];offsets=[];submit_costs=[];device_trace=[]
     capture=None
@@ -99,7 +102,7 @@ def main():
                 first_device_frame.set()
         sink=(device_sink(avatar['width'],avatar['height'],args.device_audio_output,on_present=record_device,
                           video_delay_ms=args.video_delay_ms,smooth_clock=args.smooth_device_clock,
-                          buffer_frames=args.device_buffer_frames)
+                          buffer_frames=args.device_buffer_frames,camera_i420=args.camera_i420)
             if args.device_audio_output is not None else ContinuousAVSink(ffmpeg,root/'live.ts',avatar['width'],avatar['height']))
         trace=(root/'presented.jsonl').open('w',encoding='utf-8')
         def on_present(row):

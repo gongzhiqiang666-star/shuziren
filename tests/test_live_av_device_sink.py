@@ -40,6 +40,7 @@ class CombinedCallbackTests(unittest.TestCase):
 
     def sink(self):
         sink=AVDeviceSink.__new__(AVDeviceSink)
+        sink.prepare_camera_frame=np.copy
         sink.sd=SimpleNamespace(CallbackStop=StopCallback,CallbackAbort=AbortCallback)
         sink.queue=queue.Queue(maxsize=2);sink.video_queue=queue.Queue(maxsize=4)
         sink.draining=False;sink.presented=0;sink.underflows=0;sink.error=None;sink.on_present=Mock()
