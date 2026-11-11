@@ -22,6 +22,8 @@ def main():
     parser.add_argument('--report-directory', type=Path, required=True)
     parser.add_argument('--tts-engine', choices=('indextts', 'zipvoice', 'omnivoice'), default='indextts')
     parser.add_argument('--tts-model-root', type=Path)
+    parser.add_argument('--assistant-voice-data', type=Path, help='Data directory containing a selected co-host reference')
+    parser.add_argument('--assistant-voice-id', help='Use this reference instead of the selection in that directory')
     parser.add_argument('--rotation-language', choices=('zh-CN', 'ms-MY', 'vi-VN'), default='zh-CN')
     parser.add_argument('--cycles', type=int, default=20)
     parser.add_argument('--interactions', type=int, default=None, help='Set to 0 to exercise start/stop only')
@@ -32,6 +34,10 @@ def main():
         parser.error('Cycle and capture lengths must be positive')
     if args.rotation_language != 'zh-CN' and args.tts_engine != 'omnivoice':
         parser.error('Multilingual rotation requires OmniVoice')
+    if args.assistant_voice_data and args.rotation_language != 'zh-CN':
+        parser.error('The co-host test fixture uses Chinese scripts')
+    if args.assistant_voice_id and not args.assistant_voice_data:
+        parser.error('--assistant-voice-id requires --assistant-voice-data')
 
     directory = args.report_directory.resolve()
     directory.mkdir(parents=True, exist_ok=False)
@@ -50,9 +56,21 @@ def main():
     first_script = products.add_script(product, first_text)
     products.select_script(product_id, first_script)
     second = products.save(title='轮播验收商品', content='本机验收使用', product_index=999)
+    if args.assistant_voice_data:
+        second_text += '{停:1}{助:大家好，我是助播。}'
     second_script = products.add_script(second, second_text)
     products.select_script(second['id'], second_script)
-    voice = VoiceStore(directory).selected()
+    voices = VoiceStore(directory)
+    voice = voices.selected()
+    assistant = None
+    if args.assistant_voice_data:
+        source = VoiceStore(args.assistant_voice_data)
+        reference_id = args.assistant_voice_id or source.selected()
+        reference = source.get(reference_id)
+        if reference['audio_sha256'] == voices.get(voice)['audio_sha256']:
+            parser.error('Host and co-host must have distinct reference audio')
+        ffmpeg = args.runtime_root / '_internal/env/ffmpeg/bin/ffmpeg.exe'
+        assistant = voices.import_audio(source.audio_path(reference_id), reference['transcript'], '助播验收音色', ffmpeg)['id']
 
     store = ConfigStore(directory)
     store.save({'version': 1, 'port': 5158, 'runtime_root': str(args.runtime_root.resolve())})
@@ -64,6 +82,7 @@ def main():
     capture = None
     report = {'status': 'running', 'requested_starts': args.cycles, 'requested_interactions': interactions,
               'tts_engine': args.tts_engine, 'rotation_language': args.rotation_language,
+              'assistant_voice_configured': assistant is not None,
               'starts': [], 'interactions': [], 'rotation': []}
 
     def save():
@@ -141,6 +160,7 @@ def main():
         for cycle in range(args.cycles):
             session_id = call('/api/live/start', {
                 'audio_device': device['id'], 'rotation_language': args.rotation_language,
+                'assistant_voice_id': assistant,
             }, 202)['session']['id']
             live(lambda state: state['id'] == session_id and state['status'] == 'running')
             if old_session:
