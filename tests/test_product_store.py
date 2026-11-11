@@ -26,6 +26,11 @@ class ProductStoreTests(unittest.TestCase):
         self.assertEqual(rows[0]['product_version'], product['version'])
         self.assertEqual(rows[0]['segment_index'], 1)
         self.assertTrue(rows[0]['completed_at'])
+        reopened = ProductStore(self.store.path.parent)
+        events = reopened.rotation_events('session')
+        self.assertEqual([event['task_id'] for event in events], ['task'])
+        self.assertEqual(reopened.rotation_events('session', after=events[0]['cursor']), [])
+        self.assertEqual(reopened.rotation_events('another-session'), [])
 
     def test_selected_script_expires_with_its_product_facts(self):
         product = self.edit(self.product(), product_facts={

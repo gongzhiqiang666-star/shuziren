@@ -36,6 +36,9 @@ class ConsoleHTTPTests(unittest.TestCase):
 
     def test_live_routes_reject_stale_or_unauthorized_actions(self):
         self.assertEqual(self.call('/api/live/state')[1], {'session': {'status': 'idle'}})
+        self.assertEqual(self.call('/api/live/rotation/events?session_id=scene&after=7')[1],
+                         {'events': [], 'next_cursor': 7})
+        self.assertEqual(self.call('/api/live/rotation/events?session_id=scene&after=-1')[0], 400)
         self.assertEqual(self.call('/api/live/start', {'audio_device': True})[0], 400)
         self.assertEqual(self.call('/api/live/start', {'audio_device': 14})[0], 400)
         self.assertEqual(self.call('/api/live/start', {'audio_device': 14}, **{'X-Console-Token': 'bad'})[0], 403)

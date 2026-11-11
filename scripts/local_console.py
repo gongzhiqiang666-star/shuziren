@@ -191,6 +191,17 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                                               "live_status": live_label(), "data_directory": str(store.directory.resolve())})
                 if path == '/api/live/state':
                     return self.respond(200, {'session': live_manager.state() if live_manager else {'status': 'idle'}})
+                if path == '/api/live/rotation/events':
+                    query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                    sessions = query.get('session_id', [])
+                    cursors = query.get('after', ['0'])
+                    if (len(sessions) != 1 or not 1 <= len(sessions[0]) <= 64 or len(cursors) != 1
+                            or not cursors[0].isascii() or not cursors[0].isdigit() or len(cursors[0]) > 19
+                            or int(cursors[0]) >= 2**63):
+                        raise ProductError('场次或轮播记录游标无效')
+                    after = int(cursors[0])
+                    events = products().rotation_events(sessions[0], after=after)
+                    return self.respond(200, {'events': events, 'next_cursor': events[-1]['cursor'] if events else after})
                 if path == '/api/taobao/state':
                     return self.respond(200, {'capture': taobao.state(), 'reply': replies.state()})
                 if path == '/api/live/devices':

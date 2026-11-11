@@ -131,6 +131,17 @@ class ProductStore:
             """, (session_id, task_id, item['product_id'], item['product_version'],
                   item['script_id'], segment_index))
 
+    def rotation_events(self, session_id, *, after=0):
+        with self.connect() as db:
+            rows = db.execute("""
+                SELECT rowid AS cursor, session_id, task_id, product_id, product_version,
+                       script_id, segment_index, completed_at
+                FROM live_rotation_events
+                WHERE session_id = ? AND rowid > ?
+                ORDER BY rowid LIMIT 100
+            """, (session_id, after)).fetchall()
+        return [dict(row) for row in rows]
+
     @staticmethod
     def decode(row):
         if row is None:
