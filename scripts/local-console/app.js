@@ -567,11 +567,13 @@ function renderLiveButtons() {
   $('live-event-product').disabled = $('live-rotation-events').disabled;
   $('live-event-task').disabled = $('live-rotation-events').disabled;
   $('live-enqueue').disabled = $('live-control').disabled || !!liveSession.manual;
-  $('live-insert').disabled = $('live-enqueue').disabled;
+  $('live-insert').disabled = liveSession.mode === 'local_video'
+    ? consoleClosed || liveBusy || liveSession.status !== 'running' || !!liveSession.insert_pending || !!liveSession.seek_pending
+    : $('live-enqueue').disabled;
   $('live-audio').disabled = active || liveBusy;
   $('live-video-path').disabled = consoleClosed || active || liveBusy;
   $('live-video-seek').hidden = liveSession.mode !== 'local_video' || liveSession.status !== 'running';
-  $('live-video-jump').disabled = consoleClosed || liveBusy || !!liveSession.seek_pending;
+  $('live-video-jump').disabled = consoleClosed || liveBusy || !!liveSession.seek_pending || !!liveSession.insert_pending;
   $('live-assistant-voice').disabled = consoleClosed || active || liveBusy;
 }
 async function loadLive() {
@@ -591,7 +593,8 @@ async function loadLive() {
     if (selectionChanged) renderShiftFields();
   }
   $('live-status').textContent = liveLabels[liveSession.status];
-  $('live-detail').textContent = liveSession.frames ? `已提交 ${liveSession.frames} 帧，待播 ${liveSession.pending ?? 0} 条` : '';
+  $('live-detail').textContent = liveSession.insert_error || (liveSession.insert_pending ? '正在准备插播语音' :
+    (liveSession.frames ? `已提交 ${liveSession.frames} 帧，待播 ${liveSession.pending ?? 0} 条` : ''));
   $('live-rotation-status').textContent = liveSession.rotation_error || (liveSession.rotation_products?.length ?
     `${liveSession.manual ? '轮播暂停' : '轮播中'} · ${liveSession.rotation_products.length} 个商品 · 已播 ${liveSession.rotation_completed} 条` +
       (liveSession.shift_index == null ? '' : ` · 第 ${liveSession.shift_index + 1} 班`) : '');

@@ -196,6 +196,7 @@ class ConsoleLive:
                            'audio_device': audio_device, 'frames': 0, 'requested_at': time.time()}
             self.rotation = self.reply_session = None
             self.video_commands = Queue(maxsize=1)
+            self.video_insert_snapshot = None
             self._record_session()
             self.thread = threading.Thread(target=self._run_video, args=(session_id, audio_device, video.resolve()),
                                            name='console-origin-live')
@@ -247,6 +248,7 @@ class ConsoleLive:
                         else:
                             process.stdin.write(json.dumps(command) + '\n')
                             process.stdin.flush()
+                            deadline = time.monotonic() + 45
                     try:
                         event = events.get(timeout=.1)
                     except Empty:
@@ -260,10 +262,19 @@ class ConsoleLive:
                     elif event.get('event') == 'stopped':
                         final_frames = event['frames']
                     elif event.get('event') == 'seek':
+                        if not stopping:
+                            deadline = float('inf')
                         with self.lock:
                             self.status.update(seek_position_ms=event['position_ms'], seek_pending=False)
+                    elif event.get('event') == 'insert':
+                        if not stopping:
+                            deadline = float('inf')
+                        with self.lock:
+                            self.status.update(insert_pending=False, insert_error=event['error'])
+                            if event['error'] is None:
+                                self.status['last_insert_task_id'] = event['task_id']
                     if time.monotonic() >= deadline:
-                        raise TimeoutError('本地视频场次启动或停止超时')
+                        raise TimeoutError('本地视频场次操作超时')
                 if process.returncode or not self.cancel.is_set():
                     raise RuntimeError('本地视频工作进程意外退出，请查看场次日志')
         except Exception as exc:
@@ -286,6 +297,10 @@ class ConsoleLive:
                     with self.lock:
                         self.status['frames'] = final_frames
             with self.lock:
+                staged = self.video_insert_snapshot
+                self.video_insert_snapshot = None
+                if staged is not None:
+                    Path(staged).unlink(missing_ok=True)
                 self.status.update(status='failed' if error else 'stopped', error=error, ended_at=time.time())
                 self._record_session()
 
@@ -296,8 +311,8 @@ class ConsoleLive:
             if (self.status.get('id') != session_id or self.status['status'] != 'running'
                     or self.status.get('mode') != 'local_video'):
                 raise Conflict('本地视频场次尚未就绪')
-            if self.status.get('seek_pending'):
-                raise Conflict('正在处理上一次跳转')
+            if self.status.get('seek_pending') or self.status.get('insert_pending'):
+                raise Conflict('正在处理本地视频指令')
             self.video_commands.put_nowait({'action': 'seek', 'position_ms': position_ms})
             self.status['seek_pending'] = True
             return self.state()
@@ -503,7 +518,23 @@ class ConsoleLive:
 
     def enqueue(self, session_id, task_id, *, priority=False, manual_revision=None, rotation_item=None, reply_guard=None):
         with self.lock:
-            if self.status.get('id') != session_id or self.status['status'] != 'running' or self.session is None:
+            if self.status.get('id') != session_id or self.status['status'] != 'running':
+                raise Conflict('场次已变化或尚未就绪')
+            if self.status.get('mode') == 'local_video':
+                if not priority or manual_revision is not None or rotation_item is not None or reply_guard is not None:
+                    raise Conflict('本地视频场次请使用优先插播')
+                if self.status.get('insert_pending') or self.status.get('seek_pending'):
+                    raise Conflict('正在处理本地视频指令')
+                snapshot = self.directory / 'live' / session_id / f'{uuid.uuid4().hex}.wav'
+                task = self.tts.snapshot_audio(task_id, snapshot)
+                if task.get('kind') == 'reply':
+                    snapshot.unlink(missing_ok=True)
+                    raise Conflict('评论回复只在原场次安排播报')
+                self.video_insert_snapshot = snapshot
+                self.video_commands.put_nowait({'action': 'insert', 'task_id': task_id, 'path': str(snapshot)})
+                self.status.update(insert_pending=True, insert_error=None)
+                return
+            if self.session is None:
                 raise Conflict('场次已变化或尚未就绪')
             if self.session.queue_full(manual_revision):
                 raise Conflict('待播队列已满')

@@ -20,7 +20,7 @@ from . import image_infer_audio as shared
 
 
 def _decode_audio(path, sample_rate):
-    result = subprocess.run([shutil.which("ffmpeg") or "ffmpeg", "-v", "error", "-i", str(path), "-vn", "-ac", "1",
+    result = subprocess.run([shutil.which("ffmpeg") or "ffmpeg", "-nostdin", "-v", "error", "-i", str(path), "-vn", "-ac", "1",
                              "-ar", str(sample_rate), "-f", "f32le", "-"], capture_output=True)
     if result.returncode: raise RuntimeError(result.stderr.decode(errors="replace"))
     return np.frombuffer(result.stdout, np.float32).copy()

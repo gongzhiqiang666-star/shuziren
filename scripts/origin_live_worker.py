@@ -34,8 +34,13 @@ def main():
     runtime = configure_runtime(args.runtime_root)
     from recovered.digital_image_runtime import create_image_runtime
     import numpy
+    import scipy.linalg
     import torch
+    import librosa
+    from bin.image_infer_v2.wenet.compute_ctc_att_bnf import load_ppg_model
 
+    # librosa resolves its audio I/O imports lazily.
+    _ = librosa.load
     if not torch.cuda.is_available():
         raise RuntimeError("本地视频直驱需要可用的 CUDA 运行环境")
     threading.Thread(target=read_commands, daemon=True).start()
@@ -49,6 +54,7 @@ def main():
             return
         manager.configure_console_audio_output(args.audio_device)
         manager.buffer_threshold = 8
+        manager.wenet_model = load_ppg_model(manager.wenet_conf_path, manager.wenet_model_path, manager.device)
         if stopped.is_set():
             return
         manager.start_playing()
@@ -72,6 +78,18 @@ def main():
             if command.get("action") == "seek":
                 manager.seek_to_ms(command["position_ms"])
                 print(json.dumps({"event": "seek", "position_ms": command["position_ms"]}), flush=True)
+            elif command.get("action") == "insert":
+                source = Path(command["path"])
+                error = None
+                try:
+                    if manager._in_interact or manager._has_queued_interact():
+                        raise ValueError("上一条插播尚未结束")
+                    manager.add_audio_to_queue(str(source), "danmu")
+                except Exception as exc:
+                    error = str(exc)
+                finally:
+                    source.unlink(missing_ok=True)
+                print(json.dumps({"event": "insert", "task_id": command["task_id"], "error": error}), flush=True)
     finally:
         manager.stop_playing()
         manager.tape.close()
