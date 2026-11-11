@@ -8,6 +8,12 @@ from recovered.image_rtmp_face_reader import RtmpFaceReader
 
 
 class RtmpFirstFrameTests(unittest.TestCase):
+    def test_rtmp_decode_preserves_input_frame_cadence(self):
+        reader = RtmpFaceReader.__new__(RtmpFaceReader)
+        command = reader._build_ffmpeg_command('rtmp://127.0.0.1/live/test', 25)
+        self.assertEqual(command[command.index('-vf') + 1], 'null')
+        self.assertEqual(command[command.index('-fps_mode') + 1], 'passthrough')
+
     def test_eof_does_not_count_as_first_frame(self):
         for payload in (b'', bytes(range(12))):
             with self.subTest(has_frame=bool(payload)):

@@ -4,6 +4,8 @@
 
 ## 四期开发进度
 
+A01-05 动态 RTMP 对照使用 150 张不同解码帧的受控缩放素材。原命令回采 48 帧仅有 1 种摘要。去掉固定 FPS 滤镜并使用 FFmpeg 时间戳透传后，回采 48 帧均不同且全部检出人脸。已将通过对照的解码选项接入读取器。证据见 `logs/validation/a01-rtmp-motion-03/result.json` 和同目录 `passthrough.json`。控制台驱动、自动重连及长时间输入仍待验。
+
 A01-05 RTMP 连续采集复验中，使用 X16 缓存成片推流，首 48 帧均产出有效人脸框且停止后回收解码进程，但解码画面摘要只有 1 种，未达到动态输入验收。证据见 `logs/validation/a01-rtmp-motion-02/result.json`。下轮使用已确认有运动的输入，分别核对源帧和回采帧的变化。
 
 A01-05 本机 SRS RTMP 人脸预处理通过。FFmpeg 以 25 fps 推送已验收形象的静帧，恢复版 `RtmpFaceReader` 使用独立媒体目录的 SCRFD / PFLD 模型在 CPU 处理 360×640 输入，首批 4 帧均产生有效人脸框，停止后解码进程与管道已回收。证据见 `logs/validation/a01-rtmp-face-01/result.json`。动态人脸、数字人实时驱动、自动重连和控制台接入仍待验。

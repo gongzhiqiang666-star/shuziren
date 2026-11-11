@@ -44,7 +44,7 @@ class RtmpFaceReader(VideoFaceReader):
         fps = float(numerator) / max(float(denominator or 1), 1)
         return self._make_even(stream.get("width", 0)), self._make_even(stream.get("height", 0)), fps
 
-    def _build_ffmpeg_video_filter(self, fps): return f"fps={fps:g}"
+    def _build_ffmpeg_video_filter(self, fps): return "null"
 
     def _build_ffmpeg_command(self, rtmp_url, fps):
         analyzed = _env_int("DH_LIVE_RTMP_ANALYZEDURATION", 1000000); probe = _env_int("DH_LIVE_RTMP_PROBESIZE", 1000000)
@@ -53,7 +53,8 @@ class RtmpFaceReader(VideoFaceReader):
             timeout = _env_int("DH_LIVE_RTMP_RW_TIMEOUT_US", 5_000_000)
             command += ["-rw_timeout", str(timeout), "-fflags", "nobuffer", "-flags", "low_delay",
                         "-analyzeduration", str(analyzed), "-probesize", str(probe)]
-        return command + ["-i", rtmp_url, "-an", "-vf", self._build_ffmpeg_video_filter(fps), "-pix_fmt", "bgr24", "-f", "rawvideo", "-"]
+        return command + ["-i", rtmp_url, "-an", "-vf", self._build_ffmpeg_video_filter(fps),
+                          "-pix_fmt", "bgr24", "-f", "rawvideo", "-fps_mode", "passthrough", "-"]
 
     def _reset_pipeline_state(self):
         self.internal_buffer.clear(); self.raw_frames_queue = queue.Queue(self.queue_buffer_size)
