@@ -69,7 +69,7 @@ class ResidentAvatar:
             'frame_offset':self.frame_offset,'sample_offset':self.sample_offset,'output_generated':False}
         self.prepared=True;return {**self.prepare_result,'reused':False}
 
-    def idle(self,session,task_id,timing,frame_channel):
+    def idle(self,session,task_id,timing,frame_channel,progress=None):
         if not self.prepared or not self.silence_features:raise ValueError('Prepare silence features before idle output')
         span=parse_span(timing)
         if session!=self.session or span.session_id!=session or span.sample_start!=self.sample_offset or span.frame_start!=self.frame_offset:
@@ -83,13 +83,16 @@ class ResidentAvatar:
         load_ns=process_ns=send_ns=0
         try:
             for start in range(0,len(sequence),self.synth.batch_size):
+                if progress: progress({'event':'idle_stage','stage':'load','frame_index':offset+start})
                 started=time.perf_counter_ns()
                 indices=sequence[start:start+self.synth.batch_size];images,metadata=self.synth._load_batch_frames(indices)
                 features=[self.silence_features[(start+index)%len(self.silence_features)] for index in range(len(indices))]
                 loaded=time.perf_counter_ns()
+                if progress: progress({'event':'idle_stage','stage':'process','frame_index':offset+start})
                 frames=self.synth._process_batch(images,metadata,features)
                 processed=time.perf_counter_ns()
                 if len(frames)!=len(indices):raise RuntimeError('Idle frame missing')
+                if progress: progress({'event':'idle_stage','stage':'send','frame_index':offset+start})
                 for frame in frames:frame_channel.send(session,task_id,offset+written,frame);written+=1
                 load_ns+=loaded-started
                 process_ns+=processed-loaded

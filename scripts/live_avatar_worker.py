@@ -28,7 +28,9 @@ def main():
                     sender=FrameSender(request['channel']);result={'attached':True}
                 elif request['operation']=='idle':
                     if sender is None:raise ValueError('Attach frame receiver before idle output')
-                    with redirect_stdout(sys.stderr):result=engine.idle(request['session_id'],request['task_id'],request['timing'],sender)
+                    stdout=sys.stdout
+                    def idle_progress(value):stdout.write(json.dumps(value)+'\n');stdout.flush()
+                    with redirect_stdout(sys.stderr):result=engine.idle(request['session_id'],request['task_id'],request['timing'],sender,idle_progress)
                 elif request['operation']=='inspect':
                     with redirect_stdout(sys.stderr):features,fingerprint=engine.features(request['audio'])
                     result={'frames':len(features),'features_sha256':fingerprint}

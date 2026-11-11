@@ -153,7 +153,10 @@ class ContinuousSession:
                     self.producer_stage=('idle_pcm',time.perf_counter_ns(),span.frame_start)
                     self.pcm.append(timing,source_id)
                     self.producer_stage=('idle_model',time.perf_counter_ns(),span.frame_start)
-                    result=self.client.request('idle',session_id=self.session_id,task_id=source_id,timing=timing)
+                    def idle_progress(value):
+                        if value.get('event')=='idle_stage':
+                            self.producer_stage=('idle_'+value['stage'],time.perf_counter_ns(),value['frame_index'])
+                    result=self.client.request('idle',progress=idle_progress,session_id=self.session_id,task_id=source_id,timing=timing)
                     if isinstance(result,dict) and 'idle_stage_ns' in result:
                         self.last_idle_timing={'frame_index':span.frame_start,'stage_ns':result['idle_stage_ns']}
         except BaseException as error:
