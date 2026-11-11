@@ -4,6 +4,8 @@
 
 ## 四期开发进度
 
+X15-02 / X16-03 固定特征、CUDA 同条件下追踪 UNet 调用。两侧共处理 354 帧，GitHub 实际为 177 个双帧批次，重建为 88 个四帧批次加一个双帧尾批。相同尺寸的尾批中，音频张量摘要一致，`source_img`、`ref_img` 及模型输出摘要均不同。证据见 `logs/validation/x15-x16-unet-trace-01/result.json`。前序源帧和人脸框一致，下一步按单帧对齐图像张量并检查裁剪、遮罩和归一化。
+
 X15-02 / X16-03 同一固定特征和 CUDA 条件下追踪两条生产生成链的 `_load_batch_frames` 返回。354 帧的源图索引、解码 BGR 字节摘要和人脸框逐项一致。证据见 `logs/validation/x15-x16-frame-input-01/result.json`。下一步对照进入 UNet 的张量、模型输出和贴回，当前只确认到读帧和框坐标。
 
 X15-02 / X16-03 固定特征对照补用同一 CUDA 执行提供者，并在两进程启动前设置 `NVIDIA_TF32_OVERRIDE=0`。两条 MPEG-4 成片双轨完整解码。对齐 354 帧，全画面 SSIM 0.989638、嘴部 0.906775，与 TensorRT 固定特征的嘴部 0.906848 接近。当前证据将差异排查缩小到帧处理、生成及贴回流程，尚未定位具体环节。证据见 `logs/validation/x15-x16-fixed-features-cuda-01`。
