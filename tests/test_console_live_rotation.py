@@ -48,7 +48,7 @@ class LiveRotationTests(unittest.TestCase):
             live.configure_rotation('scene', ['product'])
             for index, task_id in enumerate(('host-task', 'assistant-task')):
                 live.rotation['task_id'] = task_id
-                live.completed.put(task_id)
+                live.completed.put((task_id, index * 960, (index + 1) * 960))
                 live._record_completed()
                 self.assertEqual(live.state()['rotation_completed'], index)
             self.assertEqual(live.state()['last_rotation_product_id'], 'product')

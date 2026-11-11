@@ -131,7 +131,8 @@ class ConsoleLive:
             def source_complete(event):
                 source_id = event['source_id']
                 if not source_id.startswith('idle-'):
-                    self.completed.put(source_id)
+                    end = session.pcm.read_samples
+                    self.completed.put((source_id, end - event['samples'], end))
 
             session = ContinuousSession(binding.id, client, receiver, sink, assembler.root,
                                         on_started=started, on_present=presented,
@@ -190,7 +191,7 @@ class ConsoleLive:
     def _record_completed(self):
         while True:
             try:
-                source_id = self.completed.get_nowait()
+                source_id, sample_start, sample_end = self.completed.get_nowait()
             except Empty:
                 return
             self.status['last_completed_task_id'] = source_id
@@ -199,6 +200,7 @@ class ConsoleLive:
                 try:
                     self.tts.products.record_rotation_completion(
                         self.status['id'], source_id, item, self.rotation['segment'],
+                        sample_start=sample_start, sample_end=sample_end,
                     )
                 except sqlite3.Error:
                     logging.exception('记录商品口播完成事件失败')

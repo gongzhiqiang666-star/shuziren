@@ -112,6 +112,10 @@ class ProductStore:
             columns = {row[1] for row in db.execute('PRAGMA table_info(scripts)')}
             if 'parent_script_id' not in columns:
                 db.execute('ALTER TABLE scripts ADD COLUMN parent_script_id TEXT REFERENCES scripts(id)')
+            event_columns = {row[1] for row in db.execute('PRAGMA table_info(live_rotation_events)')}
+            for column in ('sample_start', 'sample_end'):
+                if column not in event_columns:
+                    db.execute(f'ALTER TABLE live_rotation_events ADD COLUMN {column} INTEGER')
             db.execute('PRAGMA user_version=3')
 
     @contextmanager
@@ -148,21 +152,22 @@ class ProductStore:
             rows = db.execute('SELECT * FROM live_sessions ORDER BY requested_at DESC, rowid DESC LIMIT 100').fetchall()
         return [dict(row) for row in rows]
 
-    def record_rotation_completion(self, session_id, task_id, item, segment_index):
+    def record_rotation_completion(self, session_id, task_id, item, segment_index, *,
+                                   sample_start=None, sample_end=None):
         with self.connect() as db:
             db.execute("""
                 INSERT INTO live_rotation_events
-                    (session_id, task_id, product_id, product_version, script_id, segment_index)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (session_id, task_id, product_id, product_version, script_id, segment_index, sample_start, sample_end)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_id, task_id) DO NOTHING
             """, (session_id, task_id, item['product_id'], item['product_version'],
-                  item['script_id'], segment_index))
+                  item['script_id'], segment_index, sample_start, sample_end))
 
     def rotation_events(self, session_id, *, after=0, product_id=None, task_id=None):
         with self.connect() as db:
             rows = db.execute("""
                 SELECT rowid AS cursor, session_id, task_id, product_id, product_version,
-                       script_id, segment_index, completed_at
+                       script_id, segment_index, completed_at, sample_start, sample_end
                 FROM live_rotation_events
                 WHERE session_id = ? AND rowid > ?
                   AND (? IS NULL OR product_id = ?)
