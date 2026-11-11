@@ -9,6 +9,23 @@ from scripts.console_taobao import ConsoleTaobao
 
 
 class AutomaticReplyTests(unittest.TestCase):
+    def test_reply_uses_scene_language_for_prompt_and_synthesis(self):
+        product = {'title': '茶杯', 'content': '容量300毫升'}
+        binding = ('session', 0, 'voice', product, 'vi-VN')
+        live = Mock()
+        live.lock = threading.RLock()
+        live.tts.lock = threading.RLock()
+        live.reply_context.return_value = binding
+        live.tts.state.side_effect = [None, {'id': 'speech', 'status': 'succeeded'}]
+        live.tts.start_reply.return_value = {'id': 'speech'}
+        live.session.queue_full.return_value = False
+        replies = ConsoleCommentReply()
+        with patch('recovered.llm_base_chat.base_chat', return_value='Dung tích 300 ml.') as model:
+            replies._run(live, {'id': 1, 'content': 'Dung tích bao nhiêu?'}, (), binding, {})
+        self.assertIn('用越南语', model.call_args.args[1])
+        live.tts.start_reply.assert_called_once_with(product, 'voice', 'Dung tích 300 ml.', language='vi-VN')
+        self.assertEqual(replies.state()['status'], 'queued')
+
     def test_reply_is_rejected_when_facts_expire_during_generation(self):
         product = {'title': '茶杯', 'content': '活动说明'}
         with patch('scripts.console_comment_reply.product_prompt_info', side_effect=[
@@ -27,7 +44,7 @@ class AutomaticReplyTests(unittest.TestCase):
             capture.count = 1
             capture.comments.append({'id': 1, 'received_at': time.monotonic()})
             live = Mock()
-            live.reply_context.return_value = ('session', 0, 'voice', {})
+            live.reply_context.return_value = ('session', 0, 'voice', {}, 'vi-VN')
             replies = ConsoleCommentReply()
             self.addCleanup(replies.close)
             dispatched = threading.Event()

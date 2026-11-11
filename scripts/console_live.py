@@ -201,7 +201,7 @@ class ConsoleLive:
             if control['manual']:
                 raise Conflict('手动接管中，暂不播报评论回复')
             return (self.status['id'], control['control_revision'], self.ingress.context['voice_id'],
-                    self.tts.products.get(self.ingress.context['product_id']))
+                    self.tts.products.get(self.ingress.context['product_id']), self.status['rotation_language'])
 
     def configure_rotation(self, session_id, product_ids):
         with self.lock:

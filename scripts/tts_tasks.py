@@ -152,7 +152,7 @@ class TTSTasks:
             return self._submit(product, script_id, voice, script['text'], speed, language, use_cache,
                                 kind='rotation' if rotation else None)
 
-    def start_reply(self, product, voice_id, text):
+    def start_reply(self, product, voice_id, text, *, language='zh-CN'):
         with self.lock:
             if self.closed or (self.task and self.task['status']=='running'):
                 raise Conflict('语音合成正在占用，请稍后重试')
@@ -161,7 +161,7 @@ class TTSTasks:
             if not isinstance(text,str) or not 1<=len(text.strip())<=240:
                 raise ProductError('回复长度须为1至240字')
             voice=self.voices.get(voice_id)
-            return self._submit(product, 'reply-'+uuid.uuid4().hex, voice, text, 1., 'zh-CN', False, kind='reply')
+            return self._submit(product, 'reply-'+uuid.uuid4().hex, voice, text, 1., language, False, kind='reply')
 
     def _submit(self, product, script_id, voice, text, speed, language, use_cache, *, kind=None):
         process=self._start_worker()
