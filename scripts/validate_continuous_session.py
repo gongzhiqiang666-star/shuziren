@@ -120,6 +120,8 @@ def main():
             if not event['source_id'].startswith('idle-'):
                 speech_end_samples[event['source_id']]=session.pcm.read_samples
         session=ContinuousSession(speech_session.id,client,receiver,sink,root/'assembled',on_source_complete=source_complete,on_present=on_present)
+        if isinstance(sink, AVDeviceSink):
+            sink.underrun_context = session.stall_context
         def inject():
             nonlocal capture
             try:
@@ -244,6 +246,8 @@ def main():
         if args.device_audio_output is not None:
             (root/'device-presented.json').write_text(json.dumps(device_trace),encoding='utf-8')
             report['device_error']=getattr(sink,'error',None)
+            if getattr(sink,'underrun',None) is not None:
+                report['device_underrun'] = sink.underrun
         save()
         if args.device_audio_output is not None:
             print(json.dumps({'status':report['status'],'report':str(root/'result.json'),'error':report.get('error')},ensure_ascii=False),flush=True)
