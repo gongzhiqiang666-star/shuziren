@@ -123,12 +123,13 @@ def main():
             session, state = recover_worker(session)
         live.configure_rotation(session['id'], [primary_id, second['id']])
         started = time.monotonic()
+        deadline = started + args.seconds
         tick = started
         last_frames = state['frames']
         last_progress = started
         report['status'] = 'running'
         with (directory / 'samples.jsonl').open('w', encoding='utf-8', buffering=1) as trace:
-            while tick - started <= args.seconds:
+            while True:
                 time.sleep(max(0, tick - time.monotonic()))
                 now = time.monotonic()
                 state = live.state()
@@ -161,7 +162,9 @@ def main():
                 report['last_sample'] = sample
                 if report['samples'] % 10 == 1:
                     save()
-                tick += 1
+                if now >= deadline:
+                    break
+                tick = min(deadline, max(tick + 1, time.monotonic()))
         if not state.get('rotation_completed'):
             raise RuntimeError('No spoken item completed')
         live.stop(session['id'])
