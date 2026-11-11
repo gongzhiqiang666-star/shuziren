@@ -162,7 +162,7 @@ def main():
         save()
         started=time.perf_counter()
         sampling_stop=threading.Event()
-        resource_report={'samples':0,'error':None}
+        resource_report={'samples':0,'error':None,'queue_peaks':{}}
         report['resource_sampling']=resource_report
         def sample_resources():
             process=psutil.Process()
@@ -191,6 +191,10 @@ def main():
                          'gpu':gpu_resources()}
                     samples.write(json.dumps(row)+'\n')
                     resource_report['samples']+=1
+                    for name in ('pending','device_queue_frames','video_queue_frames'):
+                        if row[name] is not None:
+                            peaks=resource_report['queue_peaks']
+                            peaks[name]=max(peaks.get(name,0),row[name])
                     previous_cpu=current_cpu
                     sampling_stop.wait(max(0,now+1-time.perf_counter()))
 
@@ -261,6 +265,12 @@ def main():
                         span is not None and span>=1800 and drift is not None and drift<=40
                         and report['receiver']['received_video_span_seconds']>=1800)
                     report['checks']['device_submission_within_budget']=report['device_submission_deadlines']['passed']
+                    peaks=resource_report['queue_peaks']
+                    report['checks']['sampled_queues_within_budget']=(
+                        peaks.get('pending',5)<=4
+                        and peaks.get('device_queue_frames',args.device_buffer_frames+1)<=args.device_buffer_frames
+                        and peaks.get('video_queue_frames',sink.video_queue.maxsize+1)<=sink.video_queue.maxsize
+                    )
                     failed=[check for check,value in report['checks'].items() if not value]
                     if failed:
                         report['status']='failed';raise RuntimeError('V05-T1 measurement failed: '+', '.join(failed))
