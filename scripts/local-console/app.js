@@ -148,7 +148,7 @@ $('product-form').addEventListener('submit', event => { event.preventDefault(); 
   const value = {title:$('product-title').value, content:$('product-content').value, product_index:$('product-index').value};
   if (currentProduct) Object.assign(value, {product_id:currentProduct.id,version:currentProduct.version});
   const facts = $('product-facts').value.trim();
-  if (facts || productFactsText(currentProduct)) {
+  if (facts !== productFactsText(currentProduct).trim()) {
     try { value.product_facts = facts ? JSON.parse(facts) : {}; }
     catch { throw new Error('商品事实必须是有效的 JSON 对象'); }
     if (!value.product_facts || typeof value.product_facts !== 'object' || Array.isArray(value.product_facts))
