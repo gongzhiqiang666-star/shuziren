@@ -33,6 +33,7 @@ class CounterDeviceSink(AVDeviceSink):
 class DeviceCapture:
     def __init__(self,ffmpeg,directory,seconds,*,dshow_video_clock=False):
         self.dshow_video_clock=dshow_video_clock
+        self.seconds=seconds
         timestamp_args=['-f','dshow','-use_video_device_timestamps','0'] if dshow_video_clock else [
             '-use_wallclock_as_timestamps','1','-f','dshow']
         self.path=directory/'receiver.mkv';self.log_path=directory/'receiver.log'
@@ -47,7 +48,7 @@ class DeviceCapture:
         except BaseException:self.log.close();raise
 
     def wait(self):
-        self.process.wait(timeout=10)
+        self.process.wait(timeout=self.seconds+10)
         if self.process.returncode:raise RuntimeError('Device capture failed; see receiver.log')
 
     def timestamp_origin(self):
