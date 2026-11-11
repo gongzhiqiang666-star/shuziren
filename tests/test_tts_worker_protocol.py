@@ -43,6 +43,21 @@ class TTSDeliveryTests(unittest.TestCase):
 
 @unittest.skipUnless(RUNTIME and (Path(RUNTIME)/'_internal/env/python.exe').is_file(),'Explicit runtime required')
 class TTSWorkerProtocolTests(unittest.TestCase):
+    def test_alternate_engine_ready_and_close(self):
+        for engine, provider in (('zipvoice', 'recovered-zipvoice'),
+                                 ('omnivoice', 'recovered-omnivoice')):
+            with self.subTest(engine=engine), tempfile.TemporaryDirectory() as directory:
+                result = subprocess.run(
+                    [sys.executable, '-X', 'utf8', '-m', 'scripts.tts_worker',
+                     '--runtime-root', RUNTIME, '--data-directory', directory,
+                     '--engine', engine],
+                    input='{"action":"close"}\n', capture_output=True,
+                    text=True, encoding='utf-8', timeout=20,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout),
+                                 {'event': 'ready', 'provider': provider})
+
     def test_invalid_requests_report_failure_and_worker_closes_without_model(self):
         with tempfile.TemporaryDirectory() as directory:
             requests=[{}, {'voice_id':'missing','text':'测试','speed':True,'language':'zh-CN','use_cache':False},
