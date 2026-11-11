@@ -53,13 +53,40 @@ el.querySelector('textarea').value=item.notes;
 } catch {
 document.querySelector('#draft-status').textContent='无法读取本地草稿，可手动导出记录。';
 }
-document.addEventListener('input',event=>{
-if(!event.target.closest('[data-case]'))return;
+const saveDraft=()=>{
 try {
 localStorage.setItem(draftKey,JSON.stringify(readCases()));
 document.querySelector('#draft-status').textContent='已保存到本机浏览器';
 } catch {
 document.querySelector('#draft-status').textContent='本地草稿无法保存，请导出记录。';
+}
+};
+document.addEventListener('input',event=>{
+if(event.target.closest('[data-case]'))saveDraft();
+});
+document.querySelector('#import').addEventListener('change',async event=>{
+const file=event.target.files[0];
+if(!file)return;
+try {
+const data=JSON.parse(await file.text());
+if(data.protocol!==metadata.protocol||data.corpus_sha256!==metadata.corpus_sha256||
+data.run_directory!==metadata.run_directory||!Array.isArray(data.cases)||data.cases.length!==cards.length)throw Error();
+const records=new Map(data.cases.map(item=>[item.id,item]));
+if(!cards.every(el=>{
+const item=records.get(el.dataset.case);
+return item&&['pending','pass','fail'].includes(item.status)&&typeof item.notes==='string';
+}))throw Error();
+if(!confirm('用文件中的记录替换当前审核草稿？'))return;
+cards.forEach(el=>{
+const item=records.get(el.dataset.case);
+el.querySelector('select').value=item.status;
+el.querySelector('textarea').value=item.notes;
+});
+saveDraft();
+} catch {
+document.querySelector('#draft-status').textContent='记录无效或不属于本轮审核。';
+} finally {
+event.target.value='';
 }
 });
 document.querySelectorAll('audio,video').forEach(media=>media.addEventListener('play',()=>{
@@ -74,7 +101,7 @@ const link=document.createElement('a');link.href=url;link.download='quality-manu
     page=f'''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>V04质量复核</title>
 <style>body{{font:16px system-ui;max-width:1100px;margin:auto;padding:24px;background:#f3f5f9;color:#17243b}}section{{background:white;padding:24px;margin:20px 0;border-radius:12px}}.players{{display:flex;gap:20px;flex-wrap:wrap}}video{{display:block;width:300px;max-width:100%}}label{{display:block;margin-top:16px}}textarea{{width:95%}}pre{{white-space:pre-wrap}}</style>
 <h1>{escape(corpus['version'])} 质量复核记录</h1><p>自动结果不代替人工听感和动态画质。以下人工字段初始全部待检查；本页不自动上传、播放或开播。</p>
-<button id="export">导出当前人工检查记录</button> <span id="draft-status" role="status"></span><pre>{escape(summary)}</pre>{''.join(cards)}<script>{script}</script></html>'''
+<button id="export">导出当前人工检查记录</button> <label>导入审核记录 <input id="import" type="file" accept=".json,application/json"></label><span id="draft-status" role="status"></span><pre>{escape(summary)}</pre>{''.join(cards)}<script>{script}</script></html>'''
     (root/'review.html').write_text(page,encoding='utf-8')
     return root/'review.html'
 
