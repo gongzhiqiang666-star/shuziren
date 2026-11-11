@@ -70,7 +70,7 @@ class InstanceLock:
             self.stream = None
 
 
-def create_server(store, port=None):
+def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=None):
     token = secrets.token_urlsafe(32)
     lock = threading.RLock()
     def products():
@@ -126,7 +126,7 @@ def create_server(store, port=None):
             if not root: raise ProductError('请先配置TTS运行资源目录')
             if tts_manager is None:
                 from scripts.tts_tasks import TTSTasks
-                tts_manager=TTSTasks(root,store.directory)
+                tts_manager=TTSTasks(root,store.directory,engine=tts_engine,model_root=tts_model_root)
             elif Path(root).resolve()!=tts_manager.runtime:
                 raise Conflict('运行资源目录已修改，请重启控制台后合成')
             return tts_manager
@@ -481,6 +481,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="数字人本地控制台")
     parser.add_argument("--data-directory", type=Path)
     parser.add_argument("--port", type=int)
+    parser.add_argument("--tts-engine", choices=("indextts", "zipvoice"), default="indextts")
+    parser.add_argument("--tts-model-root", type=Path)
     args = parser.parse_args(argv)
     store = ConfigStore(args.data_directory)
     store.directory.mkdir(parents=True, exist_ok=True)
@@ -489,7 +491,8 @@ def main(argv=None):
     instance = InstanceLock(store.directory)
     try:
         instance.__enter__()
-        server = create_server(store, args.port)
+        server = create_server(store, args.port, tts_engine=args.tts_engine,
+                               tts_model_root=args.tts_model_root)
     except OSError as error:
         instance.__exit__()
         logging.error("启动失败：%s", error)
