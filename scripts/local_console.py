@@ -324,14 +324,17 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                                                 '/api/voices/select', '/api/avatar-preparation/start', '/api/render/start'}:
                         raise Conflict('请先停止本机场次')
                     if path == '/api/live/start':
-                        if set(value) != {'audio_device'} or type(value['audio_device']) is not int or value['audio_device'] < 0:
+                        if set(value) - {'audio_device', 'rotation_language'} or type(value.get('audio_device')) is not int or value['audio_device'] < 0:
                             raise ProductError('请选择音频输出设备')
+                        language = value.get('rotation_language', 'zh-CN')
+                        if language != 'zh-CN' and (tts_engine != 'omnivoice' or language not in ('en-US', 'ms-MY', 'vi-VN')):
+                            raise ProductError('当前语音引擎不支持所选轮播语言')
                         for manager in (avatar_manager, render_manager):
                             if manager is not None and (manager.state() or {}).get('status') == 'running':
                                 raise Conflict('请先完成或取消视频任务')
                         if live_manager is None:
                             live_manager = ConsoleLive(tts(), store.directory)
-                        return self.respond(202, {'session': live_manager.start(value['audio_device'])})
+                        return self.respond(202, {'session': live_manager.start(value['audio_device'], language=language)})
                     if path == '/api/live/rotation':
                         if set(value) != {'session_id', 'product_ids'} or not isinstance(value['session_id'], str):
                             raise ProductError('商品轮播字段无效')

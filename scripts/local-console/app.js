@@ -474,7 +474,9 @@ $('live-devices').addEventListener('click', () => liveAction(async () => {
   $('live-audio').replaceChildren(new Option('请选择设备',''), ...devices.map(device => new Option(`${device.name} · ${device.host}`,device.id)));
   $('live-audio').value = devices.some(device => String(device.id) === selected) ? selected : '';
 }));
-$('live-start').addEventListener('click', () => liveAction(() => request('/api/live/start',{audio_device:Number($('live-audio').value)})));
+$('live-start').addEventListener('click', () => liveAction(() => request('/api/live/start',{
+  audio_device:Number($('live-audio').value), rotation_language:$('tts-language').value
+})));
 $('live-stop').addEventListener('click', () => liveAction(() => request('/api/live/stop',{session_id:liveSession.id})));
 async function enqueueLive(path) {
   requireSavedProduct();

@@ -16,7 +16,7 @@ class LiveRotationTests(unittest.TestCase):
             tts.state.return_value=None
             tts.start.side_effect=[{'id':'expired'}, {'id':'fresh'}]
             live=ConsoleLive(tts,directory)
-            live.status={'id':'scene','status':'running'}
+            live.status={'id':'scene','status':'running','rotation_language':'vi-VN'}
             live.session=Mock()
             live.session.frames_written=50
             live.session.control_state.return_value={'manual':False,'control_revision':0,'pending':0}
@@ -53,3 +53,4 @@ class LiveRotationTests(unittest.TestCase):
             self.assertIsNone(live.state()['rotation_error'])
             self.assertNotIn('rotation_retry_products',live.state())
             self.assertEqual(tts.start.call_count,2)
+            tts.start.assert_called_with('product','script','voice',language='vi-VN',use_cache=True,rotation=True)

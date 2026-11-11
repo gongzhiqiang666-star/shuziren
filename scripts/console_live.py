@@ -45,7 +45,7 @@ class ConsoleLive:
             'worker': {'pid': worker.pid, 'exit_code': worker.poll()} if worker is not None else None,
         }
 
-    def start(self, audio_device):
+    def start(self, audio_device, *, language='zh-CN'):
         if type(audio_device) is not int or audio_device < 0:
             raise ProductError('请选择明确的音频输出设备')
         with self.lock:
@@ -53,7 +53,8 @@ class ConsoleLive:
                 raise Conflict('已有场次正在运行或清理')
             self.cancel.clear()
             session_id = uuid.uuid4().hex
-            self.status = {'id': session_id, 'status': 'preparing', 'audio_device': audio_device, 'frames': 0}
+            self.status = {'id': session_id, 'status': 'preparing', 'audio_device': audio_device,
+                           'frames': 0, 'rotation_language': language}
             self.rotation = None
             self.reply_session = None
             self.completed = SimpleQueue()
@@ -254,7 +255,10 @@ class ConsoleLive:
                             current = self.tts.state()
                             if current and current['status'] == 'running':
                                 continue
-                            task = self.tts.start(item['product_id'], item['script_id'], self.ingress.context['voice_id'], use_cache=True, rotation=True)
+                            task = self.tts.start(
+                                item['product_id'], item['script_id'], self.ingress.context['voice_id'],
+                                language=self.status['rotation_language'], use_cache=True, rotation=True,
+                            )
                         pending = (task['id'], rotation, control['control_revision'])
                 except (ValueError, OSError, RuntimeError) as error:
                     logging.exception('商品轮播失败')
