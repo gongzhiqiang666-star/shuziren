@@ -14,6 +14,7 @@ import wave
 from recovered.voice_infer_v3 import VoiceSynthesizer
 from recovered.voice_infer import VoiceSynthesizer as ZipVoiceSynthesizer
 from recovered.voice_infer_v2 import VoiceSynthesizer as OmniVoiceSynthesizer
+from recovered import voice_infer_common
 from scripts.voice_store import VoiceStore
 from scripts.v122_acceleration import configure_runtime
 from scripts.tts_cache import AudioCache,file_hash,key_for
@@ -83,7 +84,8 @@ class TTSProvider:
                     raise FileNotFoundError('OmniVoice model or audio tokenizer is missing')
                 files=[p for p in model.rglob('*') if p.is_file() and not p.name.startswith('._')
                        and p.suffix in {'.json','.safetensors','.model','.txt'}]
-                files.extend([Path(__file__),Path(sys.modules[OmniVoiceSynthesizer.__module__].__file__)])
+                files.extend([Path(__file__),Path(voice_infer_common.__file__),
+                              Path(sys.modules[OmniVoiceSynthesizer.__module__].__file__)])
                 files.extend(p for p in (self.internal/'bin/voice_infer_v2/omnivoice').rglob('*.py')
                              if not p.name.startswith('._'))
                 self.engine_stamp=hashlib.sha256(json.dumps([(str(p),file_hash(p)) for p in sorted(files)]).encode()).hexdigest()
@@ -98,7 +100,8 @@ class TTSProvider:
                     raise FileNotFoundError('ZipVoice model or Vocos vocoder is missing')
                 files=[model/name for name in ('model.json','model.pt','tokens.txt')]
                 files.extend(vocoder/name for name in ('config.yaml','pytorch_model.bin'))
-                files.extend([Path(__file__),Path(sys.modules[ZipVoiceSynthesizer.__module__].__file__)])
+                files.extend([Path(__file__),Path(voice_infer_common.__file__),
+                              Path(sys.modules[ZipVoiceSynthesizer.__module__].__file__)])
                 files.extend(p for p in (self.internal/'bin/voice_infer/zipvoice').rglob('*.py')
                              if not p.name.startswith('._'))
                 self.engine_stamp=hashlib.sha256(json.dumps([(str(p),file_hash(p)) for p in sorted(files)]).encode()).hexdigest()
