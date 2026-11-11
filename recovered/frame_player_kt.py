@@ -288,16 +288,22 @@ class StreamPlayer:
     def start_playing(self):
         if not self._playback_lock.acquire(blocking=False):
             return
-        self._stop_event.clear()
-        self.running = True
-        if sys.platform == "win32":
-            try:
+        try:
+            if self.audio_output_device is not None:
+                self._init_audio_stream()
+            self._stop_event.clear()
+            self.running = True
+            if sys.platform == "win32":
                 Thread(target=self._run_playback_owned, daemon=True).start()
-            except BaseException:
+                return
+        except BaseException:
+            self.running = False
+            try:
+                self._close_audio_stream()
+            finally:
                 self._playback_lock.release()
-                raise
-        else:
-            self._run_playback_owned()
+            raise
+        self._run_playback_owned()
 
     def _run_playback_owned(self):
         try:
@@ -306,10 +312,10 @@ class StreamPlayer:
             self._playback_lock.release()
 
     def _run_playback(self):
-        if self._stop_event.is_set():
-            return
         silent_worker = None
         try:
+            if self._stop_event.is_set():
+                return
             try:
                 self._init_audio_stream()
                 if self._stop_event.is_set():
