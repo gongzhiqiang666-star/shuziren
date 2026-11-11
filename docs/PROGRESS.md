@@ -4,6 +4,8 @@
 
 ## 四期开发进度
 
+A01-04 Windows 同场次 20 次 ZipVoice 定时换班通过。先完成插播、手动接管与恢复，再验证首班和 20 次交替换班均播完对应商品，最后正常停播。累计发送 11281 帧，450 秒音视频回采经 FFmpeg 双轨完整解码，退出码 0，无错误输出。证据见 `logs/validation/a01-timed-shifts-live-20-01/result.json`。浏览器配置操作和人工音色听感仍待验。
+
 A01-05 在 Windows 独立媒体环境中复跑 `verify_origin_video_ffmpeg_reader` 和 `verify_image_infer_v2_special_video_contract`，两项通过。前者覆盖随包 FFmpeg 读取生成的本地 MP4，后者使用测试替身验证特殊视频插入的帧序和调用流程。控制台直接视频驱动、真实摄像头及 RTMP 断流恢复仍待验。
 
 A01-04 ZipVoice 定时换班本机短测通过。两件商品分别绑定场次主播和第二条参考音，班次各 12 秒。插播、手动接管和恢复后，核对首班、第二班、回到首班均完成对应商品口播，累计发送 2531 帧。100 秒回采双轨可解码，FFmpeg 报告一次视频 DTS 重复。证据见 `logs/validation/a01-timed-shifts-live-01/result.json`。20 次真实切换、浏览器配置和人工听感仍待验。
