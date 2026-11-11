@@ -3526,6 +3526,21 @@ def verify_origin_video_ffmpeg_reader():
             finally:
                 live.stop_capture()
             assert process.poll() is not None and all(not thread.is_alive() for thread in threads)
+            class SlowPreprocessor:
+                def is_alive(self): return True
+                def join(self, timeout): assert timeout == 2
+            slow=SlowPreprocessor()
+            live.preprocess_thread=slow
+            try:
+                live.start_capture(str(video))
+            except RuntimeError as error:
+                assert "上一段视频仍在停止" in str(error)
+                assert live.stop_event.is_set() and live.preprocess_thread is slow
+                assert live.ffmpeg_process is None
+            else:
+                raise AssertionError("Restart accepted before the prior preprocessor stopped")
+            finally:
+                live.preprocess_thread=None
 
 def verify_barrage_port_cleanup():
     from recovered.ws_capture import BarrageCapture

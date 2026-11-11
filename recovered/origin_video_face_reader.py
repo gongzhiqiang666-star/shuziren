@@ -33,7 +33,11 @@ class VideoFaceReader:
         finally: cap.release()
 
     def start_capture(self, video_path, start_ms=0):
-        self.stop_capture(); path = str(Path(video_path).expanduser().resolve())
+        self.stop_capture()
+        if any(thread is not None and thread.is_alive()
+               for thread in (self.capture_thread, self.preprocess_thread)):
+            raise RuntimeError("上一段视频仍在停止，请稍后重试")
+        path = str(Path(video_path).expanduser().resolve())
         if not Path(path).is_file(): raise FileNotFoundError(path)
         self.width, self.height, self.fps = self._get_video_properties(path)
         self.video_path, self.start_ms = path, max(0, int(start_ms)); self.stop_event.clear(); self.internal_buffer.clear()
@@ -67,7 +71,11 @@ class VideoFaceReader:
                 except OSError:pass
         stderr_thread,self.stderr_thread=self.stderr_thread,None
         if stderr_thread and stderr_thread.is_alive() and stderr_thread is not threading.current_thread():stderr_thread.join(timeout=1)
-        self.capture = None; self.capture_thread = self.preprocess_thread = None
+        self.capture = None
+        if self.capture_thread is not None and not self.capture_thread.is_alive():
+            self.capture_thread = None
+        if self.preprocess_thread is not None and not self.preprocess_thread.is_alive():
+            self.preprocess_thread = None
 
     def _drain_stderr(self):
         process=self.ffmpeg_process
