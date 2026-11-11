@@ -80,6 +80,7 @@ def main():
             'device_buffer_frames':args.device_buffer_frames if args.device_audio_output is not None else None,
             'scheduled_speech_count':len(schedule),'speech_interval_seconds':args.speech_interval_seconds,
             'first_output_corpus_sha256':corpus_hash,'camera_pixel_format':'I420' if args.camera_i420 else 'BGR'}
+    report['startup']={'engine_cache_seeded':args.seed_cache is not None}
     tts=client=receiver=sink=session=ingress=assembler=injector=None
     completed=[];expected={};errors=[];presented=[];offsets=[];submit_costs=[];device_trace=[]
     capture=None
@@ -93,7 +94,8 @@ def main():
         if args.device_audio_output is not None:
             def record_device(row):
                 device_trace.append(row)
-                if row['event']=='video_sent':
+                if row['event']=='video_sent' and not first_device_frame.is_set():
+                    report['startup']['first_camera_send_seconds']=(row['camera_sent_ns']-launched_ns)/1e9
                     first_device_frame.set()
             device_sink=CounterDeviceSink if args.capture_devices else AVDeviceSink
             sink=device_sink(avatar['width'],avatar['height'],args.device_audio_output,on_present=record_device,
@@ -107,7 +109,6 @@ def main():
         ingress=LiveSpeechIngress(tts,avatars,root);speech_session=ingress.start();assembler=SpeechAssembler(root/'assembled')
         if args.seed_cache is not None:
             shutil.copytree(args.seed_cache,root/'engine-cache')
-        report['startup']={'engine_cache_seeded':args.seed_cache is not None}
         client=LiveAvatarClient(args.runtime_root,avatars.directory(avatar['id']),root,root/'engine-cache')
         client.request('start',session_id=speech_session.id);report['avatar_prepare']=client.request('prepare');save()
         receiver=FrameReceiver(speech_session.id,avatar['width'],avatar['height']);client.request('attach_frames',channel=receiver.descriptor())
