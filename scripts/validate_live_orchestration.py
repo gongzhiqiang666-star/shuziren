@@ -24,7 +24,8 @@ def main():
     parser.add_argument('--tts-model-root', type=Path)
     parser.add_argument('--assistant-voice-data', type=Path, help='Data directory containing a selected co-host reference')
     parser.add_argument('--assistant-voice-id', help='Use this reference instead of the selection in that directory')
-    parser.add_argument('--timed-shifts', action='store_true', help='Exercise two timed host shifts after manual takeover')
+    parser.add_argument('--timed-shifts', action='store_true', help='Exercise timed host shifts after manual takeover')
+    parser.add_argument('--shift-count', type=int, default=2, help='Number of timed transitions to verify')
     parser.add_argument('--rotation-language', choices=('zh-CN', 'ms-MY', 'vi-VN'), default='zh-CN')
     parser.add_argument('--cycles', type=int, default=20)
     parser.add_argument('--interactions', type=int, default=None, help='Set to 0 to exercise start/stop only')
@@ -41,6 +42,8 @@ def main():
         parser.error('--assistant-voice-id requires --assistant-voice-data')
     if args.timed_shifts and (not args.assistant_voice_data or not interactions):
         parser.error('--timed-shifts requires a second reference and at least one interaction')
+    if args.shift_count < 1:
+        parser.error('--shift-count must be positive')
 
     directory = args.report_directory.resolve()
     directory.mkdir(parents=True, exist_ok=False)
@@ -198,7 +201,10 @@ def main():
                         'shift_durations': [12, 12], 'shift_voice_ids': [None, assistant],
                     })
                     report['timed_shifts'] = []
-                    for index, expected_product in ((0, product_id), (1, second['id']), (0, product_id)):
+                    report['requested_shift_transitions'] = args.shift_count
+                    for step in range(args.shift_count + 1):
+                        index = step % 2
+                        expected_product = (product_id, second['id'])[index]
                         completed = live(lambda value: value.get('shift_index') == index
                                          and value.get('last_rotation_product_id') == expected_product)
                         report['timed_shifts'].append(completed)

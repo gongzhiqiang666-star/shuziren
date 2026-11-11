@@ -48,6 +48,8 @@ OmniVoice 模型目录提供主模型、配置及 `audio_tokenizer`。ZipVoice �
 
 控制台目前对轮播、回复及语音入场使用开播时绑定的单个音色。接入时按实际话术段绑定场次、商品版本、角色、音色及语言，换班和手动接管后重新核对待播结果归属。以恢复版的 `verify_live_brain` 和 `verify_face_hand_manager` 作为静态回归入口，再执行双参考音、原话术格式、换班及手动接管的 Windows 回采。
 
+换班实机复验使用 `scripts.validate_live_orchestration --timed-shifts --shift-count 20`，并提供 `--assistant-voice-data`、媒体环境、话术夹具和报告目录。脚本使用两件商品和两条不同参考音，先走插播与手动接管，再逐次确认班次和实际播完的商品。报告中包含首班，因此通过条件为 21 条依次交替的班次记录以及正常停播。回采需留足生成和换班时间，人工发音和音色核对另行记录。
+
 ## A02 原平台完整适配
 
 前置：A01-05 通过。步骤顺序如下。
