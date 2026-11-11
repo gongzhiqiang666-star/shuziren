@@ -94,6 +94,8 @@ def main():
         if args.device_audio_output is not None:
             def record_device(row):
                 device_trace.append(row)
+                if row['event']=='audio_callback':
+                    report['startup'].setdefault('first_audio_callback_seconds',(row['callback_ns']-launched_ns)/1e9)
                 if row['event']=='video_sent' and not first_device_frame.is_set():
                     report['startup']['first_camera_send_seconds']=(row['camera_sent_ns']-launched_ns)/1e9
                     first_device_frame.set()
