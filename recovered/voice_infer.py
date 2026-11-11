@@ -94,11 +94,14 @@ class VoiceSynthesizer(CacheMixin):
                     logging.info("音频缓存命中，直接复用: %s", cached)
                     return cached
                 from bin.voice_infer.zipvoice.bin.infer_zipvoice import generate_sentence
+                import torch
+
                 result = output_path(self._get_temp_path())
-                generate_sentence(
-                    result, call_reference_text, call_reference_audio, text,
-                    self.model, self.vocoder, self.tokenizer, self.feature_extractor,
-                    self.device, speed=float(speed), sampling_rate=self.sampling_rate)
+                with torch.no_grad():
+                    generate_sentence(
+                        result, call_reference_text, call_reference_audio, text,
+                        self.model, self.vocoder, self.tokenizer, self.feature_extractor,
+                        self.device, speed=float(speed), sampling_rate=self.sampling_rate)
                 self._record(
                     result, text, speed, language,
                     call_reference_audio, call_reference_text)
