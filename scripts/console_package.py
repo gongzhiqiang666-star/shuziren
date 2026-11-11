@@ -145,8 +145,8 @@ def check_release(root, commit):
     return release, manifest
 
 
-def console_command(data, port):
-    command = [sys.executable, '-B', '-X', 'utf8', '-m', 'scripts.local_console', '--data-directory', str(data)]
+def console_command(data, port, python=None):
+    command = [str(python or sys.executable), '-B', '-X', 'utf8', '-m', 'scripts.local_console', '--data-directory', str(data)]
     if port is not None:
         command.extend(('--port', str(port)))
     return command
@@ -218,7 +218,7 @@ def switch_release(root, archive=None):
         return active
 
 
-def run_release(root, port):
+def run_release(root, port, with_media=False):
     from scripts.local_console import InstanceLock
 
     root = root.resolve()
@@ -227,7 +227,17 @@ def run_release(root, port):
         if commit is None:
             raise ValueError('Install a release first')
         release, _ = check_release(root, commit)
-        return subprocess.call(console_command(root / 'data', port), cwd=release, env=console_environment())
+        data = root / 'data'
+        python = None
+        if with_media:
+            from scripts.local_console_config import ConfigStore
+            from scripts.media_runtime import inspect_runtime, runtime_python
+
+            configured = ConfigStore(data).load()['runtime_root']
+            if not configured or not inspect_runtime(configured)['ready']:
+                raise ValueError('Configure a complete independent media runtime before starting with media')
+            python = runtime_python(configured)
+        return subprocess.call(console_command(data, port, python), cwd=release, env=console_environment())
 
 
 def main():
@@ -248,6 +258,7 @@ def main():
             command.add_argument('--archive', required=True, type=Path)
         if name == 'run':
             command.add_argument('--port', type=int)
+            command.add_argument('--with-media', action='store_true')
     migration = commands.add_parser('migrate-data')
     migration.add_argument('--root', type=Path, required=True)
     migration.add_argument('--source', type=Path, required=True)
@@ -266,7 +277,7 @@ def main():
         print(json.dumps(migrate_data(args.source, args.root), ensure_ascii=False))
         return 0
     if args.command == 'run':
-        return run_release(args.root, args.port)
+        return run_release(args.root, args.port, args.with_media)
     if args.command in {'deploy', 'rollback'}:
         print(json.dumps(switch_release(args.root, getattr(args, 'archive', None))))
         return 0
