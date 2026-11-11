@@ -284,10 +284,18 @@ def main():
     legacy.add_argument('--runtime', type=Path, required=True)
     legacy.add_argument('--voice', type=Path, action='append', default=[])
     legacy.add_argument('--avatar', type=Path, action='append', default=[])
+    legacy.add_argument('--products', type=Path)
+    legacy_products = commands.add_parser('migrate-v122-products')
+    legacy_products.add_argument('--root', type=Path, required=True)
+    legacy_products.add_argument('--source', type=Path, required=True)
     args = parser.parse_args()
+    if args.command == 'migrate-v122-products':
+        from scripts.console_data_migration import migrate_v122_products
+        print(json.dumps(migrate_v122_products(args.root, args.source), ensure_ascii=False))
+        return 0
     if args.command == 'migrate-v122-assets':
         from scripts.console_data_migration import migrate_v122_assets
-        print(json.dumps(migrate_v122_assets(args.root, args.runtime, args.voice, args.avatar), ensure_ascii=False))
+        print(json.dumps(migrate_v122_assets(args.root, args.runtime, args.voice, args.avatar, args.products), ensure_ascii=False))
         return 0
     if args.command == 'migrate-data':
         from scripts.console_data_migration import migrate_data

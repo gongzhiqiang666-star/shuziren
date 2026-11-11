@@ -5,13 +5,37 @@ import unittest
 from zipfile import ZipFile
 
 from scripts.console_package import MANIFEST, REQUIRED, digest, install
-from scripts.console_data_migration import migrate_data
+from scripts.console_data_migration import migrate_data, migrate_v122_products
 from scripts.local_console import InstanceLock
 from scripts.local_console_config import ConfigStore
 from scripts.product_store import ProductStore
 
 
 class ConsolePackageTests(unittest.TestCase):
+    def test_legacy_product_payload_preserves_selection_and_scripts_atomically(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'v122.json'
+            products = [
+                {'product_index': '007', 'itemName': '测试杯', 'content': '示例资料',
+                 'scripts': [{'text': '主讲', 'type': 'host'}, {'content': '助播', 'type': 'assistant'}]},
+                {'item_name': '测试布', 'script': '单条话术'},
+            ]
+            payload = {'product_scripts': products, 'current_product_index': 7}
+            source.write_text(json.dumps(payload), encoding='utf-8')
+            imported = migrate_v122_products(root / 'install', source)['products']
+            store = ProductStore(root / 'install/data')
+            identifier = imported[0]['product_id']
+            self.assertEqual(store.selected(), identifier)
+            self.assertEqual(imported[0]['legacy_index'], '007')
+            self.assertEqual([row['text'] for row in store.scripts(identifier)], ['主讲', '助播'])
+            self.assertEqual(store.get(identifier)['extra']['v122']['script_roles'], ['host', 'assistant'])
+            products[1]['product_index'] = 7
+            source.write_text(json.dumps(payload), encoding='utf-8')
+            with self.assertRaises(ValueError):
+                migrate_v122_products(root / 'invalid', source)
+            self.assertFalse((root / 'invalid/data').exists())
+
     def test_migration_snapshots_data_and_rejects_existing_target(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

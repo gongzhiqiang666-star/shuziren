@@ -12,7 +12,7 @@ import uuid
 from scripts.avatar_store import AvatarStore, digest
 from scripts.local_console_config import ConfigStore
 from scripts.media_runtime import checked_path as runtime_file, inspect_runtime
-from scripts.product_store import ProductStore
+from scripts.product_store import ProductStore, index_value
 from scripts.voice_store import VoiceStore
 
 
@@ -117,7 +117,7 @@ def migrate_data(source, root):
     return {'status': 'ok', 'data_directory': str(target), 'data_sets': present}
 
 
-def migrate_v122_assets(root, runtime, voices, avatars):
+def migrate_v122_assets(root, runtime, voices, avatars, products=None):
     root = root.resolve()
     runtime = runtime.resolve(strict=True)
     if not voices and not avatars:
@@ -144,6 +144,58 @@ def migrate_v122_assets(root, runtime, voices, avatars):
                 imported[kind].append({'legacy_id': source.name, 'id': record['id']})
             if len(imported[kind]) == 1:
                 store.select(imported[kind][0]['id'])
+        if products is not None:
+            imported['products'] = import_v122_products(snapshot, products)
         config = ConfigStore(snapshot)
         config.save({**config.load(), 'runtime_root': str(runtime)})
     return {'status': 'ok', 'data_directory': str(root / 'data'), **imported}
+
+
+def import_v122_products(snapshot, source):
+    source = source.resolve(strict=True)
+    payload = json.loads(source.read_text(encoding='utf-8-sig'))
+    products = payload.get('product_scripts') if isinstance(payload, dict) else None
+    if not isinstance(products, list) or not products:
+        raise ValueError('Legacy live configuration needs a nonempty product_scripts list')
+    selected = index_value(payload.get('current_product_index', -1))
+    imported = []
+    store = ProductStore(snapshot)
+    for position, product in enumerate(products):
+        if not isinstance(product, dict):
+            raise ValueError('Invalid legacy product record')
+        number = product.get('product_index', position)
+        numeric = index_value(number)
+        title = product.get('itemName') or product.get('item_name') or product.get('title') or f'商品 {number}'
+        content = product.get('content') or title
+        scripts = product.get('scripts') or product.get('script') or []
+        if isinstance(scripts, str):
+            scripts = [scripts]
+        if not isinstance(scripts, list):
+            raise ValueError('Invalid legacy script list')
+        texts, roles = [], []
+        for item in scripts:
+            body = item.get('content', item.get('text')) if isinstance(item, dict) else item
+            role = item.get('type', 'host') if isinstance(item, dict) else 'host'
+            if not isinstance(body, str) or not isinstance(role, str):
+                raise ValueError('Invalid legacy script record')
+            if body.strip():
+                texts.append(body)
+                roles.append(role)
+        legacy = {key: product[key] for key in ('itemName', 'item_name', 'item_id', 'itemId', 'keywords')
+                  if key in product}
+        legacy['script_roles'] = roles
+        saved = store.save(title=title, content=content, product_index=number, extra={'v122': legacy})
+        script_ids = [store.add_script(saved, body) for body in texts]
+        if selected != -1 and numeric == selected:
+            store.select(saved['id'])
+        imported.append({'legacy_index': number, 'product_id': saved['id'], 'script_ids': script_ids})
+    if selected != -1 and store.selected() is None:
+        raise ValueError('Legacy current product does not exist in the supplied configuration')
+    return imported
+
+
+def migrate_v122_products(root, source):
+    root = root.resolve()
+    with new_managed_data(root) as snapshot:
+        imported = import_v122_products(snapshot, source)
+    return {'status': 'ok', 'data_directory': str(root / 'data'), 'products': imported}

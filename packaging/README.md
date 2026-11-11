@@ -71,3 +71,5 @@ python -m scripts.console_package migrate-data --source "<原控制台数据目�
 ```powershell
 python -m scripts.console_package migrate-v122-assets --root "<新安装目录>" --runtime "<独立媒体目录>" --voice "<v122 音色目录>" --avatar "<v122 形象目录>"
 ```
+
+已取得 v122 直播配置 JSON 时，可用 `migrate-v122-products --root "<新安装目录>" --source "<配置 JSON>"` 导入其中的 `product_scripts`。若同时导入素材，将 `--products "<配置 JSON>"` 加到 `migrate-v122-assets`，整批发布。保存原商品编号、当前商品、话术顺序及原角色信息，导入后请按场次需要选择话术。
