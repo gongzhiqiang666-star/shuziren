@@ -36,6 +36,7 @@ class LiveRotationTests(unittest.TestCase):
             self.assertEqual(live.state()['status'],'running')
             self.assertEqual(live.state()['rotation_error'],'合成超时')
             self.assertEqual(live.state()['rotation_products'],[])
+            self.assertEqual(live.state()['rotation_retry_products'],['product'])
             live.enqueue.assert_not_called()
 
             live.configure_rotation('scene',['product'])
@@ -50,4 +51,5 @@ class LiveRotationTests(unittest.TestCase):
             live.enqueue.assert_called_once_with('scene','fresh',rotation_item={
                 'product_id':'product','product_version':1,'script_id':'script'})
             self.assertIsNone(live.state()['rotation_error'])
+            self.assertNotIn('rotation_retry_products',live.state())
             self.assertEqual(tts.start.call_count,2)

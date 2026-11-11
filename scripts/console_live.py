@@ -203,6 +203,7 @@ class ConsoleLive:
                 self.session.discard_pending(self.rotation['task_id'])
             self.rotation = {'items': items, 'index': 0, 'task_id': None} if items else None
             self.status.update(rotation_products=list(product_ids), rotation_completed=0, rotation_error=None)
+            self.status.pop('rotation_retry_products', None)
             self.status.pop('last_rotation_product_id', None)
             return self.state()
 
@@ -243,8 +244,9 @@ class ConsoleLive:
                         pending = (task['id'], rotation, control['control_revision'])
                 except (ValueError, OSError, RuntimeError) as error:
                     logging.exception('商品轮播失败')
+                    retry = [item['product_id'] for item in rotation['items']] if rotation else []
                     self.rotation = None
-                    self.status.update(rotation_products=[], rotation_error=str(error))
+                    self.status.update(rotation_products=[], rotation_error=str(error), rotation_retry_products=retry)
                     pending = None
 
     def enqueue(self, session_id, task_id, *, priority=False, manual_revision=None, rotation_item=None, reply_guard=None):

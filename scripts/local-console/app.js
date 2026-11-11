@@ -405,6 +405,7 @@ window.addEventListener('pagehide',()=>{clearTimeout(renderTimer);clearRenderPre
 renderVideoButtons();
 
 let liveSession = {status:'idle'}, liveTimer, liveBusy = false;
+let rotationSelectionEdited = false;
 const liveLabels = {idle:'未启动', preparing:'准备中', running:'本机输出中', stopping:'停止中', stopped:'已停止', failed:'输出失败'};
 function renderLiveButtons() {
   const active = ['preparing','running','stopping'].includes(liveSession.status);
@@ -414,6 +415,7 @@ function renderLiveButtons() {
   $('live-control').textContent = liveSession.manual ? '恢复自动调度' : '手动接管';
   $('live-speak').disabled = $('live-control').disabled || !liveSession.manual;
   $('live-rotation-start').disabled = $('live-control').disabled || !$('live-products').selectedOptions.length;
+  $('live-rotation-start').textContent = liveSession.rotation_error ? '重试商品轮播' : '开始商品轮播';
   $('live-rotation-stop').disabled = $('live-control').disabled || !liveSession.rotation_products?.length;
   $('live-enqueue').disabled = $('live-control').disabled || !!liveSession.manual;
   $('live-insert').disabled = $('live-enqueue').disabled;
@@ -423,6 +425,10 @@ async function loadLive() {
   clearTimeout(liveTimer);
   if (consoleClosed) return;
   liveSession = (await request('/api/live/state')).session;
+  if (!rotationSelectionEdited) {
+    const configured = new Set(liveSession.rotation_retry_products || liveSession.rotation_products || []);
+    for (const option of $('live-products').options) option.selected = configured.has(option.value);
+  }
   $('live-status').textContent = liveLabels[liveSession.status];
   $('live-detail').textContent = liveSession.frames ? `已提交 ${liveSession.frames} 帧，待播 ${liveSession.pending ?? 0} 条` : '';
   $('live-rotation-status').textContent = liveSession.rotation_error || (liveSession.rotation_products?.length ?
@@ -441,7 +447,7 @@ async function liveAction(work) {
   finally { liveBusy = false; renderLiveButtons(); }
 }
 $('live-audio').addEventListener('change', renderLiveButtons);
-$('live-products').addEventListener('change', renderLiveButtons);
+$('live-products').addEventListener('change', () => { rotationSelectionEdited = true; renderLiveButtons(); });
 $('live-rotation-start').addEventListener('click', () => liveAction(() => request('/api/live/rotation', {
   session_id:liveSession.id, product_ids:Array.from($('live-products').selectedOptions, option => option.value)
 })));
