@@ -44,6 +44,13 @@ def product_prompt_info(snapshot, *, now=None):
     return {"title": snapshot["title"], "content": json.dumps(verified, ensure_ascii=False)}
 
 
+def script_facts_current(product, created_at):
+    if "product_facts" not in product["extra"]:
+        return True
+    created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    return product_prompt_info(product, now=created) == product_prompt_info(product)
+
+
 def index_value(value):
     if isinstance(value, bool) or not isinstance(value, (str, int)):
         raise ProductError("商品编号必须为整数或整数字符串")
@@ -209,16 +216,20 @@ class ProductStore:
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             product=self.decode(db.execute('SELECT * FROM products WHERE id=?',(product_id,)).fetchone())
-            script=db.execute('SELECT product_id,product_version FROM scripts WHERE id=?',(script_id,)).fetchone()
+            script=db.execute('SELECT product_id,product_version,created_at FROM scripts WHERE id=?',(script_id,)).fetchone()
             if not script or script['product_id']!=product_id:
                 raise ProductError('话术不存在或不属于当前商品')
             if script['product_version']!=product['version']:
                 raise Conflict('历史话术不能直接选用，请按当前商品事实修改并保存')
+            if not script_facts_current(product, script['created_at']):
+                raise Conflict('话术所用的商品事实已到期，请更新话术')
             db.execute('INSERT OR REPLACE INTO script_selection VALUES(?,?)',(product_id,script_id))
 
     def selected_script(self, product_id):
         with self.connect() as db:
-            row=db.execute('''SELECT s.id FROM script_selection choice
+            row=db.execute('''SELECT s.id, s.created_at, s.snapshot FROM script_selection choice
                 JOIN scripts s ON s.id=choice.script_id JOIN products p ON p.id=choice.product_id
                 WHERE p.id=? AND s.product_id=p.id AND s.product_version=p.version''',(product_id,)).fetchone()
-            return row[0] if row else None
+            if row and script_facts_current(json.loads(row['snapshot']), row['created_at']):
+                return row['id']
+            return None
