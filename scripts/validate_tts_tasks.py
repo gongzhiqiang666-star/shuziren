@@ -25,7 +25,7 @@ def main(argv=None):
     parser.add_argument('--runtime-root',required=True,type=Path)
     parser.add_argument('--source-data',required=True,type=Path)
     parser.add_argument('--report-directory',required=True,type=Path)
-    parser.add_argument('--engine',choices=('indextts','zipvoice'),default='indextts')
+    parser.add_argument('--engine',choices=('indextts','zipvoice','omnivoice'),default='indextts')
     parser.add_argument('--model-root',type=Path)
     args=parser.parse_args(argv)
     root=(args.report_directory/('run-'+uuid.uuid4().hex)).resolve();root.mkdir(parents=True)
@@ -45,7 +45,8 @@ def main(argv=None):
         tasks.start(p['id'],script,voice['id']);first=wait(tasks)
         assert first['status']=='succeeded',first
         assert first['result']['provider']=={
-            'indextts':'recovered-voice-infer-v3','zipvoice':'recovered-zipvoice'}[args.engine]
+            'indextts':'recovered-voice-infer-v3','zipvoice':'recovered-zipvoice',
+            'omnivoice':'recovered-omnivoice'}[args.engine]
         pid=tasks.process.pid
         second_script=products.add_script(p,'这是第二段全新的文本，请确认常驻工作进程继续生成。');products.select_script(p['id'],second_script)
         tasks.start(p['id'],second_script,voice['id']);second=wait(tasks)

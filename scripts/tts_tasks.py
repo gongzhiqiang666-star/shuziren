@@ -15,7 +15,7 @@ from scripts.voice_store import VoiceStore
 
 class TTSTasks:
     def __init__(self,runtime_root,data_directory,*,engine='indextts',model_root=None):
-        if engine not in {'indextts','zipvoice'}:
+        if engine not in {'indextts','zipvoice','omnivoice'}:
             raise ProductError('不支持的TTS引擎')
         self.engine=engine
         self.model_root=Path(model_root).resolve() if model_root is not None else None
@@ -61,6 +61,10 @@ class TTSTasks:
             entry=self.runtime/'_internal/bin/voice_infer/zipvoice/bin/infer_zipvoice.py'
             if not entry.is_file():
                 raise ProductError('运行资源目录缺少 ZipVoice 推理模块，请配置包含 ZipVoice 的运行资源目录')
+        elif self.engine=='omnivoice':
+            entry=self.runtime/'_internal/bin/voice_infer_v2/omnivoice/models/omnivoice.py'
+            if not entry.is_file():
+                raise ProductError('运行资源目录缺少 OmniVoice 推理模块')
         self.log=(self.data/'tts-worker.log').open('a',encoding='utf-8')
         command=[str(python),'-X','utf8','-m','scripts.tts_worker',
                  '--runtime-root',str(self.runtime),'--data-directory',str(self.data),

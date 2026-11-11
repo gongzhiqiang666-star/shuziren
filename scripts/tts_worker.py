@@ -13,6 +13,7 @@ import wave
 
 from recovered.voice_infer_v3 import VoiceSynthesizer
 from recovered.voice_infer import VoiceSynthesizer as ZipVoiceSynthesizer
+from recovered.voice_infer_v2 import VoiceSynthesizer as OmniVoiceSynthesizer
 from scripts.voice_store import VoiceStore
 from scripts.v122_acceleration import configure_runtime
 from scripts.tts_cache import AudioCache,file_hash,key_for
@@ -27,6 +28,10 @@ class OwnedSynthesizer(VoiceSynthesizer):
 class OwnedZipVoiceSynthesizer(ZipVoiceSynthesizer):
     """Use ZipVoice inference with the worker's owned scratch directory."""
 
+    _get_temp_path = OwnedSynthesizer._get_temp_path
+
+
+class OwnedOmniVoiceSynthesizer(OmniVoiceSynthesizer):
     _get_temp_path = OwnedSynthesizer._get_temp_path
 
 
@@ -60,12 +65,29 @@ class TTSProvider:
         self.internal=configure_runtime(Path(runtime_root).resolve())
         self.model_root=self.model_root or self.internal/'assets/pretrained_models'
         self.engine=engine
-        self.provider='recovered-voice-infer-v3' if engine=='indextts' else 'recovered-zipvoice'
+        self.provider={'indextts':'recovered-voice-infer-v3',
+                       'zipvoice':'recovered-zipvoice','omnivoice':'recovered-omnivoice'}[engine]
+        if engine=='omnivoice':
+            sys.path.insert(0,str(self.internal/'bin/voice_infer_v2'))
         self.synth=None;self.identity=None;self.loads=0;self.inference_calls=0;self.reference_switches=0
         self.cache=AudioCache(self.outputs/'content-cache');self.engine_stamp=None
 
     def _engine_stamp(self):
         if self.engine_stamp is None:
+            if self.engine=='omnivoice':
+                root=self.model_root
+                model=next((p for p in (root/'pretrained_models/OmniVoice',
+                            root/'pretrained_models/omnivoice',root/'OmniVoice',root/'omnivoice',root)
+                            if (p/'model.safetensors').is_file()),None)
+                if model is None or not (model/'audio_tokenizer/model.safetensors').is_file():
+                    raise FileNotFoundError('OmniVoice model or audio tokenizer is missing')
+                files=[p for p in model.rglob('*') if p.is_file() and not p.name.startswith('._')
+                       and p.suffix in {'.json','.safetensors','.model','.txt'}]
+                files.extend([Path(__file__),Path(sys.modules[OmniVoiceSynthesizer.__module__].__file__)])
+                files.extend(p for p in (self.internal/'bin/voice_infer_v2/omnivoice').rglob('*.py')
+                             if not p.name.startswith('._'))
+                self.engine_stamp=hashlib.sha256(json.dumps([(str(p),file_hash(p)) for p in sorted(files)]).encode()).hexdigest()
+                return self.engine_stamp
             if self.engine=='zipvoice':
                 root=self.model_root
                 model=next((p for p in (root/'zipvoice_distill/zipvoice_distill', root/'zipvoice_distill', root)
@@ -113,10 +135,11 @@ class TTSProvider:
         identity=(voice['id'],voice['audio_sha256'],voice['text_sha256'])
         started=time.perf_counter();cold=False
         if cached is None and self.synth is None:
-            if self.engine=='zipvoice':
-                synth=OwnedZipVoiceSynthesizer(
+            if self.engine in {'zipvoice','omnivoice'}:
+                engine_class,version=(OwnedZipVoiceSynthesizer,'v1') if self.engine=='zipvoice' else (OwnedOmniVoiceSynthesizer,'v2')
+                synth=engine_class(
                     self.model_root,self.voices.audio_path(voice['id']),voice['transcript'],
-                    device='cuda',voice_id=voice['id'],voice_infer_version='v1')
+                    device='cuda',voice_id=voice['id'],voice_infer_version=version)
             else:
                 synth=OwnedSynthesizer.from_voice_dir(str(self.model_root),
                     str(self.voices.root),voice['id'],device='cuda',voice_infer_version='v3')
@@ -160,7 +183,7 @@ def main(argv=None):
     parser=argparse.ArgumentParser()
     parser.add_argument('--runtime-root',required=True,type=Path)
     parser.add_argument('--data-directory',required=True,type=Path)
-    parser.add_argument('--engine',choices=('indextts','zipvoice'),default='indextts')
+    parser.add_argument('--engine',choices=('indextts','zipvoice','omnivoice'),default='indextts')
     parser.add_argument('--model-root',type=Path)
     args=parser.parse_args(argv)
     with redirect_stdout(sys.stderr): provider=TTSProvider(args.runtime_root,args.data_directory,args.engine,args.model_root)

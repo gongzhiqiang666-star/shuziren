@@ -481,7 +481,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="数字人本地控制台")
     parser.add_argument("--data-directory", type=Path)
     parser.add_argument("--port", type=int)
-    parser.add_argument("--tts-engine", choices=("indextts", "zipvoice"), default="indextts")
+    parser.add_argument("--tts-engine", choices=("indextts", "zipvoice", "omnivoice"), default="indextts")
     parser.add_argument("--tts-model-root", type=Path)
     args = parser.parse_args(argv)
     store = ConfigStore(args.data_directory)
