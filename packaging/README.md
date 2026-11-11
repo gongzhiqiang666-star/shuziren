@@ -2,6 +2,14 @@
 
 将 `SHUZIREN_PYTHON` 设置为本机 Python 或独立虚拟环境的 `python.exe`，再运行 `packaging\start-console.cmd`。首次隔离验证可传 `--data-directory "C:\验证数据" --port 0`，启动输出会显示本机控制台地址。使用 LLM 功能前，在该环境安装 `packaging/requirements-console.txt`。
 
+Windows AMD64 的 CPython 3.12 控制台可用固定哈希清单离线安装。先在联网的同规格环境下载对应 wheel，把 wheel 目录与源码包带到目标机，再通过目标虚拟环境安装并核对依赖。此清单覆盖控制台的 HTTP 和 YAML 依赖，媒体依赖按下文准备。
+
+```powershell
+python -m pip download --only-binary=:all: --require-hashes -r packaging/requirements-console-win-amd64-py312.lock.txt -d wheels
+python -m pip install --no-index --find-links wheels --require-hashes -r packaging/requirements-console-win-amd64-py312.lock.txt
+python -m pip check
+```
+
 源码包包含控制台、恢复源码和依赖版本说明。形象、音频、驱动、模型及 GPU 运行环境需要另行配置。当前媒体运行仍需兼容的外置运行目录。模型和依赖独立交付、升级回滚和干净 Windows 验收另有任务记录。
 
 ## 独立媒体运行目录
