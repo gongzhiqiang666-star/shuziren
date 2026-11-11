@@ -151,9 +151,15 @@ class VideoStreamManager:
     def add_audio_to_queue(self,audio_path,queue_name="normal",use_silent_features=False,target_face_index=0):
         if queue_name not in self.audio_queues:raise ValueError(f"未知队列: {queue_name}")
         output=_decode_audio(audio_path,self.output_sample_rate);feature_audio=_decode_audio(audio_path,self.feature_sample_rate)
-        frames=max(1,int(np.ceil(len(feature_audio)/self.samples_per_frame)))
+        frames=max(1,(len(output)+self.output_samples_per_frame-1)//self.output_samples_per_frame)
         if use_silent_features or self.pause_event.is_set():features=np.tile(self.silence_wenet_features,(frames,1,1))[:frames]
-        else:features=np.asarray(self.extract_audio_features(audio_path),np.float32)
+        else:
+            features=np.asarray(self.extract_audio_features(audio_path),np.float32)
+            if not len(features):
+                features=self.silence_wenet_features
+            if len(features)<frames:
+                features=np.concatenate((features,np.repeat(features[-1:],frames-len(features),axis=0)))
+            features=features[:frames]
         shared.enqueue_audio_frames(self,audio_path,queue_name,target_face_index,feature_audio,output,features);self._current_audio_path=audio_path
 
     def init_player(self):shared.initialize_output_player(self)

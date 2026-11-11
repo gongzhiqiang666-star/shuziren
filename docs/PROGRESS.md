@@ -4,6 +4,8 @@
 
 ## 四期开发进度
 
+A01-05 使用真实 MP4、WeNet 和 CUDA UNet 验证短语音插播与定点恢复。插播帧数按输出 PCM 计算，最后不足一帧的语音保留，口型特征不足时延用末帧。0.23 秒语音完整进入六帧，10143 个 PCM 采样逐值一致，随后恢复原视频第 25 帧。验证截止于播放器提交，证据见 `logs/validation/a01-origin-real-interaction.json`。
+
 A01-05 实际视频口型推理通过短测。原应用构建入口补齐随包人脸模型目录，音频特征入口首次使用时加载 WeNet 模型，修复把权重路径直接传给特征提取的错误。授权视频四帧均检出人脸，真实语音生成 354 个特征窗口，CUDA UNet 输出四帧且逐帧检出像素变化。证据见 `logs/validation/a01-origin-real-inference.json`。该短测验证实际推理，仍需验证设备端插播、恢复及动态画质。
 
 A01-05 原应用视频直驱构建入口使用实际模型验证，调用 `create_image_runtime` 选中仓库内 `VideoStreamManager`，UNet 会话首选 CUDA。真实双轨 MP4 首帧为 720×1280，Windows 协商输出采样率为 44.1 kHz，每帧对应 1764 个非静音采样。初次脚本误按 24 kHz 断言，改为读取实际协商参数后通过。证据见 `logs/validation/a01-origin-runtime-model.json`。逐帧口型推理及产品设备输出仍待联调。
