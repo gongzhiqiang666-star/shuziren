@@ -155,8 +155,10 @@ def import_v122_products(snapshot, source):
     source = source.resolve(strict=True)
     payload = json.loads(source.read_text(encoding='utf-8-sig'))
     products = payload.get('product_scripts') if isinstance(payload, dict) else None
+    if isinstance(payload, dict) and not products:
+        products = payload.get('products')
     if not isinstance(products, list) or not products:
-        raise ValueError('Legacy live configuration needs a nonempty product_scripts list')
+        raise ValueError('Legacy live configuration needs a nonempty product_scripts or products list')
     selected = index_value(payload.get('current_product_index', -1))
     multi_product = bool(payload.get('multi_product_enabled', payload.get('enable_multi_product', False)))
     imported = []

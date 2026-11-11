@@ -37,6 +37,13 @@ class ConsolePackageTests(unittest.TestCase):
             rotated = ProductStore(root / 'rotation/data')
             self.assertEqual([item['product_index'] for item in rotated.list()], ['007', 3])
             self.assertEqual(rotated.selected(), rotation[1]['product_id'])
+            source.write_text(json.dumps({'products': [products[1]], 'current_product_index': 3}),
+                              encoding='utf-8')
+            alternate = migrate_v122_products(root / 'alternate', source)['products'][0]
+            alternate_store = ProductStore(root / 'alternate/data')
+            self.assertEqual(alternate_store.selected(), alternate['product_id'])
+            self.assertEqual([row['text'] for row in alternate_store.scripts(alternate['product_id'])],
+                             ['单条话术'])
             products[1]['product_index'] = 7
             source.write_text(json.dumps(payload), encoding='utf-8')
             with self.assertRaises(ValueError):
