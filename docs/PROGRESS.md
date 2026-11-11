@@ -4,6 +4,10 @@
 
 ## 四期开发进度
 
+N05 / V09 从 `5b7fa2f` 构建本机候选包 `logs/validation/n05-console-5b7fa2f.zip`，438 个文件通过清单校验及隔离安装。SHA-256 为 `c8b004c80169dd49d571878d1199ec7e0824f19b4b5e14c8219d1ab6ac9519fe`。从隔离目录加载包内控制台，HTTP 功能测试 21 项通过、1 项跳过。平台联调和干净 Windows 安装仍待验。
+
+V05 接收路径对照核对了已有 DirectShow 时钟实机报告。65 秒短测的话音区间无缺帧、重帧，1840 秒长测在 51 条话术中出现 41 帧缺失及 41 帧重复。四帧队列、I420、四帧空闲段及 100 毫秒视频补偿的该长测另未通过音画同步。保留原验收门槛，单独替换回采时间戳仍需解决长时连续性。证据见 `logs/validation/v05-av-dshow-clock-long-02/run-28c68f6219cb46fa92053a0f31004c1e/result.json`。
+
 X16-03 离线贴回修正通过真实产品渲染入口复测。正常提取 WeNet 特征、复用 TensorRT FP16 缓存并用 NVENC 输出 355 帧，端到端 22.59 秒，音轨完整且双轨完整解码。与 GitHub 基线对齐共同覆盖的 354 帧，嘴部 SSIM 为 0.983337。证据见 `logs/validation/x16-offline-paste-product-01/rebuilt.result.json` 和同目录 `ssim-mouth.log`。该项为单素材复测，动态评审及质量语料回归仍待执行。
 
 X16-03 离线贴回对照确认，原链将生成像素放回带 5 像素边缘的 266×266 原裁剪，再线性缩放贴回；尾批两帧的模拟贴回误差均小于 0.001（8 位）。重建离线入口采用该行为后，以固定特征及 CUDA 复跑 354 帧，嘴部 SSIM 从 0.906775 提升至 0.980816，全画面从 0.989638 提升至 0.996414，双轨完整解码。实时路径沿用原混合方式。FFprobe 复核发现，此前记作同为 MPEG-4 的离线对照仅中间写入同为 OpenCV MPEG-4，重建最终封装会转 H.264，GitHub 成片仍为 MPEG-4。上述修改前后的重建成片均为 H.264。证据见 `logs/validation/x15-x16-preencode-01/paste-variants.json` 和 `logs/validation/x16-offline-paste-01`。
