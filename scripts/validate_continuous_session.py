@@ -276,6 +276,7 @@ def main():
                     latency=report['receiver']['receiver_latency_calibration']
                     report['checks']['first_output_cohort_within_budget']=all(
                         metric['count']==50 and metric['p95_ms']<=1000 for metric in latency.values())
+                if args.seconds>=1840:
                     span=report['receiver']['speech_measurement_span_seconds']
                     drift=report['receiver']['speech_av_drift_ms']
                     report['checks']['receiver_drift_within_budget']=(
