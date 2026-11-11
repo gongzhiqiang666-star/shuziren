@@ -42,6 +42,12 @@ python -m scripts.stage_media_runtime --reference $reference --destination $runt
 
 OmniVoice 模型目录提供主模型、配置及 `audio_tokenizer`。ZipVoice 模型根目录提供 `zipvoice_distill` 和 `vocos-mel-24khz`。控制台启动时通过 `--tts-engine` 和 `--tts-model-root` 指定同一引擎及外置模型目录，并在配置中选定相应的媒体运行资源。任务验证报告包含模型复用、取消与恢复、过期结果拒收、进程关闭和完整解码。人工听感与直播输出按各自用例登记。
 
+### A01-04 主播、助播与换班的兼容基线
+
+恢复版 `live_manager_runtime.py` 从场次配置读取主讲音色、`assistant_voice_id` 和 `shift_schedule`。话术中的 `{助:…}` 产生助播段，未配置助播音色时沿用主讲音色。预生成缓存按主讲、助播、换班及商品话术的实际音色和语言计算，避免换班复用前一音色的音频。旧版轮播迁移已经保留话术顺序与角色。
+
+控制台目前对轮播、回复及语音入场使用开播时绑定的单个音色。接入时按实际话术段绑定场次、商品版本、角色、音色及语言，换班和手动接管后重新核对待播结果归属。以恢复版的 `verify_live_brain` 和 `verify_face_hand_manager` 作为静态回归入口，再执行双参考音、原话术格式、换班及手动接管的 Windows 回采。
+
 ## A02 原平台完整适配
 
 前置：A01-05 通过。步骤顺序如下。
