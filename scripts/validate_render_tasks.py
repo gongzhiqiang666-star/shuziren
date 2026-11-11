@@ -2,7 +2,6 @@
 import argparse
 import json
 from pathlib import Path
-import time
 import uuid
 
 from scripts.avatar_store import AvatarStore
@@ -13,14 +12,16 @@ from scripts.voice_store import VoiceStore
 
 
 def wait(manager,timeout):
-    deadline=time.monotonic()+timeout
-    while time.monotonic()<deadline:
-        state=manager.state()
-        if state['status']!='running':
-            manager.monitor.join(timeout=20)
-            return state
-        time.sleep(.25)
-    raise TimeoutError('任务未在限定时间内结束')
+    monitor = manager.monitor
+    if monitor is None:
+        raise RuntimeError('尚未启动验证任务')
+    monitor.join(timeout=timeout)
+    if monitor.is_alive():
+        raise TimeoutError('任务未在限定时间内结束')
+    state = manager.state()
+    if not state or state['status']=='running':
+        raise RuntimeError('验证任务结束后缺少最终状态')
+    return state
 
 
 def main():
