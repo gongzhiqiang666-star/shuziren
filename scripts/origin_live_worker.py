@@ -17,8 +17,10 @@ def main():
     parser.add_argument("--runtime-root", type=Path, required=True)
     parser.add_argument("--video", type=Path, required=True)
     parser.add_argument("--audio-device", type=int, required=True)
+    parser.add_argument("--tensorrt-cache", type=Path, help="Use TensorRT with this explicit engine cache directory")
     args = parser.parse_args()
     video = args.video.resolve(strict=True)
+    tensorrt_cache = args.tensorrt_cache.resolve() if args.tensorrt_cache is not None else None
     stopped = threading.Event()
 
     commands = Queue(maxsize=4)
@@ -45,7 +47,8 @@ def main():
     if not torch.cuda.is_available():
         raise RuntimeError("本地视频直驱需要可用的 CUDA 运行环境")
     threading.Thread(target=read_commands, daemon=True).start()
-    with TemporaryDirectory(prefix="origin-unet-") as cache, accelerated_unet(cache, backend="cuda"):
+    backend = "tensorrt" if tensorrt_cache is not None else "cuda"
+    with TemporaryDirectory(prefix="origin-unet-") as temporary, accelerated_unet(tensorrt_cache or temporary, backend=backend):
         manager = create_image_runtime({}, runtime, {
             "window_width": 720, "window_height": 1280, "image_output_mode": "camera",
             "is_interrupt": False, "video_path_for_driving": str(video), "enable_occluder": False,
