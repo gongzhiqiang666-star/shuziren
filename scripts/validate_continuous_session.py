@@ -72,7 +72,7 @@ def main():
         schedule.extend((offset,None,f'持续输出第{offset}秒，验证这一条新语音和对应画面。')
                         for offset in range(interval,args.seconds-20,interval))
     root=(args.report_directory/('run-'+uuid.uuid4().hex)).resolve();root.mkdir(parents=True)
-    report={'status':'failed','phase':'preparing','checks':{},'physical_device_tested':False,'platform_tested':False,
+    report={'status':'preparing','phase':'preparing','checks':{},'physical_device_tested':False,'platform_tested':False,
             'device_buffer_frames':args.device_buffer_frames if args.device_audio_output is not None else None,
             'scheduled_speech_count':len(schedule),'speech_interval_seconds':args.speech_interval_seconds,
             'first_output_corpus_sha256':corpus_hash,'camera_pixel_format':'I420' if args.camera_i420 else 'BGR'}
@@ -145,7 +145,9 @@ def main():
             except BaseException as error:
                 if not session.stop_event.is_set():errors.append(str(error))
         injector=threading.Thread(target=inject,name='new-tts-during-output');injector.start()
-        report['phase']='running';save();started=time.perf_counter()
+        report.update(status='running',phase='running')
+        save()
+        started=time.perf_counter()
         try:session.run(frames=args.seconds*25)
         finally:trace.close()
         report['wall_seconds']=time.perf_counter()-started;injector.join(timeout=5)
