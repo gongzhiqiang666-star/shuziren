@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 import subprocess
 import threading
+import time
 import uuid
 
 from scripts.product_store import Conflict, ProductError, ProductStore
@@ -192,6 +193,7 @@ class TTSTasks:
                     raise ProductError('TTS结果文件无效或越界')
                 if result.get('voice_id')!=voice['id'] or hashlib.sha256(output.read_bytes()).hexdigest()!=result.get('sha256'):
                     raise ProductError('TTS结果音色或内容指纹不符')
+                result['wav_ready_unix_ns']=time.time_ns()
                 self.task.update(status='succeeded',result=result);self._save()
         except Exception:
             with self.lock:

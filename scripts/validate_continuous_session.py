@@ -104,7 +104,9 @@ def main():
                     if audio['status']!='succeeded' or audio['result']['cache_hit'] or audio['result']['model_load_count']!=1:raise RuntimeError('New resident TTS failed')
                     ingress.capture(audio['id']);utterance=None
                     while utterance is None:utterance=assembler.push(ingress.take(timeout=2))
-                    expected[utterance.task_id]={'path':audio['result']['output'],'samples':utterance.samples,'pcm_sha256':utterance.pcm_sha256,'generation_started':generation_started}
+                    expected[utterance.task_id]={'path':audio['result']['output'],'samples':utterance.samples,
+                        'pcm_sha256':utterance.pcm_sha256,'generation_started':generation_started,
+                        'wav_ready_unix_ns':audio['result']['wav_ready_unix_ns']}
                     session.submit(utterance)
             except BaseException as error:
                 if not session.stop_event.is_set():errors.append(str(error))
@@ -140,7 +142,8 @@ def main():
                 timing_acceptance=False,receiver_sync_tested=False,smooth_device_clock=args.smooth_device_clock)
             report['checks'].update(all_scheduled_utterances_completed=True,source_pcm_exact=True,device_callbacks_complete=True)
             if capture:
-                capture.wait();report['receiver']=audit_received_voice(capture.path,completed,expected)
+                capture.wait()
+                report['receiver']=audit_received_voice(capture.path,completed,expected,capture.timestamp_origin())
                 report['receiver_sync_tested']=True
                 if not report['receiver']['voice_sync_passed']:
                     report['status']='failed';raise RuntimeError('Real voice receiver correlation or A/V timing failed')

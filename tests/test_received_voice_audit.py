@@ -6,11 +6,11 @@ import wave
 import av
 import numpy as np
 from scipy import signal
-from scripts.received_voice_audit import stamp_counter,read_counter,audit_received_voice
+from scripts.received_voice_audit import stamp_counter,read_counter,audit_received_voice,receiver_origin
 
 
 class ReceivedVoiceTests(unittest.TestCase):
-    def fixture(self,root,delay,wrong_voice=False,replace_frame=None):
+    def fixture(self,root,delay,wrong_voice=False,replace_frame=None,origin_ns=None):
         source=np.random.default_rng(123).integers(-4000,4000,2400,dtype=np.int16)
         reference=root/'voice.wav'
         with wave.open(str(reference),'wb') as sound:
@@ -32,7 +32,21 @@ class ReceivedVoiceTests(unittest.TestCase):
                 frame.pts=index;frame.time_base=Fraction(1,25);output.mux(video.encode(frame))
             output.mux(video.encode(None));output.mux(sound.encode(None))
         events=[{'source_id':'idle-0','samples':5760},{'source_id':'speech','samples':2400}]
-        return audit_received_voice(path,events,{'speech':{'path':str(reference)}})
+        source={'path':str(reference)}
+        if origin_ns is not None:source['wav_ready_unix_ns']=origin_ns-100_000_000
+        return audit_received_voice(path,events,{'speech':source},origin_ns)
+
+    def test_receiver_origin_and_wav_ready_latency(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)
+            log=root/'receiver.log'
+            log.write_text('  Duration: N/A, start: 1700000000.123456, bitrate: N/A\n',encoding='utf-8')
+            origin=1_700_000_000_123_456_000
+            self.assertEqual(receiver_origin(log,origin-1,origin+1),origin)
+            self.assertIsNone(receiver_origin(log,origin+1,origin+2))
+            result=self.fixture(root,.02,origin_ns=origin)
+        self.assertAlmostEqual(result['receiver_latency_calibration']['frame']['p95_ms'],340,delta=.1)
+        self.assertAlmostEqual(result['receiver_latency_calibration']['signal']['p95_ms'],360,delta=1)
 
     def test_counter_wrap_and_input_ownership(self):
         image=np.zeros((1280,720,3),np.uint8)

@@ -1,8 +1,11 @@
 """Diagnostic frame counters and actual camera/cable voice alignment."""
 import subprocess
+import re
+import time
 import wave
 from bisect import bisect_right
 from collections import Counter
+from decimal import Decimal
 import av
 import numpy as np
 from scipy import signal
@@ -29,9 +32,11 @@ class CounterDeviceSink(AVDeviceSink):
 
 class DeviceCapture:
     def __init__(self,ffmpeg,directory,seconds):
-        self.path=directory/'receiver.mkv';self.log=(directory/'receiver.log').open('wb');self.process=None
+        self.path=directory/'receiver.mkv';self.log_path=directory/'receiver.log'
+        self.log=self.log_path.open('wb');self.process=None
+        self.launched_unix_ns=time.time_ns()
         try:
-            self.process=subprocess.Popen([str(ffmpeg),'-nostdin','-y','-hide_banner','-loglevel','error',
+            self.process=subprocess.Popen([str(ffmpeg),'-nostdin','-y','-hide_banner','-loglevel','info','-nostats',
                 '-use_wallclock_as_timestamps','1','-f','dshow','-audio_buffer_size','20',
                 '-video_size','720x1280','-framerate','25','-i','video=C920:audio=CABLE Output (VB-Audio Virtual Cable)',
                 '-t',str(seconds),'-fps_mode','passthrough','-c:v','ffv1','-c:a','pcm_s16le','-ar','48000','-ac','1',str(self.path)],
@@ -42,13 +47,26 @@ class DeviceCapture:
         self.process.wait(timeout=10)
         if self.process.returncode:raise RuntimeError('Device capture failed; see receiver.log')
 
+    def timestamp_origin(self):
+        return receiver_origin(self.log_path,self.launched_unix_ns,time.time_ns())
+
     def close(self):
         try:
             if self.process and self.process.poll() is None:self.process.kill();self.process.wait(timeout=5)
         finally:self.log.close()
 
 
-def audit_received_voice(path,completed,expected):
+def receiver_origin(log,launched_ns,finished_ns):
+    with log.open(encoding='utf-8',errors='replace') as lines:
+        for line in lines:
+            match=re.search(r'Duration:\s*N/A,\s*start:\s*(\d+\.\d+)',line)
+            if match:
+                origin=int(Decimal(match[1])*1_000_000_000)
+                return origin if launched_ns<=origin<=finished_ns else None
+    return None
+
+
+def audit_received_voice(path,completed,expected,origin_ns=None):
     video=[];blocks=[];block_times=[];block_offsets=[];sample_count=0
     with av.open(str(path)) as container:
         for packet in container.demux():
@@ -85,7 +103,7 @@ def audit_received_voice(path,completed,expected):
             end=block_offsets[after] if after<len(block_offsets) else sample_count
             window=received[start:end].astype(float)
             coefficient=0.
-            audio_time=delta_ms=None
+            audio_time=delta_ms=signal_time=None
             if len(window)>=len(reference):
                 correlation=signal.correlate(window,reference,mode='valid',method='fft')
                 relative=int(np.argmax(correlation))
@@ -96,10 +114,22 @@ def audit_received_voice(path,completed,expected):
                 block_index=bisect_right(block_offsets,offset)-1
                 audio_time=block_times[block_index]+(offset-block_offsets[block_index])/48000
                 delta_ms=(audio_time-expected_video_time)*1000
+                signal_indices=np.flatnonzero(np.abs(aligned)>=256)
+                if signal_indices.size:
+                    signal_offset=offset+int(signal_indices[0])
+                    signal_block=bisect_right(block_offsets,signal_offset)-1
+                    signal_time=block_times[signal_block]+(signal_offset-block_offsets[signal_block])/48000
             voices.append({'task_id':event['source_id'],'source_start_sample':source_start,'samples':event['samples'],
                 'correlation':coefficient,'audio_receive_start_seconds':audio_time,
                 'reference_video_frame':frame_index,'av_offset_ms':delta_ms,'video_uncertainty_ms':uncertainty,
                 'passed':delta_ms is not None and coefficient>=.95 and abs(delta_ms)+uncertainty<=80})
+            ready_ns=source.get('wav_ready_unix_ns')
+            if origin_ns is not None and ready_ns is not None and voices[-1]['passed']:
+                origin_from_ready_ms=(origin_ns-ready_ns)/1_000_000
+                voices[-1]['wav_ready_to_received_signal_ms']=(
+                    origin_from_ready_ms+signal_time*1000 if signal_time is not None else None)
+                voices[-1]['wav_ready_to_received_frame_ms']=(
+                    origin_from_ready_ms+video_time*1000 if frame_index==target else None)
         source_start+=event['samples']
     steps=[b[0]-a[0] for a,b in zip(video,video[1:])]
     received_speech=[index for index,_ in video if index in speech_frames]
@@ -110,6 +140,11 @@ def audit_received_voice(path,completed,expected):
     drift=None
     if len(voices)>1 and voices[0]['passed'] and voices[-1]['passed']:
         drift=abs(voices[-1]['av_offset_ms']-voices[0]['av_offset_ms'])
+    latency={}
+    for kind in ('signal','frame'):
+        field=f'wav_ready_to_received_{kind}_ms'
+        measurements=[voice[field] for voice in voices if voice.get(field) is not None and voice[field]>=0]
+        latency[kind]={'count':len(measurements),'p95_ms':float(np.percentile(measurements,95)) if measurements else None}
     return {'voices':voices,'received_video_frames':len(video),'received_audio_samples':len(received),
         'missing_frames':sum(max(0,step-1) for step in steps),'repeated_frames':sum(step==0 for step in steps),
         'reordered_frames':sum(step<0 for step in steps),'frame_continuity_passed':bool(steps) and all(step==1 for step in steps),
@@ -119,4 +154,7 @@ def audit_received_voice(path,completed,expected):
         'speech_frame_continuity_passed':bool(speech_frames) and not (speech_missing or speech_repeated or speech_reordered),
         'speech_av_drift_ms':drift,
         'speech_measurement_span_seconds':(voices[-1]['source_start_sample']-voices[0]['source_start_sample'])/24000 if drift is not None else None,
+        'receiver_timestamp_origin_unix_ns':origin_ns,
+        'receiver_latency_calibration':latency,
+        'received_signal_threshold_pcm16':256,
         'timing_acceptance':False,'markers_are_diagnostic_overlay':True}
