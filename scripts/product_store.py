@@ -103,6 +103,10 @@ class ProductStore:
                     script_id TEXT NOT NULL, segment_index INTEGER NOT NULL,
                     completed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
                     PRIMARY KEY(session_id, task_id));
+                CREATE TABLE IF NOT EXISTS live_sessions (
+                    session_id TEXT PRIMARY KEY, requested_at REAL NOT NULL,
+                    started_at REAL, ended_at REAL, status TEXT NOT NULL,
+                    frames INTEGER NOT NULL DEFAULT 0);
             ''')
             db.execute('BEGIN IMMEDIATE')
             columns = {row[1] for row in db.execute('PRAGMA table_info(scripts)')}
@@ -120,6 +124,19 @@ class ProductStore:
                 yield db
         finally:
             db.close()
+
+    def record_live_session(self, session_id, requested_at, *, started_at=None, ended_at=None,
+                            status='preparing', frames=0):
+        with self.connect() as db:
+            db.execute("""
+                INSERT INTO live_sessions
+                    (session_id, requested_at, started_at, ended_at, status, frames)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    started_at = excluded.started_at, ended_at = excluded.ended_at,
+                    status = excluded.status, frames = excluded.frames
+                WHERE live_sessions.ended_at IS NULL
+            """, (session_id, requested_at, started_at, ended_at, status, frames))
 
     def record_rotation_completion(self, session_id, task_id, item, segment_index):
         with self.connect() as db:

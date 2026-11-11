@@ -13,6 +13,15 @@ from scripts.product_store import Conflict, ProductError, ProductStore, product_
 
 
 class ProductStoreTests(unittest.TestCase):
+    def test_live_session_terminal_record_survives_reopen_and_retry(self):
+        self.store.record_live_session('scene', 100)
+        self.store.record_live_session('scene', 100, started_at=102, ended_at=110, status='stopped', frames=200)
+        reopened = ProductStore(self.store.path.parent)
+        reopened.record_live_session('scene', 100)
+        with reopened.connect() as db:
+            row = db.execute('SELECT * FROM live_sessions WHERE session_id=?', ('scene',)).fetchone()
+        self.assertEqual(tuple(row), ('scene', 100, 102, 110, 'stopped', 200))
+
     def test_rotation_completion_is_durable_and_deduplicated(self):
         product = self.product()
         script = self.store.add_script(product, '商品口播')

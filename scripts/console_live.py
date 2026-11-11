@@ -58,7 +58,9 @@ class ConsoleLive:
             self.cancel.clear()
             session_id = uuid.uuid4().hex
             self.status = {'id': session_id, 'status': 'preparing', 'audio_device': audio_device,
-                           'frames': 0, 'rotation_language': language, 'assistant_voice_id': assistant_voice_id}
+                           'frames': 0, 'rotation_language': language, 'assistant_voice_id': assistant_voice_id,
+                           'requested_at': time.time()}
+            self._record_session()
             self.rotation = None
             self.reply_session = None
             self.completed = SimpleQueue()
@@ -118,7 +120,7 @@ class ConsoleLive:
             def started():
                 with self.lock:
                     if not self.cancel.is_set():
-                        self.status.update(status='running')
+                        self.status.update(status='running', started_at=time.time())
 
             def presented(row):
                 recent_submissions.append({key: row[key] for key in (
@@ -171,7 +173,19 @@ class ConsoleLive:
             if ole32 is not None:
                 ole32.CoUninitialize()
             with self.lock:
-                self.status.update(status='failed' if error else 'stopped', error=error)
+                self.status.update(status='failed' if error else 'stopped', error=error, ended_at=time.time())
+                self._record_session()
+
+    def _record_session(self):
+        state = self.status
+        try:
+            self.tts.products.record_live_session(
+                state['id'], state['requested_at'], started_at=state.get('started_at'),
+                ended_at=state.get('ended_at'), status=state['status'], frames=state['frames'],
+            )
+        except sqlite3.Error:
+            logging.exception('记录场次生命周期失败')
+            state['session_event_error'] = '场次生命周期记录写入失败'
 
     def _record_completed(self):
         while True:
