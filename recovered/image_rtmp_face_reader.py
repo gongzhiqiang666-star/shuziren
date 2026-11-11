@@ -50,7 +50,9 @@ class RtmpFaceReader(VideoFaceReader):
         analyzed = _env_int("DH_LIVE_RTMP_ANALYZEDURATION", 1000000); probe = _env_int("DH_LIVE_RTMP_PROBESIZE", 1000000)
         command = [os.environ.get("FFMPEG_EXE") or shutil.which("ffmpeg") or "ffmpeg", "-hide_banner", "-loglevel", "warning"]
         if not Path(rtmp_url).is_file():
-            command += ["-fflags", "nobuffer", "-flags", "low_delay", "-analyzeduration", str(analyzed), "-probesize", str(probe)]
+            timeout = _env_int("DH_LIVE_RTMP_RW_TIMEOUT_US", 5_000_000)
+            command += ["-rw_timeout", str(timeout), "-fflags", "nobuffer", "-flags", "low_delay",
+                        "-analyzeduration", str(analyzed), "-probesize", str(probe)]
         return command + ["-i", rtmp_url, "-an", "-vf", self._build_ffmpeg_video_filter(fps), "-pix_fmt", "bgr24", "-f", "rawvideo", "-"]
 
     def _reset_pipeline_state(self):

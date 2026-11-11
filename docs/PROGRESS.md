@@ -4,6 +4,8 @@
 
 ## 四期开发进度
 
+A01-05 本机 SRS / FFmpeg RTMP 回环首轮在停推后 8 秒内未观察到采集线程退出。增加 FFmpeg 读写超时参数后复测两轮，均收到 320×240 BGR 首帧，停止推流后约 10.25 和 10.41 秒观察到采集退出，随后关闭解码进程及管道，并在同一地址重新推流和开读。证据见 `logs/validation/a01-rtmp-loopback-02/result.json`。本轮验证传输与解码，人脸预处理、自动重连和控制台驱动仍待验。
+
 A01-04 Windows 同场次 20 次 ZipVoice 定时换班通过。先完成插播、手动接管与恢复，再验证首班和 20 次交替换班均播完对应商品，最后正常停播。累计发送 11281 帧，450 秒音视频回采经 FFmpeg 双轨完整解码，退出码 0，无错误输出。证据见 `logs/validation/a01-timed-shifts-live-20-01/result.json`。浏览器配置操作和人工音色听感仍待验。
 
 A01-05 在 Windows 独立媒体环境中复跑 `verify_origin_video_ffmpeg_reader` 和 `verify_image_infer_v2_special_video_contract`，两项通过。前者覆盖随包 FFmpeg 读取生成的本地 MP4，后者使用测试替身验证特殊视频插入的帧序和调用流程。控制台直接视频驱动、真实摄像头及 RTMP 断流恢复仍待验。
