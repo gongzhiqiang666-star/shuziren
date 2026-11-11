@@ -223,16 +223,14 @@ class ConsoleLive:
                 if not script_id:
                     raise Conflict(f'请先为商品「{product["title"]}」选用话术')
                 item = {'product_id': product_id, 'product_version': product['version'], 'script_id': script_id}
-                assistant_voice_id = self.status.get('assistant_voice_id')
-                if assistant_voice_id:
-                    from recovered.slice_content import slice_content
+                from recovered.slice_content import slice_content
 
-                    script = next((row for row in self.tts.products.scripts(product_id) if row['id'] == script_id), None)
-                    if script is None:
-                        raise Conflict('选用话术已变化，请重新设置轮播')
-                    segments = slice_content(script['text'])
-                    if any(segment['type'] == 'assistant' for segment in segments):
-                        item['segments'] = segments
+                script = next((row for row in self.tts.products.scripts(product_id) if row['id'] == script_id), None)
+                if script is None:
+                    raise Conflict('选用话术已变化，请重新设置轮播')
+                segments = slice_content(script['text'])
+                if any(segment['type'] in {'assistant', 'pause'} for segment in segments):
+                    item['segments'] = segments
                 items.append(item)
             if self.rotation and self.rotation['task_id']:
                 self.session.discard_pending(self.rotation['task_id'])
@@ -264,8 +262,9 @@ class ConsoleLive:
                             item = rotation['items'][rotation['index']]
                             if 'segments' in item:
                                 segment = item['segments'][rotation['segment']]
-                                voice_id = (self.status['assistant_voice_id'] if segment['type'] == 'assistant'
-                                            else self.ingress.context['voice_id'])
+                                voice_id = self.ingress.context['voice_id']
+                                if segment['type'] == 'assistant':
+                                    voice_id = self.status.get('assistant_voice_id') or voice_id
                                 item = {**item, 'voice_id': voice_id}
                             self.enqueue(session_id, task_id, rotation_item=item)
                             rotation['task_id'] = task_id
@@ -289,7 +288,7 @@ class ConsoleLive:
                                     self._advance_rotation(rotation)
                                 continue
                             options = {'segment_index': rotation['segment'],
-                                       'assistant_voice_id': self.status['assistant_voice_id']}
+                                       'assistant_voice_id': self.status.get('assistant_voice_id')}
                         with self.tts.lock:
                             current = self.tts.state()
                             if current and current['status'] == 'running':

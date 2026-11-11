@@ -41,6 +41,7 @@ class LiveRotationTests(unittest.TestCase):
             tts.lock=threading.RLock()
             tts.products.get.return_value={'id':'product','title':'测试商品','version':1}
             tts.products.selected_script.return_value='script'
+            tts.products.scripts.return_value=[{'id':'script','text':'测试话术'}]
             tts.state.return_value=None
             tts.start.side_effect=[{'id':'expired'}, {'id':'fresh'}]
             live=ConsoleLive(tts,directory)

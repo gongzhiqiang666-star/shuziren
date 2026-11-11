@@ -207,6 +207,10 @@ async function loadVoices() {
     const option=document.createElement('option');option.value=voice.id;option.textContent=voice.name;return option;
   }));
   $('voice-list').value=result.selected || ''; showVoice(result.selected);
+  const assistant = $('live-assistant-voice');
+  const selectedAssistant = assistant.value;
+  assistant.replaceChildren(new Option('沿用主播音色', ''), ...voiceRecords.map(voice => new Option(voice.name, voice.id)));
+  assistant.value = voiceRecords.some(voice => voice.id === selectedAssistant) ? selectedAssistant : '';
 }
 $('voice-form').addEventListener('submit',event => { event.preventDefault(); voiceAction(async () => {
   const result=await request('/api/voices/import',{source:$('voice-source').value,transcript:$('voice-transcript').value,name:$('voice-name').value});
@@ -443,6 +447,7 @@ function renderLiveButtons() {
   $('live-enqueue').disabled = $('live-control').disabled || !!liveSession.manual;
   $('live-insert').disabled = $('live-enqueue').disabled;
   $('live-audio').disabled = active || liveBusy;
+  $('live-assistant-voice').disabled = consoleClosed || active || liveBusy;
 }
 async function loadLive() {
   clearTimeout(liveTimer);
@@ -484,7 +489,8 @@ $('live-devices').addEventListener('click', () => liveAction(async () => {
   $('live-audio').value = devices.some(device => String(device.id) === selected) ? selected : '';
 }));
 $('live-start').addEventListener('click', () => liveAction(() => request('/api/live/start',{
-  audio_device:Number($('live-audio').value), rotation_language:$('tts-language').value
+  audio_device:Number($('live-audio').value), rotation_language:$('tts-language').value,
+  assistant_voice_id:$('live-assistant-voice').value || null
 })));
 $('live-stop').addEventListener('click', () => liveAction(() => request('/api/live/stop',{session_id:liveSession.id})));
 async function enqueueLive(path) {
