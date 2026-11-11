@@ -1370,6 +1370,29 @@ def verify_live_brain():
     try:assert ordered.tick() is None and calls==[]
     finally:ordered._tick_lock.release()
     ordered.mark_stopped();ordered.tick();assert calls==[]
+    from unittest.mock import patch
+
+    shifts = [{"duration_seconds": 3, "product_index": 0},
+              {"duration": 5, "product_index": 1}]
+    events, products = [], []
+    scheduler = LocalLiveBrain(session_id="shifts", config={"shift_schedule": shifts},
+                               llm_config={}, emit_task=events.append, queue_provider=lambda: {})
+    scheduler._switch_to_product = products.append
+    scheduler.shift_started_at = 100
+    clock = sys.modules[LocalLiveBrain.__module__].time
+    for _ in range(20):
+        current = scheduler.shift_state
+        deadline = scheduler.shift_started_at + (3, 5)[current]
+        with patch.object(clock, "monotonic", return_value=deadline - 0.001):
+            scheduler._tick_shift_schedule()
+        assert scheduler.shift_state == current
+        with patch.object(clock, "monotonic", return_value=deadline):
+            scheduler._tick_shift_schedule()
+        assert scheduler.shift_state == 1 - current
+        assert scheduler.shift_started_at == deadline
+    assert products == [1, 0] * 10
+    assert [event["payload"]["shift_index"] for event in events] == products
+    scheduler._executor.shutdown(wait=False, cancel_futures=True)
     broadcast=[]
     feeder=LocalLiveBrain(session_id="broadcast",config={"product_scripts":[{"scripts":["甲","乙"]}]},
                           llm_config={},emit_task=broadcast.append,queue_provider=lambda:{})
