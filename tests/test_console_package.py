@@ -30,6 +30,13 @@ class ConsolePackageTests(unittest.TestCase):
             self.assertEqual(imported[0]['legacy_index'], '007')
             self.assertEqual([row['text'] for row in store.scripts(identifier)], ['主讲', '助播'])
             self.assertEqual(store.get(identifier)['extra']['v122']['script_roles'], ['host', 'assistant'])
+            products[1]['product_index'] = 3
+            source.write_text(json.dumps({**payload, 'enable_multi_product': True, 'current_product_index': 1}),
+                              encoding='utf-8')
+            rotation = migrate_v122_products(root / 'rotation', source)['products']
+            rotated = ProductStore(root / 'rotation/data')
+            self.assertEqual([item['product_index'] for item in rotated.list()], ['007', 3])
+            self.assertEqual(rotated.selected(), rotation[1]['product_id'])
             products[1]['product_index'] = 7
             source.write_text(json.dumps(payload), encoding='utf-8')
             with self.assertRaises(ValueError):

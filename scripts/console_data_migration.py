@@ -158,6 +158,7 @@ def import_v122_products(snapshot, source):
     if not isinstance(products, list) or not products:
         raise ValueError('Legacy live configuration needs a nonempty product_scripts list')
     selected = index_value(payload.get('current_product_index', -1))
+    multi_product = bool(payload.get('multi_product_enabled', payload.get('enable_multi_product', False)))
     imported = []
     store = ProductStore(snapshot)
     for position, product in enumerate(products):
@@ -186,7 +187,8 @@ def import_v122_products(snapshot, source):
         legacy['script_roles'] = roles
         saved = store.save(title=title, content=content, product_index=number, extra={'v122': legacy})
         script_ids = [store.add_script(saved, body) for body in texts]
-        if selected != -1 and numeric == selected:
+        selection_key = position if multi_product else numeric
+        if selected != -1 and selection_key == selected:
             store.select(saved['id'])
         imported.append({'legacy_index': number, 'product_id': saved['id'], 'script_ids': script_ids})
     if selected != -1 and store.selected() is None:

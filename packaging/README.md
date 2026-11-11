@@ -73,3 +73,5 @@ python -m scripts.console_package migrate-v122-assets --root "<新安装目录>"
 ```
 
 已取得 v122 直播配置 JSON 时，可用 `migrate-v122-products --root "<新安装目录>" --source "<配置 JSON>"` 导入其中的 `product_scripts`。若同时导入素材，将 `--products "<配置 JSON>"` 加到 `migrate-v122-assets`，整批发布。保存原商品编号、当前商品、话术顺序及原角色信息，导入后请按场次需要选择话术。
+
+旧配置启用多品轮播时，当前商品按清单位置恢复。其余场次按原商品编号恢复。
