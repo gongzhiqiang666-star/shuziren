@@ -4,6 +4,8 @@
 
 ## 四期开发进度
 
+X15-02 / X16-03 用同一 WAV 调用授权 v122 和重建链的 `extract_audio_features`。两侧特征窗口均为 20×256，分别得到 354 和 355 帧。按相同帧号比较 354 帧，336 帧逐值相同，18 帧有差异，平均绝对误差 0.001943，Pearson r=0.9905。证据见 `logs/validation/x15-x16-features-01/result.json`。该结果记录帧数和特征窗口差异，尚不能判定嘴部差异的主要来源，后续需固定特征再对照生成和贴回。
+
 X15-02 / X16-03 编码影响对照补测。固定同一批解码帧，重新编码后相对源视频的全画面 SSIM 为 MPEG-4 0.998924、NVENC 0.998337，固定嘴部区域为 0.995800、0.993390。两条生成链都使用 MPEG-4 的样片对齐 354 帧后，嘴部 SSIM 仍为 0.906540。测试表明当前样片的嘴部差异不能仅由这组编码配置解释，需进一步对照特征、生成和贴回阶段。证据见 `logs/validation/x15-x16-encoder-only-01/*-ssim.log` 与 `logs/validation/x16-rebuilt-legacy-warm-01/ssim-mouth-vs-native.log`。
 
 X16-03 重建链换用 OpenCV MPEG-4 编码，沿用同人物、WAV、TensorRT FP16 缓存及严格精度设置。两次生成 355 帧，端到端 25.26 / 24.88 秒，音频指纹与双轨解码通过。此前同素材重建 NVENC 两轮为 25.10 / 23.46 秒，GitHub MPEG-4 为 25.42 / 23.26 秒。MPEG-4 补测在后续批次，数据用于核对量级，推理组件单独耗时仍需统一埋点。证据见 `logs/validation/x16-rebuilt-legacy-warm-01`。
