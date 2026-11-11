@@ -189,7 +189,8 @@ class ConsoleLive:
         if rotation['segment'] >= len(item.get('segments', (None,))):
             self.status['last_rotation_product_id'] = item['product_id']
             self.status['rotation_completed'] += 1
-            rotation['index'] = (rotation['index'] + 1) % len(rotation['items'])
+            if 'duration_seconds' not in item:
+                rotation['index'] = (rotation['index'] + 1) % len(rotation['items'])
             rotation['segment'] = 0
 
     def set_manual(self, session_id, enabled, revision):
@@ -212,17 +213,25 @@ class ConsoleLive:
             return (self.status['id'], control['control_revision'], self.ingress.context['voice_id'],
                     self.tts.products.get(self.ingress.context['product_id']), self.status['rotation_language'])
 
-    def configure_rotation(self, session_id, product_ids):
+    def configure_rotation(self, session_id, product_ids, *, shift_durations=None):
+        if shift_durations is not None and (
+            not isinstance(shift_durations, list) or len(shift_durations) != len(product_ids)
+            or not all(type(duration) in (int, float) and 0 < duration <= 86400
+                       for duration in shift_durations)
+        ):
+            raise ProductError('请为每个班次指定大于0且不超过86400秒的时长')
         with self.lock:
             if self.status.get('id') != session_id or self.status['status'] != 'running' or self.session is None:
                 raise Conflict('场次已变化或尚未就绪')
             items = []
-            for product_id in product_ids:
+            for index, product_id in enumerate(product_ids):
                 product = self.tts.products.get(product_id)
                 script_id = self.tts.products.selected_script(product_id)
                 if not script_id:
                     raise Conflict(f'请先为商品「{product["title"]}」选用话术')
                 item = {'product_id': product_id, 'product_version': product['version'], 'script_id': script_id}
+                if shift_durations is not None:
+                    item['duration_seconds'] = shift_durations[index]
                 from recovered.slice_content import slice_content
 
                 script = next((row for row in self.tts.products.scripts(product_id) if row['id'] == script_id), None)
@@ -236,6 +245,7 @@ class ConsoleLive:
                 self.session.discard_pending(self.rotation['task_id'])
             self.rotation = {'items': items, 'index': 0, 'segment': 0, 'task_id': None} if items else None
             self.status.update(rotation_products=list(product_ids), rotation_completed=0, rotation_error=None)
+            self.status.pop('shift_index', None)
             self.status.pop('rotation_retry_products', None)
             self.status.pop('last_rotation_product_id', None)
             return self.state()
@@ -272,6 +282,7 @@ class ConsoleLive:
                         elif state['status'] not in {'running', 'succeeded'}:
                             raise ProductError(state.get('error') or '轮播语音合成失败')
                     elif not state or state['status'] != 'running':
+                        self._tick_rotation_shift(rotation, time.monotonic())
                         item = rotation['items'][rotation['index']]
                         if self.tts.products.get(item['product_id'])['version'] != item['product_version']:
                             raise Conflict('轮播商品已修改，请重新设置轮播')
@@ -303,7 +314,19 @@ class ConsoleLive:
                     retry = [item['product_id'] for item in rotation['items']] if rotation else []
                     self.rotation = None
                     self.status.update(rotation_products=[], rotation_error=str(error), rotation_retry_products=retry)
+                    self.status.pop('shift_index', None)
                     pending = None
+
+    def _tick_rotation_shift(self, rotation, now):
+        item = rotation['items'][rotation['index']]
+        if 'duration_seconds' not in item or rotation['segment']:
+            return
+        if 'shift_started_at' not in rotation:
+            rotation['shift_started_at'] = now
+        elif now - rotation['shift_started_at'] >= item['duration_seconds']:
+            rotation['index'] = (rotation['index'] + 1) % len(rotation['items'])
+            rotation['shift_started_at'] = now
+        self.status['shift_index'] = rotation['index']
 
     def enqueue(self, session_id, task_id, *, priority=False, manual_revision=None, rotation_item=None, reply_guard=None):
         with self.lock:
