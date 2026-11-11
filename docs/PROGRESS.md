@@ -4,6 +4,8 @@
 
 ## 四期开发进度
 
+在 `2dc746e` 上用本机 FFmpeg 执行仓库 `tests/` 全量 unittest，251 项中 249 项通过、2 项因未配置运行目录跳过。随后指定本机运行目录复测 TTS 协议文件，3 项通过，覆盖前述两个跳过项。控制台 JavaScript 语法检查通过。全量日志见 `logs/validation/current-full-unittest.log`，设备和平台的整体验收继续按各任务门槛执行。
+
 N05 / V09 在 `5b7fa2f` 隔离安装目录配置本机 FFmpeg 后重跑控制台 HTTP 功能测试，22 项全部通过。原先跳过的媒体用例已实际验证 WAV 参考音色导入、选择、音频读取和无效 ID 处理。合成语音听感与麦克风录制继续单列验收。
 
 N05 / V09 从 `5b7fa2f` 构建本机候选包 `logs/validation/n05-console-5b7fa2f.zip`，438 个文件通过清单校验及隔离安装。SHA-256 为 `c8b004c80169dd49d571878d1199ec7e0824f19b4b5e14c8219d1ab6ac9519fe`。从隔离目录加载包内控制台，HTTP 功能测试 21 项通过、1 项跳过。平台联调和干净 Windows 安装仍待验。
