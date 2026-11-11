@@ -44,6 +44,7 @@ def main():
     tts=client=receiver=sink=session=ingress=assembler=injector=None
     completed=[];expected={};errors=[];presented=[];offsets=[];submit_costs=[];device_trace=[]
     capture=None
+    first_device_frame=threading.Event()
     def save():(root/'result.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     try:
         ffmpeg=args.runtime_root/'_internal/env/ffmpeg/bin/ffmpeg.exe'
@@ -60,7 +61,11 @@ def main():
         client.request('start',session_id=speech_session.id);report['avatar_prepare']=client.request('prepare');save()
         receiver=FrameReceiver(speech_session.id,avatar['width'],avatar['height']);client.request('attach_frames',channel=receiver.descriptor())
         device_sink=CounterDeviceSink if args.capture_devices else AVDeviceSink
-        sink=(device_sink(avatar['width'],avatar['height'],args.device_audio_output,on_present=device_trace.append,
+        def record_device(row):
+            device_trace.append(row)
+            if row['event']=='video_sent' and not first_device_frame.is_set():
+                first_device_frame.set()
+        sink=(device_sink(avatar['width'],avatar['height'],args.device_audio_output,on_present=record_device,
                           video_delay_ms=args.video_delay_ms,smooth_clock=args.smooth_device_clock,
                           buffer_frames=args.device_buffer_frames)
             if args.device_audio_output is not None else ContinuousAVSink(ffmpeg,root/'live.ts',avatar['width'],avatar['height']))
@@ -70,13 +75,15 @@ def main():
             if 'late_ns' in row:
                 presented.append(row['late_ns']/1000000);offsets.append(row['offset_ns']/1000000)
             submit_costs.append(row['submit_ns']/1000000)
-        def start_capture():
-            nonlocal capture
-            if args.capture_devices:capture=DeviceCapture(ffmpeg,root,max(1,args.seconds-2))
-        session=ContinuousSession(speech_session.id,client,receiver,sink,root/'assembled',on_source_complete=completed.append,on_present=on_present,on_started=start_capture)
+        session=ContinuousSession(speech_session.id,client,receiver,sink,root/'assembled',on_source_complete=completed.append,on_present=on_present)
         def inject():
+            nonlocal capture
             try:
                 if not session.started.wait(30):raise TimeoutError('Continuous output did not start')
+                if args.capture_devices:
+                    if not first_device_frame.wait(2):raise TimeoutError('Camera did not send its first frame')
+                    if session.stop_event.is_set():return
+                    capture=DeviceCapture(ffmpeg,root,max(1,args.seconds-2))
                 for text in ['这是连续输出开始后新生成的第一条语音。','这是运行中新生成的第二句话，前后保持音画连续。']:
                     if session.stop_event.is_set():return
                     script=products.add_script(product,text);products.select_script(product['id'],script)
@@ -141,13 +148,13 @@ def main():
         report['checks'].update(two_new_utterances_during_output=True,idle_speech_idle_one_mux=True,source_pcm_exact=True,one_video_audio_clock=True,complete_media=True)
     except Exception as error:report.update(status='failed',error_type=type(error).__name__,error=str(error))
     finally:
-        if capture:capture.close()
         report.update(expected_sources=expected,completed_sources=completed,injection_errors=errors)
         if session:session.stop()
         elif receiver:receiver.close()
         if client:client.close()
         if tts:tts.close()
         if injector:injector.join(timeout=5)
+        if capture:capture.close()
         if assembler:assembler.close()
         if ingress:ingress.stop()
         if sink and not sink.closed:sink.abort()
