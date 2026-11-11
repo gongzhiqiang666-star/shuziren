@@ -217,6 +217,29 @@ def main():
                 report['capture'] = str(capture.path)
             call('/api/live/stop', {'session_id': session_id})
             stopped = live(lambda state: state['id'] == session_id and state['status'] == 'stopped')
+            if cycle == 0 and interactions:
+                events = []
+                cursor = 0
+                while True:
+                    page = call(f'/api/live/rotation/events?session_id={session_id}&after={cursor}')
+                    if not page['events']:
+                        break
+                    if page['next_cursor'] <= cursor:
+                        raise RuntimeError('Rotation event cursor did not advance')
+                    cursor = page['next_cursor']
+                    events.extend(page['events'])
+                expected_scripts = {
+                    product_id: (product['version'], first_script),
+                    second['id']: (second['version'], second_script),
+                }
+                if (stopped.get('rotation_event_error')
+                        or {event['product_id'] for event in events} != expected_scripts.keys()
+                        or len({event['task_id'] for event in events}) != len(events)
+                        or any(event['session_id'] != session_id or not event['completed_at']
+                               or (event['product_version'], event['script_id']) != expected_scripts[event['product_id']]
+                               for event in events)):
+                    raise RuntimeError('Rotation event history did not match completed playback')
+                report['rotation_event_count'] = len(events)
             report['starts'].append({'cycle': cycle + 1, 'session': session_id, 'frames': stopped['frames']})
             old_session = session_id
             save()
