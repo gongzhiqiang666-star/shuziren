@@ -24,6 +24,7 @@ def main():
     parser.add_argument('--tts-model-root', type=Path)
     parser.add_argument('--assistant-voice-data', type=Path, help='Data directory containing a selected co-host reference')
     parser.add_argument('--assistant-voice-id', help='Use this reference instead of the selection in that directory')
+    parser.add_argument('--timed-shifts', action='store_true', help='Exercise two timed host shifts after manual takeover')
     parser.add_argument('--rotation-language', choices=('zh-CN', 'ms-MY', 'vi-VN'), default='zh-CN')
     parser.add_argument('--cycles', type=int, default=20)
     parser.add_argument('--interactions', type=int, default=None, help='Set to 0 to exercise start/stop only')
@@ -38,6 +39,8 @@ def main():
         parser.error('The co-host test fixture uses Chinese scripts')
     if args.assistant_voice_id and not args.assistant_voice_data:
         parser.error('--assistant-voice-id requires --assistant-voice-data')
+    if args.timed_shifts and (not args.assistant_voice_data or not interactions):
+        parser.error('--timed-shifts requires a second reference and at least one interaction')
 
     directory = args.report_directory.resolve()
     directory.mkdir(parents=True, exist_ok=False)
@@ -189,7 +192,20 @@ def main():
                                                    'resumed_revision': resumed['control_revision']})
                     save()
                     print(f'V06 interaction {interaction + 1}/{interactions}', flush=True)
-                rotate(session_id)
+                if args.timed_shifts:
+                    call('/api/live/rotation', {
+                        'session_id': session_id, 'product_ids': [product_id, second['id']],
+                        'shift_durations': [12, 12], 'shift_voice_ids': [None, assistant],
+                    })
+                    report['timed_shifts'] = []
+                    for index, expected_product in ((0, product_id), (1, second['id']), (0, product_id)):
+                        completed = live(lambda value: value.get('shift_index') == index
+                                         and value.get('last_rotation_product_id') == expected_product)
+                        report['timed_shifts'].append(completed)
+                        save()
+                    call('/api/live/rotation', {'session_id': session_id, 'product_ids': []})
+                else:
+                    rotate(session_id)
                 capture.process.wait(timeout=args.capture_seconds + 10)
                 capture.wait()
                 report['capture'] = str(capture.path)
