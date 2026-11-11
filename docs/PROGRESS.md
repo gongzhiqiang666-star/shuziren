@@ -4,6 +4,8 @@
 
 ## 四期开发进度
 
+A01-05 原应用视频直驱构建入口使用实际模型验证，调用 `create_image_runtime` 选中仓库内 `VideoStreamManager`，UNet 会话首选 CUDA。真实双轨 MP4 首帧为 720×1280，Windows 协商输出采样率为 44.1 kHz，每帧对应 1764 个非静音采样。初次脚本误按 24 kHz 断言，改为读取实际协商参数后通过。证据见 `logs/validation/a01-origin-runtime-model.json`。逐帧口型推理及产品设备输出仍待联调。
+
 A01-05 插播后的定点恢复使用真实双轨 MP4 和 `OriginTape` 复验。两帧批次中只有一帧插播，输出帧序为 0、10、11，400 毫秒恢复点的原声音频与源视频对应采样逐值一致。推理和播放器提交使用测试替身。证据见 `logs/validation/a01-origin-tape-resume.json`，真实口型、控制台入口及设备回采继续按各自用例验收。
 
 A01-05 本地视频双设备独立回采完成。Windows 发送 125 帧且无欠载，DirectShow 录得 3 秒、75 帧，原声测试信号实测峰值 630.15 Hz。两轨均可解码，但帧号有 5 帧缺失及 5 帧重复，解码输出报告 6 次音频 DTS 重复。证据见 `logs/validation/a01-origin-tape-receiver-01/result.json`。接收连续性与控制台口型驱动仍待验。
