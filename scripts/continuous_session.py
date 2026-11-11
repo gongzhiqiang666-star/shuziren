@@ -15,7 +15,10 @@ from scripts.v122_acceleration import windows_timer_precision
 
 
 class ContinuousSession:
-    def __init__(self,session_id,client,receiver,sink,source_directory,on_source_complete=None,on_present=None,on_started=None):
+    def __init__(self,session_id,client,receiver,sink,source_directory,on_source_complete=None,on_present=None,on_started=None,*,idle_frames=8):
+        if type(idle_frames) is not int or idle_frames not in (4,8):
+            raise ValueError('Idle spans must contain four or eight frames')
+        self.idle_frames=idle_frames
         self.session_id=session_id;self.client=client;self.receiver=receiver;self.sink=sink
         self.root=Path(source_directory).resolve();self.clock=SampleTimeline(session_id)
         self.ready=queue.PriorityQueue(maxsize=5);self.submission_order=0
@@ -139,7 +142,8 @@ class ContinuousSession:
                         audio=str(utterance.path),pcm_sha256=utterance.pcm_sha256,timing=timing)
                     self._release(utterance.task_id,'model')
                 else:
-                    span=self.clock.reserve(self.session_id,8*960);timing=asdict(span);source_id='idle-'+str(span.frame_start)
+                    idle_frames=self.idle_frames if self.started.is_set() else 8
+                    span=self.clock.reserve(self.session_id,idle_frames*960);timing=asdict(span);source_id='idle-'+str(span.frame_start)
                     self.producer_stage=('idle_pcm',time.perf_counter_ns(),span.frame_start)
                     self.pcm.append(timing,source_id)
                     self.producer_stage=('idle_model',time.perf_counter_ns(),span.frame_start)

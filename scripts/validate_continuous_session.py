@@ -52,6 +52,7 @@ def main():
     parser.add_argument('--smooth-device-clock',action='store_true')
     parser.add_argument('--device-buffer-frames',type=int,choices=(2,4),default=2)
     parser.add_argument('--camera-i420',action='store_true')
+    parser.add_argument('--idle-frames',type=int,choices=(4,8),default=8)
     parser.add_argument('--speech-interval-seconds',type=int,
                         help='Add a distinct uncached utterance at each interval, reserving the last 20 seconds for completion')
     parser.add_argument('--first-output-corpus',type=Path,help='Run the 50-utterance receiver latency cohort')
@@ -81,6 +82,7 @@ def main():
             'scheduled_speech_count':len(schedule),'speech_interval_seconds':args.speech_interval_seconds,
             'first_output_corpus_sha256':corpus_hash,'camera_pixel_format':'I420' if args.camera_i420 else 'BGR'}
     report['startup']={'engine_cache_seeded':args.seed_cache is not None}
+    report['idle_frames']=args.idle_frames
     tts=client=receiver=sink=session=ingress=assembler=injector=None
     completed=[];expected={};errors=[];presented=[];offsets=[];submit_costs=[];device_trace=[]
     capture=None
@@ -132,7 +134,7 @@ def main():
             completed.append(event)
             if not event['source_id'].startswith('idle-'):
                 speech_end_samples[event['source_id']]=session.pcm.read_samples
-        session=ContinuousSession(speech_session.id,client,receiver,sink,root/'assembled',on_source_complete=source_complete,on_present=on_present)
+        session=ContinuousSession(speech_session.id,client,receiver,sink,root/'assembled',on_source_complete=source_complete,on_present=on_present,idle_frames=args.idle_frames)
         if isinstance(sink, AVDeviceSink):
             sink.underrun_context = session.stall_context
         def inject():
