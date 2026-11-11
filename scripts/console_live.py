@@ -226,7 +226,15 @@ class ConsoleLive:
                 self.session.set_manual(enabled, revision)
             except ValueError as error:
                 raise Conflict(str(error)) from error
-            return self.state()
+            state = self.state()
+            if state['control_revision'] != revision:
+                try:
+                    self.tts.products.record_live_control(session_id, state['control_revision'], enabled, time.time())
+                except sqlite3.Error:
+                    logging.exception('记录手动接管事件失败')
+                    self.status['session_event_error'] = '场次控制事件写入失败'
+                    state['session_event_error'] = self.status['session_event_error']
+            return state
 
     def reply_context(self):
         with self.lock:

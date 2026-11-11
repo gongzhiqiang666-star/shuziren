@@ -7,6 +7,18 @@ from scripts.console_live import ConsoleLive
 
 
 class LiveRotationTests(unittest.TestCase):
+    def test_manual_transition_records_only_changed_revision(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tts = Mock()
+            live = ConsoleLive(tts, directory)
+            live.status = {'id': 'scene', 'status': 'running'}
+            live.session = Mock()
+            live.session.control_state.return_value = {'manual': True, 'control_revision': 1}
+            live.set_manual('scene', True, 0)
+            live.set_manual('scene', True, 1)
+            self.assertEqual(tts.products.record_live_control.call_count, 1)
+            self.assertEqual(tts.products.record_live_control.call_args.args[:3], ('scene', 1, True))
+
     def test_timed_shifts_cycle_at_product_boundaries(self):
         with tempfile.TemporaryDirectory() as directory:
             tts = Mock()

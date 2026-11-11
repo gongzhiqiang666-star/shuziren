@@ -107,6 +107,9 @@ class ProductStore:
                     session_id TEXT PRIMARY KEY, requested_at REAL NOT NULL,
                     started_at REAL, ended_at REAL, status TEXT NOT NULL,
                     frames INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS live_control_events (
+                    session_id TEXT NOT NULL, revision INTEGER NOT NULL, manual INTEGER NOT NULL,
+                    occurred_at REAL NOT NULL, PRIMARY KEY(session_id, revision));
             ''')
             db.execute('BEGIN IMMEDIATE')
             columns = {row[1] for row in db.execute('PRAGMA table_info(scripts)')}
@@ -141,6 +144,13 @@ class ProductStore:
                     status = excluded.status, frames = excluded.frames
                 WHERE live_sessions.ended_at IS NULL
             """, (session_id, requested_at, started_at, ended_at, status, frames))
+
+    def record_live_control(self, session_id, revision, manual, occurred_at):
+        with self.connect() as db:
+            db.execute("""
+                INSERT INTO live_control_events (session_id, revision, manual, occurred_at)
+                VALUES (?, ?, ?, ?) ON CONFLICT(session_id, revision) DO NOTHING
+            """, (session_id, revision, manual, occurred_at))
 
     def live_session_record(self, session_id):
         with self.connect() as db:

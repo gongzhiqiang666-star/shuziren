@@ -13,6 +13,14 @@ from scripts.product_store import Conflict, ProductError, ProductStore, product_
 
 
 class ProductStoreTests(unittest.TestCase):
+    def test_live_control_revision_is_deduplicated(self):
+        self.store.record_live_control('scene', 1, True, 102)
+        self.store.record_live_control('scene', 1, True, 103)
+        self.store.record_live_control('scene', 2, False, 104)
+        with ProductStore(self.store.path.parent).connect() as db:
+            rows = db.execute('SELECT revision, manual, occurred_at FROM live_control_events ORDER BY revision').fetchall()
+        self.assertEqual([tuple(row) for row in rows], [(1, 1, 102), (2, 0, 104)])
+
     def test_live_session_terminal_record_survives_reopen_and_retry(self):
         self.store.record_live_session('scene', 100)
         self.store.record_live_session('scene', 100, started_at=102, status='running')
