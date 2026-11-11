@@ -22,6 +22,7 @@ def main():
     parser.add_argument('--report-directory', type=Path, required=True)
     parser.add_argument('--tts-engine', choices=('indextts', 'zipvoice', 'omnivoice'), default='indextts')
     parser.add_argument('--tts-model-root', type=Path)
+    parser.add_argument('--rotation-language', choices=('zh-CN', 'ms-MY', 'vi-VN'), default='zh-CN')
     parser.add_argument('--cycles', type=int, default=20)
     parser.add_argument('--interactions', type=int, default=None, help='Set to 0 to exercise start/stop only')
     parser.add_argument('--capture-seconds', type=int, default=35)
@@ -29,6 +30,8 @@ def main():
     interactions = args.cycles if args.interactions is None else args.interactions
     if args.cycles < 1 or interactions < 0 or args.capture_seconds < 1:
         parser.error('Cycle and capture lengths must be positive')
+    if args.rotation_language != 'zh-CN' and args.tts_engine != 'omnivoice':
+        parser.error('Multilingual rotation requires OmniVoice')
 
     directory = args.report_directory.resolve()
     directory.mkdir(parents=True, exist_ok=False)
@@ -39,10 +42,15 @@ def main():
     products = ProductStore(directory)
     product_id = products.selected()
     product = products.get(product_id)
-    first_script = products.add_script(product, '优先播报验证。')
+    first_text, second_text = {
+        'zh-CN': ('优先播报验证。', '第二件商品，轮播验证。'),
+        'ms-MY': ('Selamat datang. Ini produk pertama.', 'Ini produk kedua.'),
+        'vi-VN': ('Xin chào, đây là sản phẩm thứ nhất.', 'Đây là sản phẩm thứ hai.'),
+    }[args.rotation_language]
+    first_script = products.add_script(product, first_text)
     products.select_script(product_id, first_script)
     second = products.save(title='轮播验收商品', content='本机验收使用', product_index=999)
-    second_script = products.add_script(second, '第二件商品，轮播验证。')
+    second_script = products.add_script(second, second_text)
     products.select_script(second['id'], second_script)
     voice = VoiceStore(directory).selected()
 
@@ -55,7 +63,8 @@ def main():
     token = None
     capture = None
     report = {'status': 'running', 'requested_starts': args.cycles, 'requested_interactions': interactions,
-              'tts_engine': args.tts_engine, 'starts': [], 'interactions': [], 'rotation': []}
+              'tts_engine': args.tts_engine, 'rotation_language': args.rotation_language,
+              'starts': [], 'interactions': [], 'rotation': []}
 
     def save():
         (directory / 'result.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -89,7 +98,7 @@ def main():
 
     def speech():
         task = call('/api/tts/generate', {'product_id': product_id, 'script_id': first_script,
-            'voice_id': voice, 'speed': 1, 'language': 'zh-CN', 'use_cache': True}, 202)['task']
+            'voice_id': voice, 'speed': 1, 'language': args.rotation_language, 'use_cache': True}, 202)['task']
         wait('/api/tts/state', 'task', lambda state: state['id'] == task['id'] and state['status'] == 'succeeded')
         return task['id']
 
@@ -130,7 +139,9 @@ def main():
         report['device'] = device
         old_session = None
         for cycle in range(args.cycles):
-            session_id = call('/api/live/start', {'audio_device': device['id']}, 202)['session']['id']
+            session_id = call('/api/live/start', {
+                'audio_device': device['id'], 'rotation_language': args.rotation_language,
+            }, 202)['session']['id']
             live(lambda state: state['id'] == session_id and state['status'] == 'running')
             if old_session:
                 call('/api/live/stop', {'session_id': old_session}, 409)
