@@ -4,6 +4,8 @@
 
 ## 当前推进：V08 长稳并行推进 V09 打包
 
+V09-05b 发行包按已配置独立媒体解释器启动通过。轻量环境用于部署和首次配置，`run --with-media` 检查媒体清单后启动完整控制台。独立安装实测未配置媒体时明确退出，配置后 HTTP 枚举17个声音输出、导入及选用750帧旧形象、正常退出，证据为 `logs/validation/v09-managed-media-d20b208a/result.json`，构建提交 `2f4481c`。本机隔离目录已通过，整机干净 Windows 与发布关仍待验。
+
 V09-05a Windows 控制台离线依赖安装通过。为 AMD64 CPython 3.12 固定6个依赖版本及 wheel SHA256。pip 直连 PyPI 遇到 TLS 断开，改用 Windows HTTPS 客户端取得原始 wheel 并核对官方元数据中的哈希。在带空格路径的新虚拟环境使用 `--no-index --require-hashes` 安装，`pip check` 与10项 LLM 回归通过。从 `1b35378` 构建的源码包包含锁定清单，隔离部署完成启动健康检查。记录见 `logs/validation/v09-offline-wheels-01/deploy.json`。验证覆盖本机隔离控制台，GPU媒体依赖及干净 Windows 整机交付仍按 V09 继续验收。
 
 V08-01g 长稳资源分析可在运行中执行。新增 `python -m scripts.summarize_live_soak <samples.jsonl>`，按60秒输出提交帧率、完成语音增量及队列、CPU、RSS、显存、临时音频的已知样本数、中位数与峰值。末尾尚在写入的数据行不读入，最新窗口不参与趋势对照，缺失GPU数据保留未知。用合成采样核对窗口、缺失值和增长判定，再分析四帧实机前736秒的737次采样：完整窗口首末待播中位数均为0，峰值1；RSS中位数相差约1.97MiB，显存中位数相同，临时WAV峰值1。分析见 `logs/validation/v08-buffer4-8h-01/resource-summary-01.json`，仅为运行中快照。
