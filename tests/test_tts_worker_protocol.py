@@ -5,9 +5,40 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
+
+from scripts.tts_worker import TTSProvider
 
 
 RUNTIME=os.environ.get('SHUZIREN_TEST_RUNTIME_ROOT','')
+
+
+class TTSDeliveryTests(unittest.TestCase):
+    def test_conversion_failure_removes_scratch_without_publishing_audio(self):
+        with tempfile.TemporaryDirectory() as directory:
+            outputs = Path(directory)
+            scratch = outputs / 'cache' / 'generated.wav'
+            scratch.parent.mkdir()
+            scratch.write_bytes(b'bad audio')
+            provider = TTSProvider.__new__(TTSProvider)
+            provider.outputs = outputs
+            provider.cache = Mock(root=outputs / 'content-cache')
+            provider.voices = Mock()
+            provider.voices.get.return_value = dict(id='voice', audio_sha256='a', text_sha256='b')
+            provider.synth = Mock()
+            provider.synth.synthesize.return_value = str(scratch)
+            provider.identity = ('voice', 'a', 'b')
+            provider.inference_calls = 0
+            provider._engine_stamp = lambda: 'test-engine'
+
+            with patch('scripts.tts_worker.normalize_task_wav', side_effect=OSError('conversion failed')):
+                with self.assertRaisesRegex(OSError, 'conversion failed'):
+                    provider.synthesize(dict(voice_id='voice', text='test', speed=1,
+                                             language='en', use_cache=False))
+
+            self.assertFalse(scratch.exists())
+            self.assertEqual(list(outputs.glob('*.wav')), [])
+            provider.cache.put.assert_not_called()
 
 
 @unittest.skipUnless(RUNTIME and (Path(RUNTIME)/'_internal/env/python.exe').is_file(),'Explicit runtime required')
