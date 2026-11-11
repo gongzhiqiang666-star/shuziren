@@ -23,6 +23,8 @@ async function load() {
   clearChecks();
   const session = await request('/api/session'); token = session.token;
   const engineName = {indextts: 'IndexTTS', zipvoice: 'ZipVoice', omnivoice: 'OmniVoice'}[session.tts_engine];
+  $('tts-language-field').hidden = session.tts_engine !== 'omnivoice';
+  if ($('tts-language-field').hidden) $('tts-language').value = 'zh-CN';
   $('tts-engine').textContent = engineName ? '当前语音引擎：' + engineName : '';
   let state;
   try { state = await request('/api/state'); }
@@ -253,7 +255,7 @@ async function loadTTS() {
   const labels={running:'正在合成',succeeded:'语音已生成',cancelled:'已取消合成',interrupted:'上次合成已中断',failed:'语音不可用'};
   $('tts-status').textContent=ttsState ? (labels[ttsState.status] || ttsState.status)+' · '+(ttsState.product_title || '商品')+' · 版本 '+ttsState.product_version+(ttsState.result?.cache_hit ? ' · 已复用相同输入的语音' : '')+(ttsState.error ? '：'+ttsState.error : '') : '暂无合成任务';
   const saved=currentProduct && $('product-title').value===currentProduct.title && $('product-content').value===currentProduct.content && $('product-index').value===String(currentProduct.product_index) && $('product-facts').value===productFactsText(currentProduct);
-  const matches=ttsState?.status==='succeeded' && saved && ttsState.product_id===currentProduct.id && ttsState.script_id===currentScriptId && ttsState.voice_id===$('voice-list').value && ttsState.speed===Number($('tts-speed').value);
+  const matches=ttsState?.status==='succeeded' && saved && ttsState.product_id===currentProduct.id && ttsState.script_id===currentScriptId && ttsState.voice_id===$('voice-list').value && ttsState.speed===Number($('tts-speed').value) && (ttsState.language || 'zh-CN')===$('tts-language').value;
   if(matches) {
     if(ttsPreviewTask!==ttsState.id) {$('tts-preview').src='/api/tts/audio?task_id='+encodeURIComponent(ttsState.id);$('tts-preview').load();ttsPreviewTask=ttsState.id;}
   } else if(ttsPreviewTask) clearTTSPreview();
@@ -270,7 +272,7 @@ $('tts-generate').addEventListener('click',()=>ttsAction(async()=>{
   if(!currentScriptId) throw new Error('请先将一条当前版本的话术设为当前话术');
   if(!$('voice-list').value) throw new Error('请先选择参考音色');
   clearTTSPreview();
-  await request('/api/tts/generate',{product_id:currentProduct.id,script_id:currentScriptId,voice_id:$('voice-list').value,speed:Number($('tts-speed').value),language:'zh-CN',use_cache:$('tts-use-cache').checked});
+  await request('/api/tts/generate',{product_id:currentProduct.id,script_id:currentScriptId,voice_id:$('voice-list').value,speed:Number($('tts-speed').value),language:$('tts-language').value,use_cache:$('tts-use-cache').checked});
   await loadTTS();
 }));
 $('tts-cancel').addEventListener('click',()=>ttsAction(async()=>{
@@ -281,6 +283,7 @@ $('tts-refresh').addEventListener('click',()=>ttsAction(loadTTS));
 $('tts-preview').addEventListener('error',()=>{if($('tts-preview').getAttribute('src')) $('tts-error').textContent='音频已失效或无法加载，请刷新任务状态。';});
 for(const id of ['product-title','product-content','product-index','product-facts']) $(id).addEventListener('input',clearTTSPreview);
 $('tts-speed').addEventListener('input',clearTTSPreview);
+$('tts-language').addEventListener('change',clearTTSPreview);
 window.addEventListener('pagehide',()=>{clearTimeout(ttsTimer);clearTTSPreview();});
 renderTTSButtons();
 let avatarRecords=[],avatarBusy=false;
