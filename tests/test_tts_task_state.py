@@ -99,7 +99,7 @@ else:
         sound.setparams((1,2,24000,0,'NONE','not compressed'))
         sound.writeframes(bytes(48000))
     print(json.dumps({'ok':True,'result':{'output':str(path),'voice_id':request['voice_id'],
-        'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}}),flush=True)
+        'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'provider':'recovered-voice-infer-v3'}}),flush=True)
 """
         popen=subprocess.Popen
         children=[]

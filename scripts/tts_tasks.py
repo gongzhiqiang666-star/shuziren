@@ -203,9 +203,14 @@ class TTSTasks:
                 line=process.stdout.readline()
                 if not line: raise ProductError('TTS工作进程中断')
                 event=json.loads(line)
-                if event.get('event')=='ready': continue
+                if event.get('event')=='ready':
+                    if event.get('provider')!=self.provider:
+                        raise ProductError('TTS工作进程引擎不符')
+                    continue
                 if not event.get('ok'): raise ProductError('TTS生成失败，请检查工作进程日志')
                 result=event['result'];break
+            if result.get('provider')!=self.provider:
+                raise ProductError('TTS结果引擎不符')
             with self.lock:
                 if self.task['id']!=task_id or self.task['status']!='running' or self.closed: return
                 if (self.products.get(product['id'])!=product
