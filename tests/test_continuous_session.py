@@ -4,7 +4,7 @@ import tempfile
 import threading
 import time
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import numpy as np
 from types import SimpleNamespace
 
@@ -13,6 +13,24 @@ from scripts.speech_assembler import Utterance
 
 
 class SessionLifecycleTests(unittest.TestCase):
+    def test_expired_queued_speech_does_not_block_following_speech(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            session = ContinuousSession('s', Mock(), Mock(), Mock(), root)
+            expired = root / 'expired.wav'
+            current = root / 'current.wav'
+            expired.touch()
+            current.touch()
+            session.submit(Utterance('s', 'expired', 'script', expired, 960, 'wav', 'pcm'),
+                           fact_deadline=100)
+            following = Utterance('s', 'current', 'script', current, 960, 'wav', 'pcm')
+            session.submit(following)
+            with patch('scripts.continuous_session.time.time', return_value=100):
+                self.assertEqual(session._next_utterance(), following)
+            self.assertFalse(expired.exists())
+            self.assertNotIn('expired', session.leases)
+            self.assertTrue(current.exists())
+
     def test_idle_progress_is_visible_before_worker_reply(self):
         with tempfile.TemporaryDirectory() as temporary:
             client = Mock()
