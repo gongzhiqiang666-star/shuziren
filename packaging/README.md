@@ -47,6 +47,8 @@ python -m scripts.console_package rollback --root "C:\数字人控制台"
 python -m scripts.console_package run --root "C:\数字人控制台" --with-media
 ```
 
+已配置独立媒体环境时，升级和回滚也可附加 `--with-media`。候选版本会在隔离数据目录用媒体解释器启动并检查音频设备枚举接口，检查通过后才更新版本指针。
+
 ## 迁移已有控制台数据
 
 退出原控制台，在新安装首次部署前运行以下命令。若目标已经存在 `data`，请使用新的安装目录。

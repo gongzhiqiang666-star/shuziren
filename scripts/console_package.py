@@ -157,9 +157,29 @@ def console_environment():
             'PYTHONNOUSERSITE': '1'}
 
 
-def check_startup(release, root):
+def configured_media(data):
+    from scripts.local_console_config import ConfigStore
+    from scripts.media_runtime import inspect_runtime, runtime_python
+
+    config = ConfigStore(data).load()
+    configured = config['runtime_root']
+    if not configured or not inspect_runtime(configured)['ready']:
+        raise ValueError('Configure a complete independent media runtime before starting with media')
+    return config, runtime_python(configured)
+
+
+def check_startup(release, root, media=None):
     with tempfile.TemporaryDirectory(prefix='.health-', dir=root) as temporary:
-        child = subprocess.Popen(console_command(Path(temporary), 0), cwd=release, env=console_environment(),
+        data = Path(temporary)
+        expected_runtime = ''
+        python = None
+        if media is not None:
+            from scripts.local_console_config import ConfigStore
+
+            config, python = media
+            expected_runtime = config['runtime_root']
+            ConfigStore(data).save(config)
+        child = subprocess.Popen(console_command(data, 0, python), cwd=release, env=console_environment(),
                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8')
         line = Queue(maxsize=1)
         reader = threading.Thread(target=lambda: line.put(child.stdout.readline().strip()), daemon=True)
@@ -173,8 +193,12 @@ def check_startup(release, root):
                 raise RuntimeError('Candidate did not publish a local console address')
             with urlopen(address + 'api/state', timeout=5) as response:
                 state = json.load(response)
-                if state['config']['runtime_root'] or state['config']['version'] != 1:
+                if state['config']['runtime_root'] != expected_runtime or state['config']['version'] != 1:
                     raise RuntimeError('Candidate did not load the expected isolated configuration')
+            if media is not None:
+                with urlopen(address + 'api/live/devices', timeout=5) as response:
+                    if not isinstance(json.load(response).get('devices'), list):
+                        raise RuntimeError('Candidate did not enumerate media devices')
             request = Request(address + 'api/shutdown', data=b'{"confirm":true}', headers={
                 'Content-Type': 'application/json', 'Origin': address.rstrip('/'), 'X-Console-Token': state['token']})
             with urlopen(request, timeout=5):
@@ -189,11 +213,12 @@ def check_startup(release, root):
             child.stdout.close()
 
 
-def switch_release(root, archive=None):
+def switch_release(root, archive=None, with_media=False):
     from scripts.local_console import InstanceLock
 
     root = root.resolve()
     with InstanceLock(root / '.deployment'), InstanceLock(root / 'data'):
+        media = configured_media(root / 'data') if with_media else None
         active = read_active(root)
         if archive is None:
             commit = active['previous']
@@ -212,7 +237,7 @@ def switch_release(root, archive=None):
                 raise ValueError('This commit already has a different installed manifest')
         if commit != active['current']:
             release, _ = check_release(root, commit)
-            check_startup(release, root)
+            check_startup(release, root, media)
             active = {'current': commit, 'previous': active['current']}
             write_active(root, active)
         return active
@@ -228,15 +253,7 @@ def run_release(root, port, with_media=False):
             raise ValueError('Install a release first')
         release, _ = check_release(root, commit)
         data = root / 'data'
-        python = None
-        if with_media:
-            from scripts.local_console_config import ConfigStore
-            from scripts.media_runtime import inspect_runtime, runtime_python
-
-            configured = ConfigStore(data).load()['runtime_root']
-            if not configured or not inspect_runtime(configured)['ready']:
-                raise ValueError('Configure a complete independent media runtime before starting with media')
-            python = runtime_python(configured)
+        python = configured_media(data)[1] if with_media else None
         return subprocess.call(console_command(data, port, python), cwd=release, env=console_environment())
 
 
@@ -254,11 +271,11 @@ def main():
     for name in ('deploy', 'rollback', 'run'):
         command = commands.add_parser(name)
         command.add_argument('--root', required=True, type=Path)
+        command.add_argument('--with-media', action='store_true')
         if name == 'deploy':
             command.add_argument('--archive', required=True, type=Path)
         if name == 'run':
             command.add_argument('--port', type=int)
-            command.add_argument('--with-media', action='store_true')
     migration = commands.add_parser('migrate-data')
     migration.add_argument('--root', type=Path, required=True)
     migration.add_argument('--source', type=Path, required=True)
@@ -279,7 +296,7 @@ def main():
     if args.command == 'run':
         return run_release(args.root, args.port, args.with_media)
     if args.command in {'deploy', 'rollback'}:
-        print(json.dumps(switch_release(args.root, getattr(args, 'archive', None))))
+        print(json.dumps(switch_release(args.root, getattr(args, 'archive', None), args.with_media)))
         return 0
     if args.command == 'build':
         manifest = build(args.output, args.revision)
