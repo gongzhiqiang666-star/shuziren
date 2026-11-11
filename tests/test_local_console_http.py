@@ -111,6 +111,24 @@ class ConsoleHTTPTests(unittest.TestCase):
         with response:
             return response.status, json.load(response)
 
+    def test_product_fact_edit_requires_valid_expiry_and_preserves_version(self):
+        base = dict(title='测试商品', content='原说明', product_index=8)
+        status, response = self.call('/api/products', base)
+        self.assertEqual(status, 200)
+        original = response['product']
+        facts = {'price': {'value': 100, 'status': 'verified', 'source': 'catalog',
+                           'expires_at': '2026-12-01T00:00:00'}}
+        update = dict(base, product_id=original['id'], version=original['version'],
+                      product_facts=facts)
+        self.assertEqual(self.call('/api/products', update)[0], 400)
+        self.assertEqual(self.call('/api/products')[1]['products'][0]['version'], original['version'])
+        facts['price']['expires_at'] += 'Z'
+        self.assertEqual(self.call('/api/products', update)[0], 200)
+        saved = self.call('/api/products')[1]['products'][0]
+        self.assertEqual(saved['version'], original['version'] + 1)
+        self.assertEqual(saved['extra']['product_facts'], facts)
+        self.assertEqual(self.call('/api/products', update)[0], 409)
+
     def test_session_reports_configured_speech_engine(self):
         self.assertEqual(self.call('/api/session')[1]['tts_engine'], 'indextts')
         for engine in ('zipvoice', 'omnivoice'):
