@@ -86,6 +86,15 @@ def main():
         source=VoiceStore(args.source_voice_data);reference=source.get(source.selected());voices=VoiceStore(root)
         voice=voices.import_audio(source.audio_path(reference['id']),reference['transcript'],'连续链路验证音色',ffmpeg);voices.select(voice['id'])
         avatars=AvatarStore(root);avatar=avatars.import_prepared(args.source_avatar_directory.resolve(),'连续链路验证形象');avatars.select(avatar['id'])
+        if args.device_audio_output is not None:
+            def record_device(row):
+                device_trace.append(row)
+                if row['event']=='video_sent':
+                    first_device_frame.set()
+            device_sink=CounterDeviceSink if args.capture_devices else AVDeviceSink
+            sink=device_sink(avatar['width'],avatar['height'],args.device_audio_output,on_present=record_device,
+                             video_delay_ms=args.video_delay_ms,smooth_clock=args.smooth_device_clock,
+                             buffer_frames=args.device_buffer_frames,camera_i420=args.camera_i420)
         products=ProductStore(root);product=products.save(title='V05连续输出验证',content='仅本机，不开播',product_index=12);products.select(product['id'])
         tts=TTSTasks(args.runtime_root,root)
         warm_script=products.add_script(product,'这是准备阶段的语音模型预热。');products.select_script(product['id'],warm_script)
@@ -95,15 +104,8 @@ def main():
         shutil.copytree(args.seed_cache,root/'engine-cache');client=LiveAvatarClient(args.runtime_root,avatars.directory(avatar['id']),root,root/'engine-cache')
         client.request('start',session_id=speech_session.id);report['avatar_prepare']=client.request('prepare');save()
         receiver=FrameReceiver(speech_session.id,avatar['width'],avatar['height']);client.request('attach_frames',channel=receiver.descriptor())
-        device_sink=CounterDeviceSink if args.capture_devices else AVDeviceSink
-        def record_device(row):
-            device_trace.append(row)
-            if row['event']=='video_sent' and not first_device_frame.is_set():
-                first_device_frame.set()
-        sink=(device_sink(avatar['width'],avatar['height'],args.device_audio_output,on_present=record_device,
-                          video_delay_ms=args.video_delay_ms,smooth_clock=args.smooth_device_clock,
-                          buffer_frames=args.device_buffer_frames,camera_i420=args.camera_i420)
-            if args.device_audio_output is not None else ContinuousAVSink(ffmpeg,root/'live.ts',avatar['width'],avatar['height']))
+        if sink is None:
+            sink=ContinuousAVSink(ffmpeg,root/'live.ts',avatar['width'],avatar['height'])
         trace=(root/'presented.jsonl').open('w',encoding='utf-8')
         first_queued_ns={}
         def on_present(row):
