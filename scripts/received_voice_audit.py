@@ -94,6 +94,19 @@ def audit_device_deadlines(trace):
             'before_dequeue':sum(dequeue[index]>5 for index in late_rows),
             'before_send':sum(dequeue[index]<=5<dequeue[index]+wake[index] for index in late_rows),
             'during_send':sum(dequeue[index]+wake[index]<=5 for index in late_rows)}
+        callbacks={row['frame_index']:row['callback_ns'] for row in trace if row['event']=='audio_callback'}
+        if all(row['frame_index'] in callbacks for row in rows):
+            callback_late=[]
+            callback_to_dequeue=[]
+            for row in rows:
+                callback=callbacks[row['frame_index']]
+                callback_late.append(max(0,callback-row['due_ns'])/1_000_000)
+                callback_to_dequeue.append((row['video_dequeued_ns']-callback)/1_000_000)
+            report['callback_timing']={
+                'callback_late_p95_ms':float(np.percentile(callback_late,95)),
+                'callback_to_dequeue_p95_ms':float(np.percentile(callback_to_dequeue,95)),
+                'over_5ms_at_callback':sum(value>5 for value in callback_late),
+            }
     return report
 
 
@@ -157,7 +170,7 @@ def audit_received_voice(path,completed,expected,origin_ns=None):
             ready_ns=source.get('wav_ready_unix_ns')
             if source.get('case_id') is not None:
                 voices[-1]['case_id']=source['case_id']
-            if origin_ns is not None and ready_ns is not None and voices[-1]['passed']:
+            if origin_ns is not None and ready_ns is not None and coefficient>=.95:
                 origin_from_ready_ms=(origin_ns-ready_ns)/1_000_000
                 voices[-1]['wav_ready_to_received_signal_ms']=(
                     origin_from_ready_ms+signal_time*1000 if signal_time is not None else None)
@@ -171,7 +184,8 @@ def audit_received_voice(path,completed,expected,origin_ns=None):
     speech_repeated=sum(count-1 for count in speech_counts.values())
     speech_reordered=sum(next_index<index for index,next_index in zip(received_speech,received_speech[1:]))
     drift=None
-    if len(voices)>1 and voices[0]['passed'] and voices[-1]['passed']:
+    if len(voices)>1 and all(voice['av_offset_ms'] is not None and voice['correlation']>=.95
+                             and voice['video_uncertainty_ms']==0 for voice in (voices[0],voices[-1])):
         drift=abs(voices[-1]['av_offset_ms']-voices[0]['av_offset_ms'])
     latency={}
     for kind in ('signal','frame'):
