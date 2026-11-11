@@ -33,17 +33,19 @@ class VideoFaceReader:
         finally: cap.release()
 
     def start_capture(self, video_path, start_ms=0):
+        path = str(Path(video_path).expanduser().resolve())
+        if not Path(path).is_file(): raise FileNotFoundError(path)
+        start_ms = max(0, int(start_ms))
+        width, height, fps = self._get_video_properties(path)
+        ffmpeg=shutil.which("ffmpeg") or shutil.which("ffmpeg.exe")
+        if not ffmpeg:raise FileNotFoundError("找不到 ffmpeg 可执行文件")
         self.stop_capture()
         if any(thread is not None and thread.is_alive()
                for thread in (self.capture_thread, self.preprocess_thread)):
             raise RuntimeError("上一段视频仍在停止，请稍后重试")
-        path = str(Path(video_path).expanduser().resolve())
-        if not Path(path).is_file(): raise FileNotFoundError(path)
-        self.width, self.height, self.fps = self._get_video_properties(path)
-        self.video_path, self.start_ms = path, max(0, int(start_ms)); self.stop_event.clear(); self.internal_buffer.clear()
+        self.width, self.height, self.fps = width, height, fps
+        self.video_path, self.start_ms = path, start_ms; self.stop_event.clear(); self.internal_buffer.clear()
         self.raw_frames_queue = queue.Queue(self.queue_buffer_size); self.processed_frames_queue = queue.Queue(self.queue_buffer_size)
-        ffmpeg=shutil.which("ffmpeg") or shutil.which("ffmpeg.exe")
-        if not ffmpeg:raise FileNotFoundError("找不到 ffmpeg 可执行文件")
         command=[ffmpeg,"-hide_banner","-loglevel","warning"]
         if self.start_ms:command.extend(("-ss",f"{self.start_ms/1000:.3f}"))
         command.extend(("-stream_loop","-1","-i",path,"-an","-vcodec","rawvideo","-pix_fmt","bgr24","-f","rawvideo","pipe:1"))

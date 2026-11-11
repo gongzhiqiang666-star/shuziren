@@ -3515,6 +3515,14 @@ def verify_origin_video_ffmpeg_reader():
                 assert np.array_equal(frames[0],frames[10])
                 assert np.array_equal(frames[1],frames[11])
                 original_process=live.ffmpeg_process
+                try:
+                    live.seek("invalid")
+                except ValueError:
+                    assert live.ffmpeg_process is original_process and original_process.poll() is None
+                    continued,_=live.read_ahead(1)
+                    assert np.array_equal(continued[0],frames[2])
+                else:
+                    raise AssertionError("Invalid seek accepted")
                 assert live.seek(120) and original_process.poll() is not None
                 sought,_=live.read_ahead(1)
                 assert np.array_equal(sought[0],frames[3])
