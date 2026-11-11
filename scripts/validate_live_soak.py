@@ -164,7 +164,7 @@ def main():
                     save()
                 if now >= deadline:
                     break
-                tick = min(deadline, max(tick + 1, time.monotonic()))
+                tick = min(deadline, now + 1)
         if not state.get('rotation_completed'):
             raise RuntimeError('No spoken item completed')
         live.stop(session['id'])
