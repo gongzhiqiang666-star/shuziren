@@ -4,11 +4,21 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
-from scripts.console_comment_reply import ConsoleCommentReply
+from scripts.console_comment_reply import ConsoleCommentReply, LLMError, generate_reply
 from scripts.console_taobao import ConsoleTaobao
 
 
 class AutomaticReplyTests(unittest.TestCase):
+    def test_reply_is_rejected_when_facts_expire_during_generation(self):
+        product = {'title': '茶杯', 'content': '活动说明'}
+        with patch('scripts.console_comment_reply.product_prompt_info', side_effect=[
+            {'title': '茶杯', 'content': '活动有效'},
+            {'title': '茶杯', 'content': '{}'},
+        ]), patch('recovered.llm_base_chat.base_chat', return_value='活动仍有效') as model:
+            with self.assertRaisesRegex(LLMError, '商品事实已到期'):
+                generate_reply(product, '活动还有效吗', {})
+            model.assert_called_once()
+
     def test_only_new_fresh_comments_are_dispatched_and_stop_invalidates_job(self):
         with tempfile.TemporaryDirectory() as directory:
             capture = ConsoleTaobao(directory)
