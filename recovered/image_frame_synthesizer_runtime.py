@@ -86,10 +86,14 @@ class FrameSynthesizer:
         landmarks = resolve_frame_landmarks(frame_data, self.img_size)
         if landmarks is not None:
             frame_data["landmarks"] = landmarks
-        bbox = frame_data.get("bounding_box", frame_data.get("bbox")); crop = resize_face_crop(img, bbox, self.img_size)
-        margin = max(0, (crop.shape[0] - self.img_size) // 2); interior = crop[margin:margin + self.img_size, margin:margin + self.img_size]
-        source = self.tensor_norm_no_training(interior).transpose(2, 0, 1)
-        reference = self.tensor_norm_no_training(interior, self.input_mask[..., None]).transpose(2, 0, 1)
+        top, bottom, left, right = frame_data.get("bounding_box", frame_data.get("bbox"))
+        bbox = (left, right, top, bottom)
+        crop = resize_face_crop(img, bbox, self.img_size)
+        margin = (crop.shape[0] - self.img_size) // 2
+        interior = crop[margin:margin + self.img_size, margin:margin + self.img_size]
+        rgb = interior[..., ::-1]
+        source = self.tensor_norm_no_training(rgb, self.input_mask[..., None]).transpose(2, 0, 1)
+        reference = self.tensor_norm_no_training(rgb).transpose(2, 0, 1)
         return {"index": index, "bbox": bbox, "original_crop": interior, "source": source.astype(np.float32),
                 "reference": reference.astype(np.float32), "frame_data": frame_data}
 
@@ -112,7 +116,7 @@ class FrameSynthesizer:
         self.perf_stats["inference_ms"].append((time.perf_counter() - begin) * 1000)
         if generated.ndim == 4 and generated.shape[1] in (1, 3, 4): generated = generated.transpose(0, 2, 3, 1)
         if generated.min(initial=0) >= 0 and generated.max(initial=0) <= 1.5: generated = generated * 255
-        generated = np.clip(generated, 0, 255).astype(np.uint8)
+        generated = np.clip(generated, 0, 255).astype(np.uint8)[..., ::-1]
         output = [image.copy() for image in batch_images]; begin = time.perf_counter()
         for item, face in zip(prepared, generated):
             data, index, bbox = item["frame_data"], item["index"], item["bbox"]
