@@ -20,6 +20,14 @@ V08-01i 首版候选包形成后启动8小时本机双商品轮播基线，使�
 
 N05 / V09 最新候选包 `253b3f7` 安装至新的本机隔离目录 `logs/validation/n05-first-console-install-253b3f7`，安装器复核438个文件并返回匹配的源码提交。干净 Windows 整机仍待验。
 
+V09-02 首版候选包在新隔离部署目录完成 `07b7b5c` → `253b3f7` → `07b7b5c`，最终当前及上一版本指针均匹配预期。证据见 `logs/validation/n05-candidate-rollback-01/active.json`。
+
+V09-02 补验用户配置保留。写入独立媒体路径与控制台端口后再次升级及回滚，每步均核对当前版本、配置读回和配置文件 SHA-256，配置字节保持一致。证据见 `logs/validation/n05-candidate-rollback-01/config-retention.json`。
+
+V09-02 将候选 ZIP 的控制台文件改动后按原清单提交部署，安装器以退出码1拒绝。当前版本指针及用户配置文件 SHA-256 均保持一致。证据见 `logs/validation/n05-candidate-rollback-01/rejected-upgrade.json`。
+
+V09-05d 从候选包 `253b3f7` 的安装目录运行媒体指纹校验，22个登记文件全部匹配。证据见 `logs/validation/n05-installed-media-fingerprints-253b3f7.json`。
+
 N05 / V09 从 `07b7b5c` 构建并校验438文件的首版候选包，在本机隔离安装目录用独立 Python 启动，首页、会话和退出接口均返回 HTTP 200，进程退出码0。证据为 `logs/validation/n05-first-console-smoke-07b7b5c.json`。此轮覆盖安装后的控制台启动与关闭，媒体业务和干净 Windows 整机待验。
 
 N05 / V09 在同一安装目录通过 HTTP 保存独立媒体运行路径及端口，正常退出后重启，读取配置与保存值完全一致，两次退出码均为0。证据为 `logs/validation/n05-first-console-config-07b7b5c.json`。本轮仅核对配置持久化，设备仍由 V05 回采占用。
@@ -33,6 +41,8 @@ N05 / V03 从首版候选包导入合成测试 WAV，选中后退出重启，选
 N05 / V04 从隔离安装目录加载候选包控制台模块，形象 HTTP 回归通过，覆盖准备好的形象导入、选中、JPEG 预览及无效请求处理。使用合成素材，GPU 生成及动态质量沿 V04 实机验收。
 
 A01-01 前置证据核对：功能矩阵 MED-005、MED-006 的 ZipVoice 和 OmniVoice 恢复实现已有静态证据，真实权重、缓存、隔离和音质待验。MED-007 的 IndexTTS 已有真实 CUDA、双参考切换与缓存/取消验证。高级款适配契约以现有任务、缓存和常驻工作进程为对照，正式联调仍按 A01 前置条件推进。
+
+A01-01 一期适配基线回归：语音任务与缓存11项通过，工作进程真实运行协议用例因本轮未指定运行目录而跳过；驱动工作进程客户端7项通过。待 V08 释放设备后另安排真实媒体运行复验。
 
 V05-04b-36 同场配对 `timeGetTime`、发送单调时钟和接收帧。12秒合成回采300帧，接收 PTS 加输入原点相对同帧发送 `timeGetTime` 的差值范围-11至47毫秒，中位数11.50毫秒，p95为31毫秒。该差值同时包含采集延迟和时钟读数误差，不能直接作为固定校准量。本轮还检出26次重复及22次跳帧，说明 V05-04b-34 的无缺失结果需复验。证据见 `logs/validation/v05-dshow-clock-calibration-01/calibration.json`。校准和接收连续性保持待验。
 
