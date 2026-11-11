@@ -15,6 +15,8 @@ def main():
     parser.add_argument('--packets', type=int, default=300)
     parser.add_argument('--read-frame-counters', action='store_true',
                         help='Decode the frame numbers stamped on diagnostic video')
+    parser.add_argument('--read-audio-samples', action='store_true',
+                        help='Decode audio packet sample counts alongside original timestamps')
     args = parser.parse_args()
     if args.packets < 1:
         parser.error('--packets must be positive')
@@ -29,11 +31,15 @@ def main():
             if packet.pts is None or packet.time_base is None:
                 continue
             sample = {'stream': packet.stream.index, 'type': packet.stream.type,
-                      'pts': packet.pts, 'time_base': str(packet.time_base),
+                      'pts': packet.pts, 'duration': packet.duration,
+                      'time_base': str(packet.time_base),
                       'received_ns': received_ns, 'received_unix_ns': received_unix_ns}
             if args.read_frame_counters and packet.stream.type == 'video':
                 sample['frame_counters'] = [read_counter(frame.to_ndarray(format='bgr24'))
                                             for frame in packet.decode()]
+            if args.read_audio_samples and packet.stream.type == 'audio':
+                sample['audio_frames'] = [{'samples': frame.samples, 'sample_rate': frame.sample_rate}
+                                          for frame in packet.decode()]
             samples.append(sample)
             if len(samples) == args.packets:
                 break
