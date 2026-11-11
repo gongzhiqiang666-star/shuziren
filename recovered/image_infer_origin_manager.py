@@ -118,7 +118,9 @@ class VideoStreamManager:
     def seek_to_ms(self,start_ms):
         with self._seek_lock:
             if self._in_interact:self._pending_seek_ms=max(0,int(start_ms));return False
-            return self._seek_to_ms_locked(start_ms)
+            result=self._seek_to_ms_locked(start_ms)
+            if self.player is not None:self.player.clear_queues()
+            return result
 
     def _read_warmup_image(self):
         import cv2
@@ -254,8 +256,11 @@ class VideoStreamManager:
                         return
                 if self.stop_event.is_set() or not self.player.running:
                     return
-                self.player.upload_frame({"frame":frame,"audio":audio,"index":tape_frame.index,"physical_index":tape_frame.frame_index,"audio_path":batch.audio_path if batch is not None else "<origin>"})
-                self.total_frames_processed+=1
+                with self._seek_lock:
+                    if tape_frame.generation != self.tape._generation:
+                        break
+                    self.player.upload_frame({"frame":frame,"audio":audio,"index":tape_frame.index,"physical_index":tape_frame.frame_index,"audio_path":batch.audio_path if batch is not None else "<origin>"})
+                    self.total_frames_processed+=1
 
     def start_playing(self):
         if self.worker_thread is not None and self.worker_thread.is_alive():

@@ -385,6 +385,12 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         return self.respond(202, {'session': live_manager.start(
                             value['audio_device'], language=language, assistant_voice_id=assistant_voice_id,
                         )})
+                    if path == '/api/live/video-seek':
+                        if set(value) != {'session_id', 'position_ms'} or not isinstance(value['session_id'], str):
+                            raise ProductError('视频跳转字段无效')
+                        if live_manager is None:
+                            raise Conflict('暂无场次')
+                        return self.respond(202, {'session': live_manager.seek_video(value['session_id'], value['position_ms'])})
                     if path == '/api/live/rotation':
                         if (set(value) - {'session_id', 'product_ids', 'shift_durations', 'shift_voice_ids'}
                                 or not isinstance(value.get('session_id'), str)):

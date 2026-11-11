@@ -4,7 +4,7 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
-from queue import Empty, Full, SimpleQueue
+from queue import Empty, Full, Queue, SimpleQueue
 import sys
 import subprocess
 import threading
@@ -195,6 +195,7 @@ class ConsoleLive:
             self.status = {'id': session_id, 'status': 'preparing', 'mode': 'local_video',
                            'audio_device': audio_device, 'frames': 0, 'requested_at': time.time()}
             self.rotation = self.reply_session = None
+            self.video_commands = Queue(maxsize=1)
             self._record_session()
             self.thread = threading.Thread(target=self._run_video, args=(session_id, audio_device, video.resolve()),
                                            name='console-origin-live')
@@ -238,6 +239,14 @@ class ConsoleLive:
                         process.stdin.close()
                         stopping = True
                         deadline = time.monotonic() + 10
+                    if not stopping:
+                        try:
+                            command = self.video_commands.get_nowait()
+                        except Empty:
+                            pass
+                        else:
+                            process.stdin.write(json.dumps(command) + '\n')
+                            process.stdin.flush()
                     try:
                         event = events.get(timeout=.1)
                     except Empty:
@@ -250,6 +259,9 @@ class ConsoleLive:
                         deadline = float('inf')
                     elif event.get('event') == 'stopped':
                         final_frames = event['frames']
+                    elif event.get('event') == 'seek':
+                        with self.lock:
+                            self.status.update(seek_position_ms=event['position_ms'], seek_pending=False)
                     if time.monotonic() >= deadline:
                         raise TimeoutError('本地视频场次启动或停止超时')
                 if process.returncode or not self.cancel.is_set():
@@ -276,6 +288,19 @@ class ConsoleLive:
             with self.lock:
                 self.status.update(status='failed' if error else 'stopped', error=error, ended_at=time.time())
                 self._record_session()
+
+    def seek_video(self, session_id, position_ms):
+        if type(position_ms) is not int or not 0 <= position_ms <= 86_400_000:
+            raise ProductError('请输入有效的视频位置（毫秒）')
+        with self.lock:
+            if (self.status.get('id') != session_id or self.status['status'] != 'running'
+                    or self.status.get('mode') != 'local_video'):
+                raise Conflict('本地视频场次尚未就绪')
+            if self.status.get('seek_pending'):
+                raise Conflict('正在处理上一次跳转')
+            self.video_commands.put_nowait({'action': 'seek', 'position_ms': position_ms})
+            self.status['seek_pending'] = True
+            return self.state()
 
     def _record_session(self):
         state = self.status

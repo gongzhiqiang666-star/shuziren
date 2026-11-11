@@ -570,6 +570,8 @@ function renderLiveButtons() {
   $('live-insert').disabled = $('live-enqueue').disabled;
   $('live-audio').disabled = active || liveBusy;
   $('live-video-path').disabled = consoleClosed || active || liveBusy;
+  $('live-video-seek').hidden = liveSession.mode !== 'local_video' || liveSession.status !== 'running';
+  $('live-video-jump').disabled = consoleClosed || liveBusy || !!liveSession.seek_pending;
   $('live-assistant-voice').disabled = consoleClosed || active || liveBusy;
 }
 async function loadLive() {
@@ -690,6 +692,13 @@ $('live-start').addEventListener('click', () => liveAction(() => {
   return request('/api/live/start', payload);
 }));
 $('live-stop').addEventListener('click', () => liveAction(() => request('/api/live/stop',{session_id:liveSession.id})));
+$('live-video-jump').addEventListener('click', () => {
+  const position = $('live-video-position');
+  if (!position.reportValidity() || !position.value) return;
+  return liveAction(() => request('/api/live/video-seek',{
+    session_id:liveSession.id, position_ms:Math.round(Number(position.value)*1000)
+  }));
+});
 async function enqueueLive(path) {
   requireSavedProduct();
   if (ttsState?.status !== 'succeeded' || ttsState.id !== ttsPreviewTask) throw new Error('请先合成当前话术的语音');
