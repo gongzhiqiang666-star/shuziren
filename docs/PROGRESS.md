@@ -4,6 +4,8 @@
 
 ## 四期开发进度
 
+从 `7761025` 在 Windows 配置真实 FFmpeg 和本机媒体运行目录，执行 `tests/` 全量 unittest，251 项通过，无跳过。另有视频读取、V2 队列选择和播放器三项恢复版检查通过。控制台开播入口目前使用预制形象工作进程，本地视频直驱已在原应用运行入口验证，仍需单独接入控制台场次生命周期。日志见 `logs/validation/direct-video-full-regression.log`。
+
 A01-05 有界队列修复后的实际设备短测通过。直驱管理器使用真实视频和 CUDA 模型，音频设备回调消费插播帧 0～5，10143 个采样逐值一致，下一帧恢复至原视频第 25 帧。虚拟摄像头发送 7 帧，队列峰值 4 帧，停播释放摄像头与音频流。证据见 `logs/validation/a01-origin-bounded-interaction-device.json`。接收端同步与控制台完整流程仍待验。
 
 A01-05 使用真实 MP4、WeNet 和 CUDA UNet 验证短语音插播与定点恢复。插播帧数按输出 PCM 计算，最后不足一帧的语音保留，口型特征不足时延用末帧。0.23 秒语音完整进入六帧，10143 个 PCM 采样逐值一致，随后恢复原视频第 25 帧。验证截止于播放器提交，证据见 `logs/validation/a01-origin-real-interaction.json`。
