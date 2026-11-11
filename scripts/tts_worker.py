@@ -12,6 +12,7 @@ import uuid
 import wave
 
 from recovered.voice_infer_v3 import VoiceSynthesizer
+from recovered.voice_infer import VoiceSynthesizer as ZipVoiceSynthesizer
 from scripts.voice_store import VoiceStore
 from scripts.v122_acceleration import configure_runtime
 from scripts.tts_cache import AudioCache,file_hash,key_for
@@ -21,6 +22,12 @@ class OwnedSynthesizer(VoiceSynthesizer):
     def _get_temp_path(self):
         self.output_directory.mkdir(parents=True,exist_ok=True)
         return str(self.output_directory)
+
+
+class OwnedZipVoiceSynthesizer(ZipVoiceSynthesizer):
+    """Use ZipVoice inference with the worker's owned scratch directory."""
+
+    _get_temp_path = OwnedSynthesizer._get_temp_path
 
 
 def normalize_task_wav(path):
@@ -44,19 +51,38 @@ def normalize_task_wav(path):
 
 
 class TTSProvider:
-    def __init__(self, runtime_root, data_directory):
+    def __init__(self, runtime_root, data_directory, engine='indextts', model_root=None):
         self.data_directory=Path(data_directory).resolve()
         self.voices=VoiceStore(self.data_directory)
         self.outputs=self.data_directory/'tts'
         self.outputs.mkdir(parents=True,exist_ok=True)
+        self.model_root=Path(model_root).resolve() if model_root is not None else None
         self.internal=configure_runtime(Path(runtime_root).resolve())
+        self.model_root=self.model_root or self.internal/'assets/pretrained_models'
+        self.engine=engine
+        self.provider='recovered-voice-infer-v3' if engine=='indextts' else 'recovered-zipvoice'
         self.synth=None;self.identity=None;self.loads=0;self.inference_calls=0;self.reference_switches=0
         self.cache=AudioCache(self.outputs/'content-cache');self.engine_stamp=None
 
     def _engine_stamp(self):
         if self.engine_stamp is None:
+            if self.engine=='zipvoice':
+                root=self.model_root
+                model=next((p for p in (root/'zipvoice_distill/zipvoice_distill', root/'zipvoice_distill', root)
+                            if (p/'model.json').is_file() and (p/'model.pt').is_file()), None)
+                vocoder=next((p for p in (root/'vocos-mel-24khz', root/'vocoder')
+                              if (p/'pytorch_model.bin').is_file()), None)
+                if model is None or vocoder is None:
+                    raise FileNotFoundError('ZipVoice model or Vocos vocoder is missing')
+                files=[model/name for name in ('model.json','model.pt','tokens.txt')]
+                files.extend(vocoder/name for name in ('config.yaml','pytorch_model.bin'))
+                files.extend([Path(__file__),Path(sys.modules[ZipVoiceSynthesizer.__module__].__file__)])
+                files.extend(p for p in (self.internal/'bin/voice_infer/zipvoice').rglob('*.py')
+                             if not p.name.startswith('._'))
+                self.engine_stamp=hashlib.sha256(json.dumps([(str(p),file_hash(p)) for p in sorted(files)]).encode()).hexdigest()
+                return self.engine_stamp
             import yaml
-            model=self.internal/'assets/pretrained_models/indextts'
+            model=self.model_root/'indextts'
             config=yaml.safe_load((model/'config.yaml').read_text(encoding='utf-8'))
             files=[model/'config.yaml',model/config['gpt_checkpoint'],model/config['bigvgan_checkpoint'],model/'bpe.model',
                    Path(__file__),Path(sys.modules[VoiceSynthesizer.__module__].__file__)]
@@ -87,8 +113,13 @@ class TTSProvider:
         identity=(voice['id'],voice['audio_sha256'],voice['text_sha256'])
         started=time.perf_counter();cold=False
         if cached is None and self.synth is None:
-            synth=OwnedSynthesizer.from_voice_dir(str(self.internal/'assets/pretrained_models'),
-                str(self.voices.root),voice['id'],device='cuda',voice_infer_version='v3')
+            if self.engine=='zipvoice':
+                synth=OwnedZipVoiceSynthesizer(
+                    self.model_root,self.voices.audio_path(voice['id']),voice['transcript'],
+                    device='cuda',voice_id=voice['id'],voice_infer_version='v1')
+            else:
+                synth=OwnedSynthesizer.from_voice_dir(str(self.model_root),
+                    str(self.voices.root),voice['id'],device='cuda',voice_infer_version='v3')
             synth.output_directory=self.outputs/'cache'
             self.synth=synth;self.identity=identity;self.loads+=1;cold=True
         elif cached is None and identity!=self.identity:
@@ -118,7 +149,7 @@ class TTSProvider:
         return {'output':str(target),'duration':duration,'sample_rate':rate,'seconds':time.perf_counter()-started,
                 'initialization_seconds':initialization,'model_loaded':cold,'model_load_count':self.loads,
                 'sha256':hashlib.sha256(target.read_bytes()).hexdigest(),'voice_id':voice['id'],
-                'provider':'recovered-voice-infer-v3','use_cache':request['use_cache'],
+                'provider':self.provider,'use_cache':request['use_cache'],
                 'device':self.synth.device if self.synth is not None else 'cache',
                 'cache_hit':cached is not None,'cache_key':cache_key,'inference_calls':self.inference_calls,
                 'reference_switch_count':self.reference_switches,
@@ -129,9 +160,11 @@ def main(argv=None):
     parser=argparse.ArgumentParser()
     parser.add_argument('--runtime-root',required=True,type=Path)
     parser.add_argument('--data-directory',required=True,type=Path)
+    parser.add_argument('--engine',choices=('indextts','zipvoice'),default='indextts')
+    parser.add_argument('--model-root',type=Path)
     args=parser.parse_args(argv)
-    with redirect_stdout(sys.stderr): provider=TTSProvider(args.runtime_root,args.data_directory)
-    print(json.dumps({'event':'ready','provider':'recovered-voice-infer-v3'}),flush=True)
+    with redirect_stdout(sys.stderr): provider=TTSProvider(args.runtime_root,args.data_directory,args.engine,args.model_root)
+    print(json.dumps({'event':'ready','provider':provider.provider}),flush=True)
     try:
         for line in sys.stdin:
             try:
