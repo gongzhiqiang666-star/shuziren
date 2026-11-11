@@ -4940,6 +4940,10 @@ def verify_online_voice_runtime_contract():
     assert online_voice.aliyun_voice_supports_language("de-DE",{"region":"intl"})
     assert not online_voice.aliyun_voice_supports_language("de-DE",{"region":"china"})
     assert online_voice.aliyun_voice_supports_language("ms",{"region":"china"})
+    for region in ("china", "intl"):
+        for language in ("ms-MY", "vi-VN"):
+            assert online_voice.cosyvoice_language_hint(language) == language.lower()
+            assert online_voice.aliyun_voice_supports_language(language, {"region": region})
     assert online_voice.aliyun_voice_supports_language("tl-PH",{"region":"china"})
 
 def verify_core_method_coverage():
