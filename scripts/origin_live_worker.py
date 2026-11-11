@@ -5,10 +5,11 @@ import json
 from pathlib import Path
 from queue import Empty, Queue
 import sys
+from tempfile import TemporaryDirectory
 import threading
 import time
 
-from scripts.v122_acceleration import configure_runtime
+from scripts.v122_acceleration import accelerated_unet, configure_runtime
 
 
 def main():
@@ -44,11 +45,12 @@ def main():
     if not torch.cuda.is_available():
         raise RuntimeError("本地视频直驱需要可用的 CUDA 运行环境")
     threading.Thread(target=read_commands, daemon=True).start()
-    manager = create_image_runtime({}, runtime, {
-        "window_width": 720, "window_height": 1280, "image_output_mode": "camera",
-        "is_interrupt": False, "video_path_for_driving": str(video), "enable_occluder": False,
-        "occluder_model_path": "", "origin_idle_video_mode": True,
-    })
+    with TemporaryDirectory(prefix="origin-unet-") as cache, accelerated_unet(cache, backend="cuda"):
+        manager = create_image_runtime({}, runtime, {
+            "window_width": 720, "window_height": 1280, "image_output_mode": "camera",
+            "is_interrupt": False, "video_path_for_driving": str(video), "enable_occluder": False,
+            "occluder_model_path": "", "origin_idle_video_mode": True,
+        })
     try:
         if stopped.is_set():
             return
