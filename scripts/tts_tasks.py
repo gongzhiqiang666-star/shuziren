@@ -57,6 +57,10 @@ class TTSTasks:
         self._stop_worker()
         python=runtime_python(self.runtime)
         if not python.is_file(): raise ProductError('缺少TTS运行解释器')
+        if self.engine=='zipvoice':
+            entry=self.runtime/'_internal/bin/voice_infer/zipvoice/bin/infer_zipvoice.py'
+            if not entry.is_file():
+                raise ProductError('运行资源目录缺少 ZipVoice 推理模块，请配置包含 ZipVoice 的运行资源目录')
         self.log=(self.data/'tts-worker.log').open('a',encoding='utf-8')
         command=[str(python),'-X','utf8','-m','scripts.tts_worker',
                  '--runtime-root',str(self.runtime),'--data-directory',str(self.data),
