@@ -107,12 +107,21 @@ async function showScripts() {
     const item = document.createElement('li');
     const content = document.createElement('p');
     content.textContent = '版本 ' + script.product_version + (script.product_version === currentProduct.version ? ' · 当前' : ' · 历史') + (script.id === result.selected ? ' · 已选用' : '') + (script.parent_script_id ? ' · 修改稿' : '') + '：' + script.text;
+    item.append(content);
+    if (script.segments) {
+      const roles = script.segments.map(segment => segment.type === 'pause'
+        ? '停顿 ' + segment.duration + ' 秒'
+        : (segment.type === 'assistant' ? '助播' : '主播') + '：' + segment.content);
+      const preview = document.createElement('p');
+      preview.textContent = roles.join(' ｜ ');
+      item.append(preview);
+    }
     const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'secondary'; edit.textContent = '载入修改';
     edit.addEventListener('click', () => {
       $('script-text').value = script.text; parentScriptId = script.id;
       $('product-message').textContent = script.product_version === currentProduct.version ? '原稿已载入，保存时创建修改稿并保留原稿。' : '历史原稿已载入，请按当前商品事实修改后保存；原稿会保留。';
     });
-    item.append(content,edit);
+    item.append(edit);
     if (script.product_version === currentProduct.version) {
       const select = document.createElement('button'); select.type='button'; select.className='secondary'; select.textContent='设为当前话术';
       select.addEventListener('click', () => productAction(async () => {

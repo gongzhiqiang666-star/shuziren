@@ -209,7 +209,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         a, b = create('008', '茶杯'), create(3, '毛巾')
         self.assertEqual(self.call('/api/products/select', {'product_id':a['id']})[0], 200)
         self.assertEqual(self.call('/api/products')[1]['selected'], a['id'])
-        self.assertEqual(self.call('/api/scripts', {'snapshot':a, 'text':'茶杯话术'})[0], 201)
+        self.assertEqual(self.call('/api/scripts', {'snapshot':a, 'text':'茶杯话术{助：补充一句}{停:1.5}'})[0], 201)
         self.assertEqual(self.call('/api/scripts?product_id=' + b['id'])[1]['scripts'], [])
         update = {'product_id':a['id'], 'version':a['version'], 'title':a['title'],
                   'content':'容量更新', 'product_index':a['product_index']}
@@ -219,6 +219,11 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(len(self.call('/api/scripts?product_id=' + a['id'])[1]['scripts']), 1)
         latest=self.call('/api/products')[1]['products'][0]
         original=self.call('/api/scripts?product_id=' + a['id'])[1]['scripts'][0]
+        self.assertEqual(original['segments'], [
+            {'type': 'host', 'content': '茶杯话术'},
+            {'type': 'assistant', 'content': '补充一句'},
+            {'type': 'pause', 'duration': 1.5},
+        ])
         self.assertEqual(self.call('/api/scripts',{'snapshot':latest,'text':'修改话术','parent_script_id':original['id']})[0],201)
         self.assertEqual(self.call('/api/scripts',{'snapshot':b,'text':'串商品稿','parent_script_id':original['id']})[0],400)
         records=self.call('/api/scripts?product_id='+a['id'])[1]['scripts']

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Any
 
@@ -124,6 +125,8 @@ def slice_content(inp: str) -> list[dict[str, Any]]:
             duration_str = segment[3:-1].strip()
             try:
                 duration = float(duration_str)
+                if not math.isfinite(duration):
+                    raise ValueError("Pause duration must be finite")
             except ValueError:
                 _slice_host_content(segment, result)
             else:

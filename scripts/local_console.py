@@ -250,7 +250,14 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if len(ids) != 1:
                         raise ProductError("请选择商品")
                     data=products()
-                    return self.respond(200, {"scripts": data.scripts(ids[0]),'selected':data.selected_script(ids[0])})
+                    from recovered.slice_content import slice_content
+
+                    scripts = data.scripts(ids[0])
+                    for script in scripts:
+                        segments = slice_content(script['text'])
+                        if any(segment['type'] in {'assistant', 'pause'} for segment in segments):
+                            script['segments'] = segments
+                    return self.respond(200, {"scripts": scripts, 'selected': data.selected_script(ids[0])})
                 filename = {"/": "index.html", "/app.js": "app.js", "/style.css": "style.css",'/voice-recorder.js':'voice-recorder.js'}.get(path)
                 if filename:
                     mime = {"index.html": "text/html", "app.js": "text/javascript", "style.css": "text/css",'voice-recorder.js':'text/javascript'}[filename]
