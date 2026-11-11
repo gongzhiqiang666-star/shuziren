@@ -291,6 +291,7 @@ class StreamPlayer:
         try:
             if self.audio_output_device is not None:
                 self._init_audio_stream()
+                self._stream.start_stream()
             self._stop_event.clear()
             self.running = True
             if sys.platform == "win32":
@@ -320,7 +321,8 @@ class StreamPlayer:
                 self._init_audio_stream()
                 if self._stop_event.is_set():
                     return
-                self._stream.start_stream()
+                if self.audio_output_device is None:
+                    self._stream.start_stream()
             except (ImportError, OSError):
                 self._close_audio_stream()
                 if self.audio_output_device is not None:
