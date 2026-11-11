@@ -140,6 +140,7 @@ async function loadProducts() {
   const selectedRotation = new Set(Array.from($('live-products').selectedOptions, option => option.value));
   $('live-products').replaceChildren(...savedProducts.map(product =>
     new Option(`${product.product_index} · ${product.title}`, product.id, false, selectedRotation.has(product.id))));
+  renderShiftFields();
   const empty = document.createElement('option'); empty.value = ''; empty.textContent = '请选择商品';
   $('product-list').replaceChildren(empty, ...savedProducts.map(product => {
     const option = document.createElement('option'); option.value = product.id;
@@ -211,6 +212,7 @@ async function loadVoices() {
   const selectedAssistant = assistant.value;
   assistant.replaceChildren(new Option('沿用主播音色', ''), ...voiceRecords.map(voice => new Option(voice.name, voice.id)));
   assistant.value = voiceRecords.some(voice => voice.id === selectedAssistant) ? selectedAssistant : '';
+  renderShiftFields();
 }
 $('voice-form').addEventListener('submit',event => { event.preventDefault(); voiceAction(async () => {
   const result=await request('/api/voices/import',{source:$('voice-source').value,transcript:$('voice-transcript').value,name:$('voice-name').value});
@@ -433,6 +435,31 @@ renderVideoButtons();
 
 let liveSession = {status:'idle'}, liveTimer, liveBusy = false;
 let rotationSelectionEdited = false;
+const shiftDrafts = new Map();
+function renderShiftFields() {
+  const panel = $('live-shifts');
+  panel.hidden = !$('live-shifts-enabled').checked;
+  if (panel.hidden) return;
+  const rows = Array.from($('live-products').selectedOptions, option => {
+    const draft = shiftDrafts.get(option.value) || {seconds:'60', voice:''};
+    shiftDrafts.set(option.value, draft);
+    const row = document.createElement('fieldset');
+    const name = document.createElement('legend'); name.textContent = option.textContent;
+    const duration = document.createElement('input');
+    duration.type = 'number'; duration.min = '1'; duration.max = '86400'; duration.value = draft.seconds;
+    duration.addEventListener('input', () => { draft.seconds = duration.value; });
+    const durationLabel = document.createElement('label'); durationLabel.append('班次时长（秒）', duration);
+    const voice = document.createElement('select');
+    voice.replaceChildren(new Option('沿用场次主播', ''), ...voiceRecords.map(item => new Option(item.name, item.id)));
+    voice.value = draft.voice;
+    draft.voice = voice.value;
+    voice.addEventListener('change', () => { draft.voice = voice.value; });
+    const voiceLabel = document.createElement('label'); voiceLabel.append('主播音色', voice);
+    row.append(name, durationLabel, voiceLabel);
+    return row;
+  });
+  panel.replaceChildren(...rows);
+}
 const liveLabels = {idle:'未启动', preparing:'准备中', running:'本机输出中', stopping:'停止中', stopped:'已停止', failed:'输出失败'};
 function renderLiveButtons() {
   const active = ['preparing','running','stopping'].includes(liveSession.status);
@@ -455,12 +482,19 @@ async function loadLive() {
   liveSession = (await request('/api/live/state')).session;
   if (!rotationSelectionEdited) {
     const configured = new Set(liveSession.rotation_retry_products || liveSession.rotation_products || []);
-    for (const option of $('live-products').options) option.selected = configured.has(option.value);
+    let selectionChanged = false;
+    for (const option of $('live-products').options) {
+      const selected = configured.has(option.value);
+      selectionChanged ||= option.selected !== selected;
+      option.selected = selected;
+    }
+    if (selectionChanged) renderShiftFields();
   }
   $('live-status').textContent = liveLabels[liveSession.status];
   $('live-detail').textContent = liveSession.frames ? `已提交 ${liveSession.frames} 帧，待播 ${liveSession.pending ?? 0} 条` : '';
   $('live-rotation-status').textContent = liveSession.rotation_error || (liveSession.rotation_products?.length ?
-    `${liveSession.manual ? '轮播暂停' : '轮播中'} · ${liveSession.rotation_products.length} 个商品 · 已播 ${liveSession.rotation_completed} 条` : '');
+    `${liveSession.manual ? '轮播暂停' : '轮播中'} · ${liveSession.rotation_products.length} 个商品 · 已播 ${liveSession.rotation_completed} 条` +
+      (liveSession.shift_index == null ? '' : ` · 第 ${liveSession.shift_index + 1} 班`) : '');
   if (liveSession.error) $('live-error').textContent = liveSession.error;
   renderLiveButtons();
   if (['preparing','running','stopping'].includes(liveSession.status)) {
@@ -475,10 +509,20 @@ async function liveAction(work) {
   finally { liveBusy = false; renderLiveButtons(); }
 }
 $('live-audio').addEventListener('change', renderLiveButtons);
-$('live-products').addEventListener('change', () => { rotationSelectionEdited = true; renderLiveButtons(); });
-$('live-rotation-start').addEventListener('click', () => liveAction(() => request('/api/live/rotation', {
-  session_id:liveSession.id, product_ids:Array.from($('live-products').selectedOptions, option => option.value)
-})));
+$('live-products').addEventListener('change', () => { rotationSelectionEdited = true; renderShiftFields(); renderLiveButtons(); });
+$('live-shifts-enabled').addEventListener('change', renderShiftFields);
+$('live-rotation-start').addEventListener('click', () => liveAction(() => {
+  const product_ids = Array.from($('live-products').selectedOptions, option => option.value);
+  const payload = {session_id:liveSession.id, product_ids};
+  if ($('live-shifts-enabled').checked) {
+    payload.shift_durations = product_ids.map(id => Number(shiftDrafts.get(id)?.seconds || 0));
+    if (payload.shift_durations.some(seconds => !Number.isInteger(seconds) || seconds < 1 || seconds > 86400)) {
+      throw new Error('班次时长须为 1 至 86400 秒的整数');
+    }
+    payload.shift_voice_ids = product_ids.map(id => shiftDrafts.get(id)?.voice || null);
+  }
+  return request('/api/live/rotation', payload);
+}));
 $('live-rotation-stop').addEventListener('click', () => liveAction(() => request('/api/live/rotation', {
   session_id:liveSession.id, product_ids:[]
 })));

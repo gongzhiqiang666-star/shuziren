@@ -15,6 +15,8 @@
 <p class="hint">接管后暂停调度普通待播语音。恢复时继续普通队列，并取消尚未开始的手动播报。</p>
 <label for="live-products">轮播商品</label><select id="live-products" multiple size="4"></select>
 <p class="hint">选择已选用话术的商品，按列表顺序循环。手动接管会暂停轮播。</p>
+<label><input id="live-shifts-enabled" type="checkbox"> 按班次轮播</label>
+<div id="live-shifts" hidden></div>
 <div class="actions"><button id="live-rotation-start" type="button" disabled>开始商品轮播</button><button id="live-rotation-stop" class="secondary" type="button" disabled>停止轮播</button></div>
 <p id="live-rotation-status" role="status"></p>
 <p id="live-detail" role="status"></p><p id="live-error" role="alert"></p></section>
