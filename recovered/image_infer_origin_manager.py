@@ -206,8 +206,13 @@ class VideoStreamManager:
                 frames=self.synthesizer.synthesize_batch(features,images,metadata)
             self.total_synthesis_time+=time.time()-begin
             for frame,audio,tape_frame,batch in zip(frames,audios,tape_frames,interaction):
+                while self.player.running and self.player.get_queue_length() >= max(1,self.buffer_threshold):
+                    if self.stop_event.wait(.01):
+                        return
+                if self.stop_event.is_set() or not self.player.running:
+                    return
                 self.player.upload_frame({"frame":frame,"audio":audio,"index":tape_frame.index,"physical_index":tape_frame.frame_index,"audio_path":batch.audio_path if batch is not None else "<origin>"})
-            self.total_frames_processed+=len(frames)
+                self.total_frames_processed+=1
 
     def start_playing(self):
         if self.worker_thread is not None and self.worker_thread.is_alive():
