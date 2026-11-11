@@ -184,8 +184,10 @@ def audit_received_voice(path,completed,expected,origin_ns=None):
     steps=[b[0]-a[0] for a,b in zip(video,video[1:])]
     received_speech=[index for index,_ in video if index in speech_frames]
     speech_counts=Counter(received_speech)
-    speech_missing=len(speech_frames-speech_counts.keys())
-    speech_repeated=sum(count-1 for count in speech_counts.values())
+    missing_speech_indices=sorted(speech_frames-speech_counts.keys())
+    repeated_speech_indices={index:count for index,count in speech_counts.items() if count>1}
+    speech_missing=len(missing_speech_indices)
+    speech_repeated=sum(count-1 for count in repeated_speech_indices.values())
     speech_reordered=sum(next_index<index for index,next_index in zip(received_speech,received_speech[1:]))
     drift=None
     if len(voices)>1 and all(voice['av_offset_ms'] is not None and voice['correlation']>=.95
@@ -203,6 +205,8 @@ def audit_received_voice(path,completed,expected,origin_ns=None):
         'voice_sync_passed':len(voices)==len(expected) and bool(voices) and all(voice['passed'] for voice in voices),
         'speech_video_frames_expected':len(speech_frames),'speech_missing_frames':speech_missing,
         'speech_repeated_frames':speech_repeated,'speech_reordered_frames':speech_reordered,
+        'speech_missing_frame_indices':missing_speech_indices,
+        'speech_repeated_frame_counts':repeated_speech_indices,
         'speech_frame_continuity_passed':bool(speech_frames) and not (speech_missing or speech_repeated or speech_reordered),
         'speech_av_drift_ms':drift,
         'speech_measurement_span_seconds':(voices[-1]['source_start_sample']-voices[0]['source_start_sample'])/24000 if drift is not None else None,
