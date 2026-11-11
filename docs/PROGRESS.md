@@ -258,3 +258,5 @@ V04-05f 已修正原版裁切轴、RGB输入、源图掩码和输出转回BGR。
 V04-05g GPU复验已启动。复用指纹一致的50条语音，按原协议依次重跑 CUDA FP32、TensorRT FP16 和逐条比较。CUDA 首三条的165个同源帧对，跨话术嘴周平均像素差由1.21～1.23/255增至9.82～11.97/255。此为编码后响应诊断，仍需全批结果及完整播放验收。证据见 logs/validation/v04-cuda-mouth-before-01、v04-cuda-mouth-after-01 和 v04-corrected-gpu/run-49832e1e562144a18031efb1c5e53a18。
 
 V04-05g GPU复验结束。CUDA FP32与TensorRT FP16各50条成片均通过完整解码和音轨校验，50对嘴周精度比较全部通过。TensorRT热态35.97帧/秒、P95为29.52毫秒，达到容量门槛。复用语音的主ASR仍报Q009、Q023、Q026，自动总判定未通过，人工审核待验。证据见 logs/validation/v04-corrected-gpu/run-49832e1e562144a18031efb1c5e53a18/result.json。
+
+V04-05h 使用本地 Whisper 复核 Q009、Q023、Q026 的原始音频与修正后 TensorRT 成片。六项转写均达到原内容评分门槛，成片 CER 分别为0%、10.53%、0%。主ASR告警与自动判定仍记录为未通过，完整播放和人工画质与听感待验。已生成复核报告和审核页面。
