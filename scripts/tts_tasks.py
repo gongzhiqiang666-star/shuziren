@@ -14,7 +14,11 @@ from scripts.voice_store import VoiceStore
 
 
 class TTSTasks:
-    def __init__(self,runtime_root,data_directory):
+    def __init__(self,runtime_root,data_directory,*,engine='indextts',model_root=None):
+        if engine not in {'indextts','zipvoice'}:
+            raise ProductError('不支持的TTS引擎')
+        self.engine=engine
+        self.model_root=Path(model_root).resolve() if model_root is not None else None
         self.runtime=Path(runtime_root).resolve();self.data=Path(data_directory).resolve()
         self.products=ProductStore(self.data);self.voices=VoiceStore(self.data)
         self.path=self.data/'tts-task.json'
@@ -54,9 +58,13 @@ class TTSTasks:
         python=runtime_python(self.runtime)
         if not python.is_file(): raise ProductError('缺少TTS运行解释器')
         self.log=(self.data/'tts-worker.log').open('a',encoding='utf-8')
+        command=[str(python),'-X','utf8','-m','scripts.tts_worker',
+                 '--runtime-root',str(self.runtime),'--data-directory',str(self.data),
+                 '--engine',self.engine]
+        if self.model_root is not None:
+            command.extend(['--model-root',str(self.model_root)])
         try:
-            self.process=subprocess.Popen([str(python),'-X','utf8','-m','scripts.tts_worker',
-                '--runtime-root',str(self.runtime),'--data-directory',str(self.data)],
+            self.process=subprocess.Popen(command,
                 cwd=Path(__file__).resolve().parents[1],stdin=subprocess.PIPE,stdout=subprocess.PIPE,
                 stderr=self.log,text=True,encoding='utf-8',bufsize=1,
                 creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))

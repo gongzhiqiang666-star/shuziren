@@ -25,9 +25,12 @@ def main(argv=None):
     parser.add_argument('--runtime-root',required=True,type=Path)
     parser.add_argument('--source-data',required=True,type=Path)
     parser.add_argument('--report-directory',required=True,type=Path)
+    parser.add_argument('--engine',choices=('indextts','zipvoice'),default='indextts')
+    parser.add_argument('--model-root',type=Path)
     args=parser.parse_args(argv)
     root=(args.report_directory/('run-'+uuid.uuid4().hex)).resolve();root.mkdir(parents=True)
-    report={'task':'V03-03b','status':'failed','checks':{},'listening_verified':False}
+    report={'task':'V03-03b' if args.engine=='indextts' else 'A01-02',
+            'engine':args.engine,'status':'failed','checks':{},'listening_verified':False}
     tasks=None
     try:
         source=VoiceStore(args.source_data);selected=source.selected()
@@ -38,9 +41,11 @@ def main(argv=None):
         voices.select(voice['id']);products=ProductStore(root)
         p=products.save(title='任务验证商品',content='合成验证用商品，不直播',product_index=8)
         script=products.add_script(p,'这是第一段绑定商品和音色的语音验证。');products.select_script(p['id'],script)
-        tasks=TTSTasks(args.runtime_root,root)
+        tasks=TTSTasks(args.runtime_root,root,engine=args.engine,model_root=args.model_root)
         tasks.start(p['id'],script,voice['id']);first=wait(tasks)
         assert first['status']=='succeeded',first
+        assert first['result']['provider']=={
+            'indextts':'recovered-voice-infer-v3','zipvoice':'recovered-zipvoice'}[args.engine]
         pid=tasks.process.pid
         second_script=products.add_script(p,'这是第二段全新的文本，请确认常驻工作进程继续生成。');products.select_script(p['id'],second_script)
         tasks.start(p['id'],second_script,voice['id']);second=wait(tasks)
