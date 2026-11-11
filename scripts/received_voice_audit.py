@@ -31,13 +31,16 @@ class CounterDeviceSink(AVDeviceSink):
 
 
 class DeviceCapture:
-    def __init__(self,ffmpeg,directory,seconds):
+    def __init__(self,ffmpeg,directory,seconds,*,dshow_video_clock=False):
+        self.dshow_video_clock=dshow_video_clock
+        timestamp_args=['-f','dshow','-use_video_device_timestamps','0'] if dshow_video_clock else [
+            '-use_wallclock_as_timestamps','1','-f','dshow']
         self.path=directory/'receiver.mkv';self.log_path=directory/'receiver.log'
         self.log=self.log_path.open('wb');self.process=None
         self.launched_unix_ns=time.time_ns()
         try:
             self.process=subprocess.Popen([str(ffmpeg),'-nostdin','-y','-hide_banner','-loglevel','info','-nostats',
-                '-use_wallclock_as_timestamps','1','-f','dshow','-rtbufsize','16M','-audio_buffer_size','20',
+                *timestamp_args,'-rtbufsize','16M','-audio_buffer_size','20',
                 '-video_size','720x1280','-framerate','25','-i','video=C920:audio=CABLE Output (VB-Audio Virtual Cable)',
                 '-t',str(seconds),'-fps_mode','passthrough','-c:v','ffv1','-c:a','pcm_s16le','-ar','48000','-ac','1',str(self.path)],
                 stdout=subprocess.DEVNULL,stderr=self.log)
@@ -48,6 +51,7 @@ class DeviceCapture:
         if self.process.returncode:raise RuntimeError('Device capture failed; see receiver.log')
 
     def timestamp_origin(self):
+        if self.dshow_video_clock:return None
         return receiver_origin(self.log_path,self.launched_unix_ns,time.time_ns())
 
     def reported_buffer_drop(self):

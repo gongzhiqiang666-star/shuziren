@@ -49,6 +49,7 @@ def main():
     parser.add_argument('--seconds',type=int,default=20)
     parser.add_argument('--device-audio-output',type=int)
     parser.add_argument('--capture-devices',action='store_true')
+    parser.add_argument('--dshow-video-clock',action='store_true')
     parser.add_argument('--smooth-device-clock',action='store_true')
     parser.add_argument('--device-buffer-frames',type=int,choices=(2,4),default=2)
     parser.add_argument('--camera-i420',action='store_true')
@@ -58,6 +59,8 @@ def main():
     parser.add_argument('--first-output-corpus',type=Path,help='Run the 50-utterance receiver latency cohort')
     parser.add_argument('--video-delay-ms',type=float,default=0);args=parser.parse_args()
     if args.capture_devices and args.device_audio_output is None:parser.error('--capture-devices requires --device-audio-output')
+    if args.dshow_video_clock and not args.capture_devices:parser.error('--dshow-video-clock requires --capture-devices')
+    if args.dshow_video_clock and args.first_output_corpus:parser.error('DirectShow clock has no calibrated absolute capture origin')
     if args.device_buffer_frames != 2 and args.device_audio_output is None:
         parser.error('--device-buffer-frames requires --device-audio-output')
     if args.camera_i420 and args.device_audio_output is None:
@@ -83,6 +86,7 @@ def main():
             'first_output_corpus_sha256':corpus_hash,'camera_pixel_format':'I420' if args.camera_i420 else 'BGR'}
     report['startup']={'engine_cache_seeded':args.seed_cache is not None}
     report['idle_frames']=args.idle_frames
+    report['dshow_video_clock']=args.dshow_video_clock
     tts=client=receiver=sink=session=ingress=assembler=injector=None
     completed=[];expected={};errors=[];presented=[];offsets=[];submit_costs=[];device_trace=[]
     capture=None
@@ -145,7 +149,7 @@ def main():
                 if args.capture_devices:
                     if not first_device_frame.wait(2):raise TimeoutError('Camera did not send its first frame')
                     if session.stop_event.is_set():return
-                    capture=DeviceCapture(ffmpeg,root,max(1,args.seconds-2))
+                    capture=DeviceCapture(ffmpeg,root,max(1,args.seconds-2),dshow_video_clock=args.dshow_video_clock)
                 previous=None
                 for offset,case_id,text in schedule:
                     if session.stop_event.wait(max(0,schedule_start+offset-time.monotonic())):return
