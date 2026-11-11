@@ -5,6 +5,7 @@ from pathlib import Path
 from queue import Empty, Full, SimpleQueue
 import sys
 import threading
+import time
 import uuid
 
 from scripts.product_store import Conflict, ProductError
@@ -179,11 +180,17 @@ class ConsoleLive:
                 return
             self.status['last_completed_task_id'] = source_id
             if self.rotation and self.rotation['task_id'] == source_id:
-                item = self.rotation['items'][self.rotation['index']]
-                self.status['last_rotation_product_id'] = item['product_id']
-                self.status['rotation_completed'] += 1
-                self.rotation['index'] = (self.rotation['index'] + 1) % len(self.rotation['items'])
                 self.rotation['task_id'] = None
+                self._advance_rotation(self.rotation)
+
+    def _advance_rotation(self, rotation):
+        item = rotation['items'][rotation['index']]
+        rotation['segment'] += 1
+        if rotation['segment'] >= len(item.get('segments', (None,))):
+            self.status['last_rotation_product_id'] = item['product_id']
+            self.status['rotation_completed'] += 1
+            rotation['index'] = (rotation['index'] + 1) % len(rotation['items'])
+            rotation['segment'] = 0
 
     def set_manual(self, session_id, enabled, revision):
         with self.lock:
@@ -215,10 +222,21 @@ class ConsoleLive:
                 script_id = self.tts.products.selected_script(product_id)
                 if not script_id:
                     raise Conflict(f'请先为商品「{product["title"]}」选用话术')
-                items.append({'product_id': product_id, 'product_version': product['version'], 'script_id': script_id})
+                item = {'product_id': product_id, 'product_version': product['version'], 'script_id': script_id}
+                assistant_voice_id = self.status.get('assistant_voice_id')
+                if assistant_voice_id:
+                    from recovered.slice_content import slice_content
+
+                    script = next((row for row in self.tts.products.scripts(product_id) if row['id'] == script_id), None)
+                    if script is None:
+                        raise Conflict('选用话术已变化，请重新设置轮播')
+                    segments = slice_content(script['text'])
+                    if any(segment['type'] == 'assistant' for segment in segments):
+                        item['segments'] = segments
+                items.append(item)
             if self.rotation and self.rotation['task_id']:
                 self.session.discard_pending(self.rotation['task_id'])
-            self.rotation = {'items': items, 'index': 0, 'task_id': None} if items else None
+            self.rotation = {'items': items, 'index': 0, 'segment': 0, 'task_id': None} if items else None
             self.status.update(rotation_products=list(product_ids), rotation_completed=0, rotation_error=None)
             self.status.pop('rotation_retry_products', None)
             self.status.pop('last_rotation_product_id', None)
@@ -244,6 +262,11 @@ class ConsoleLive:
                             pending = None
                         elif state['status'] == 'succeeded' and not self.session.queue_full():
                             item = rotation['items'][rotation['index']]
+                            if 'segments' in item:
+                                segment = item['segments'][rotation['segment']]
+                                voice_id = (self.status['assistant_voice_id'] if segment['type'] == 'assistant'
+                                            else self.ingress.context['voice_id'])
+                                item = {**item, 'voice_id': voice_id}
                             self.enqueue(session_id, task_id, rotation_item=item)
                             rotation['task_id'] = task_id
                             pending = None
@@ -253,13 +276,27 @@ class ConsoleLive:
                         item = rotation['items'][rotation['index']]
                         if self.tts.products.get(item['product_id'])['version'] != item['product_version']:
                             raise Conflict('轮播商品已修改，请重新设置轮播')
+                        options = {}
+                        if 'segments' in item:
+                            if self.tts.products.selected_script(item['product_id']) != item['script_id']:
+                                raise Conflict('选用话术已变化，请重新设置轮播')
+                            segment = item['segments'][rotation['segment']]
+                            if segment['type'] == 'pause':
+                                if rotation.get('pause_until') is None:
+                                    rotation['pause_until'] = time.monotonic() + segment['duration']
+                                elif time.monotonic() >= rotation['pause_until']:
+                                    rotation.pop('pause_until')
+                                    self._advance_rotation(rotation)
+                                continue
+                            options = {'segment_index': rotation['segment'],
+                                       'assistant_voice_id': self.status['assistant_voice_id']}
                         with self.tts.lock:
                             current = self.tts.state()
                             if current and current['status'] == 'running':
                                 continue
                             task = self.tts.start(
                                 item['product_id'], item['script_id'], self.ingress.context['voice_id'],
-                                language=self.status['rotation_language'], use_cache=True, rotation=True,
+                                language=self.status['rotation_language'], use_cache=True, rotation=True, **options,
                             )
                         pending = (task['id'], rotation, control['control_revision'])
                 except (ValueError, OSError, RuntimeError) as error:

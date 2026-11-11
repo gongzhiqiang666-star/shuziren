@@ -7,6 +7,24 @@ from scripts.console_live import ConsoleLive
 
 
 class LiveRotationTests(unittest.TestCase):
+    def test_segment_completion_keeps_product_until_last_segment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tts = Mock()
+            tts.products.get.return_value = {'title': '测试商品', 'version': 1}
+            tts.products.selected_script.return_value = 'script'
+            tts.products.scripts.return_value = [{'id': 'script', 'text': '主讲。{助：补充说明。}'}]
+            live = ConsoleLive(tts, directory)
+            live.status = {'id': 'scene', 'status': 'running', 'assistant_voice_id': 'assistant'}
+            live.session = Mock()
+            live.session.control_state.return_value = {}
+            live.configure_rotation('scene', ['product'])
+            for index, task_id in enumerate(('host-task', 'assistant-task')):
+                live.rotation['task_id'] = task_id
+                live.completed.put(task_id)
+                live._record_completed()
+                self.assertEqual(live.state()['rotation_completed'], index)
+            self.assertEqual(live.state()['last_rotation_product_id'], 'product')
+
     def test_live_start_validates_and_binds_assistant_voice(self):
         with tempfile.TemporaryDirectory() as directory:
             tts = Mock()

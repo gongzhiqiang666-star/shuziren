@@ -67,7 +67,7 @@ class LiveSpeechIngress:
                 self._validate()
                 expected=self.context if rotation_item is None else rotation_item
                 keys=['product_id','product_version'] if rotation_item is None else ['product_id','product_version','script_id']
-                if state.get('voice_id')!=self.context['voice_id'] or any(state.get(key)!=expected[key] for key in keys):
+                if state.get('voice_id')!=expected.get('voice_id', self.context['voice_id']) or any(state.get(key)!=expected[key] for key in keys):
                     raise Conflict('语音不属于本场次商品版本或音色')
                 iterator=iter_wav_file_chunks(path,self.queue.max_utterance_samples);chunk=next(iterator)
                 if chunk.source_sha256!=state['result']['sha256']:raise Conflict('交接快照指纹不符')
