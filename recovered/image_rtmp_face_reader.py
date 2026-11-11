@@ -39,10 +39,16 @@ class RtmpFaceReader(VideoFaceReader):
                    "-show_entries", "stream=width,height,avg_frame_rate", "-of", "json", rtmp_url]
         result = subprocess.run(command, capture_output=True, text=True, timeout=15)
         if result.returncode: raise RuntimeError(result.stderr.strip())
-        stream = (json.loads(result.stdout).get("streams") or [{}])[0]
+        streams = json.loads(result.stdout).get("streams")
+        if not streams:
+            raise RuntimeError("RTMP 输入没有视频轨")
+        stream = streams[0]
+        width, height = int(stream.get("width") or 0), int(stream.get("height") or 0)
+        if width <= 0 or height <= 0:
+            raise RuntimeError("RTMP 视频分辨率无效")
         numerator, _, denominator = str(stream.get("avg_frame_rate") or "25/1").partition("/")
         fps = float(numerator) / max(float(denominator or 1), 1)
-        return self._make_even(stream.get("width", 0)), self._make_even(stream.get("height", 0)), fps
+        return width, height, fps or 25.0
 
     def _build_ffmpeg_video_filter(self, fps): return "null"
 
@@ -53,7 +59,7 @@ class RtmpFaceReader(VideoFaceReader):
             timeout = _env_int("DH_LIVE_RTMP_RW_TIMEOUT_US", 5_000_000)
             command += ["-rw_timeout", str(timeout), "-fflags", "nobuffer", "-flags", "low_delay",
                         "-analyzeduration", str(analyzed), "-probesize", str(probe)]
-        return command + ["-i", rtmp_url, "-an", "-vf", self._build_ffmpeg_video_filter(fps),
+        return command + ["-i", rtmp_url, "-map", "0:v:0", "-an", "-vf", self._build_ffmpeg_video_filter(fps),
                           "-pix_fmt", "bgr24", "-f", "rawvideo", "-fps_mode", "passthrough", "-"]
 
     def _reset_pipeline_state(self):
