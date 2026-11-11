@@ -10,6 +10,7 @@ import time
 import uuid
 import wave
 import numpy as np
+import psutil
 from scripts.avatar_render import verify_media
 from scripts.avatar_store import AvatarStore
 from scripts.continuous_av_sink import ContinuousAVSink
@@ -19,6 +20,7 @@ from scripts.continuous_session import ContinuousSession
 from scripts.live_avatar_client import LiveAvatarClient
 from scripts.live_frame_channel import FrameReceiver
 from scripts.live_speech_ingress import LiveSpeechIngress
+from scripts.validate_live_soak import gpu_resources
 from scripts.product_store import ProductStore
 from scripts.speech_assembler import SpeechAssembler
 from scripts.tts_tasks import TTSTasks
@@ -159,8 +161,41 @@ def main():
         report.update(status='running',phase='running')
         save()
         started=time.perf_counter()
+        sampling_stop=threading.Event()
+        def sample_resources():
+            process=psutil.Process()
+            previous_cpu={}
+            with (root/'resources.jsonl').open('w',encoding='utf-8',buffering=1) as samples:
+                while not sampling_stop.is_set():
+                    now=time.perf_counter()
+                    rss=0
+                    current_cpu={}
+                    cpu_percent=0.0
+                    for child in [process,*process.children(recursive=True)]:
+                        try:
+                            times=child.cpu_times()
+                            rss+=child.memory_info().rss
+                            current_cpu[child.pid]=(now,times.user+times.system)
+                            if child.pid in previous_cpu:
+                                last_time,last_cpu=previous_cpu[child.pid]
+                                cpu_percent+=max(0,times.user+times.system-last_cpu)/(now-last_time)*100
+                        except (psutil.NoSuchProcess,psutil.AccessDenied):
+                            continue
+                    row={'elapsed_seconds':now-started,'frames':session.frames_written,
+                         'pending':session.ready.qsize(),'process_tree_rss_bytes':rss,
+                         'process_tree_cpu_percent':cpu_percent if previous_cpu else None,
+                         'device_queue_frames':sink.queue.qsize() if isinstance(sink,AVDeviceSink) else None,
+                         'gpu':gpu_resources()}
+                    samples.write(json.dumps(row)+'\n')
+                    previous_cpu=current_cpu
+                    sampling_stop.wait(max(0,now+1-time.perf_counter()))
+        sampler=threading.Thread(target=sample_resources,name='receiver-resource-samples')
+        sampler.start()
         try:session.run(frames=args.seconds*25)
-        finally:trace.close()
+        finally:
+            sampling_stop.set()
+            sampler.join()
+            trace.close()
         report['wall_seconds']=time.perf_counter()-started;injector.join(timeout=5)
         if injector.is_alive() or errors:raise RuntimeError('New speech injection failed: '+str(errors))
         done={event['source_id']:event for event in completed if not event['source_id'].startswith('idle-')}
