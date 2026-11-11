@@ -98,7 +98,56 @@ function showProduct(product) {
   $('product-facts').value = productFactsText(product);
   $('product-version').textContent = product ? '当前商品：' + product.title + ' · 版本 ' + product.version : '正在新增商品';
   $('script-text').value = ''; $('scripts-list').replaceChildren();
+  $('business-metrics').hidden = !product;
+  $('business-metrics-form').reset();
+  $('metrics-status').textContent = '';
+  $('metrics-error').textContent = '';
+  $('metrics-records').replaceChildren();
 }
+const metricsRoute = '/api/products/business-metrics';
+function showBusinessMetrics(records) {
+  $('metrics-records').replaceChildren(...records.map(record => {
+    const item = document.createElement('li');
+    item.textContent = `${record.period_start} 至 ${record.period_end} · ${record.source} · ${record.scope} · 点击 ${record.clicks ?? '未知'} · 订单 ${record.orders ?? '未知'} · 退款 ${record.refunds ?? '未知'} · 库存 ${record.stock ?? '未知'}`;
+    return item;
+  }));
+}
+async function loadBusinessMetrics() {
+  const product = currentProduct;
+  if (!product) return;
+  try {
+    const result = await request(metricsRoute + '?product_id=' + encodeURIComponent(product.id));
+    if (currentProduct === product) showBusinessMetrics(result.records);
+  } catch (error) {
+    if (currentProduct === product) $('metrics-error').textContent = error.message;
+  }
+}
+$('business-metrics-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const product = currentProduct;
+  if (!product) return;
+  const button = event.currentTarget.querySelector('button[type="submit"]');
+  if (button.disabled) return;
+  button.disabled = true;
+  $('metrics-error').textContent = '';
+  $('metrics-status').textContent = '';
+  try {
+    const payload = {product_id:product.id, source:$('metrics-source').value,
+      period_start:$('metrics-start').value, period_end:$('metrics-end').value, scope:$('metrics-scope').value};
+    for (const field of ['clicks','orders','refunds','stock']) {
+      const input = $('metrics-' + field);
+      payload[field] = input.value === '' ? null : input.valueAsNumber;
+      if (payload[field] !== null && !Number.isSafeInteger(payload[field])) throw new Error('指标必须是可准确表示的整数');
+    }
+    const result = await request(metricsRoute, payload);
+    if (currentProduct === product) {
+      showBusinessMetrics(result.records);
+      $('metrics-status').textContent = '经营数据已保存';
+    }
+  } catch (error) {
+    if (currentProduct === product) $('metrics-error').textContent = error.message;
+  } finally { button.disabled = false; }
+});
 async function showScripts() {
   if (!currentProduct) return;
   const result = await request('/api/scripts?product_id=' + encodeURIComponent(currentProduct.id));
@@ -153,14 +202,14 @@ async function loadProducts() {
     option.textContent = product.product_index + ' · ' + product.title; return option;
   }));
   const selected = savedProducts.find(p => p.id === result.selected) || null;
-  $('product-list').value = selected?.id || ''; showProduct(selected); await showScripts();
+  $('product-list').value = selected?.id || ''; showProduct(selected); await Promise.all([showScripts(), loadBusinessMetrics()]);
 }
 $('new-product').addEventListener('click', () => { $('product-list').value = ''; showProduct(null); });
 $('reload-products').addEventListener('click', () => productAction(async () => { await loadProducts(); await loadTask(); }));
 $('product-list').addEventListener('change', () => productAction(async () => {
   const selected = savedProducts.find(p => p.id === $('product-list').value);
   if (!selected) { showProduct(null); return; }
-  await request('/api/products/select', {product_id:selected.id}); showProduct(selected); await showScripts();
+  await request('/api/products/select', {product_id:selected.id}); showProduct(selected); await Promise.all([showScripts(), loadBusinessMetrics()]);
 }));
 $('product-form').addEventListener('submit', event => { event.preventDefault(); productAction(async () => {
   const value = {title:$('product-title').value, content:$('product-content').value, product_index:$('product-index').value};
