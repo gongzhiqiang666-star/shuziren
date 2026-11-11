@@ -105,8 +105,12 @@ def main():
                           buffer_frames=args.device_buffer_frames,camera_i420=args.camera_i420)
             if args.device_audio_output is not None else ContinuousAVSink(ffmpeg,root/'live.ts',avatar['width'],avatar['height']))
         trace=(root/'presented.jsonl').open('w',encoding='utf-8')
+        first_queued_ns={}
         def on_present(row):
             trace.write(json.dumps(row)+'\n')
+            task_id=row.get('task_id')
+            if task_id in expected:
+                first_queued_ns.setdefault(task_id,row['presented_ns'])
             if 'late_ns' in row:
                 presented.append(row['late_ns']/1000000);offsets.append(row['offset_ns']/1000000)
             submit_costs.append(row['submit_ns']/1000000)
@@ -135,11 +139,14 @@ def main():
                     generation_started=time.perf_counter();tts.start(product['id'],script,voice['id'],use_cache=False)
                     audio=wait(tts,195)
                     if audio['status']!='succeeded' or audio['result']['cache_hit'] or audio['result']['model_load_count']!=1:raise RuntimeError('New resident TTS failed')
+                    ingress_started_ns=time.time_ns()
                     ingress.capture(audio['id']);utterance=None
                     while utterance is None:utterance=assembler.push(ingress.take(timeout=2))
                     expected[utterance.task_id]={'path':audio['result']['output'],'samples':utterance.samples,
                         'pcm_sha256':utterance.pcm_sha256,'generation_started':generation_started,
-                        'wav_ready_unix_ns':audio['result']['wav_ready_unix_ns'],'case_id':case_id}
+                        'wav_ready_unix_ns':audio['result']['wav_ready_unix_ns'],'case_id':case_id,
+                        'ingress_started_unix_ns':ingress_started_ns,
+                        'queue_requested_ns':time.perf_counter_ns()}
                     session.submit(utterance)
                     previous=utterance.task_id
             except BaseException as error:
@@ -153,6 +160,14 @@ def main():
         report['wall_seconds']=time.perf_counter()-started;injector.join(timeout=5)
         if injector.is_alive() or errors:raise RuntimeError('New speech injection failed: '+str(errors))
         done={event['source_id']:event for event in completed if not event['source_id'].startswith('idle-')}
+        report['speech_handoff_timings']={
+            task_id:{
+                'wav_ready_to_ingress_ms':(source['ingress_started_unix_ns']-source['wav_ready_unix_ns'])/1e6,
+                'queue_request_to_first_frame_ms':(first_queued_ns[task_id]-source['queue_requested_ns'])/1e6
+                if task_id in first_queued_ns else None,
+            }
+            for task_id,source in expected.items()
+        }
         if len(expected)!=len(schedule) or set(done)!=set(expected):
             raise RuntimeError('Continuous output ended before all scheduled real utterances completed')
         for task,source_audio in expected.items():
