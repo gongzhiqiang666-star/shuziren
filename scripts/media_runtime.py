@@ -1,5 +1,6 @@
 """Console media runtime layout and required-file inventory."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -72,12 +73,53 @@ def inspect_runtime(root):
     return {'layout': INDEPENDENT['layout'], 'checks': checks, 'ready': all(item['present'] for item in checks)}
 
 
+def runtime_fingerprints(root):
+    root = Path(root).resolve()
+    report = inspect_runtime(root)
+    if not report['ready']:
+        raise ValueError('独立媒体目录缺少必需文件')
+    files = {}
+    for item in report['checks']:
+        path = checked_path(root, item['path'])
+        digest = hashlib.sha256()
+        with path.open('rb') as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b''):
+                digest.update(block)
+        files[item['path']] = digest.hexdigest()
+    return {'version': 1, 'layout': report['layout'], 'files': files}
+
+
+def verify_fingerprints(root, expected):
+    if not isinstance(expected, dict) or set(expected) != {'version', 'layout', 'files'} or (
+            type(expected['version']) is not int or expected['version'] != 1
+            or expected['layout'] != INDEPENDENT['layout'] or not isinstance(expected['files'], dict)):
+        raise ValueError('媒体指纹清单格式无效')
+    actual = runtime_fingerprints(root)['files']
+    if actual.keys() != expected['files'].keys():
+        raise ValueError('媒体指纹清单与当前布局文件清单不一致')
+    mismatches = [name for name, digest in actual.items() if digest != expected['files'][name]]
+    return {'verified': not mismatches, 'files': len(actual), 'mismatches': mismatches}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=('initialize', 'check'))
+    parser.add_argument('command', choices=('initialize', 'check', 'fingerprint', 'verify'))
     parser.add_argument('--root', required=True, type=Path)
+    parser.add_argument('--inventory', type=Path)
     args = parser.parse_args()
     root = args.root.resolve()
+    if args.command in ('fingerprint', 'verify'):
+        if args.inventory is None:
+            parser.error('--inventory is required')
+        if args.command == 'fingerprint':
+            inventory = runtime_fingerprints(root)
+            with args.inventory.open('x', encoding='utf-8') as stream:
+                json.dump(inventory, stream, indent=2)
+            return 0
+        expected = json.loads(args.inventory.read_text(encoding='utf-8'))
+        result = verify_fingerprints(root, expected)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result['verified'] else 1
     if args.command == 'initialize':
         root.mkdir(parents=True, exist_ok=True)
         with (root / MANIFEST_NAME).open('x', encoding='utf-8') as manifest:

@@ -6,10 +6,29 @@ from unittest.mock import patch
 
 from scripts.local_console_config import ConfigError, ConfigStore, preflight, validate
 from scripts.v122_package_policy import REQUIRED_RUNTIME_FILES
-from scripts.media_runtime import INDEPENDENT, LEGACY_PYTHON, MANIFEST_NAME, MEDIA_FILES, MODEL_FILES, PROVIDER_FILES, runtime_python
+from scripts.media_runtime import (
+    INDEPENDENT, LEGACY_PYTHON, MANIFEST_NAME, MEDIA_FILES, MODEL_FILES, PROVIDER_FILES,
+    runtime_fingerprints, runtime_python, verify_fingerprints,
+)
 
 
 class ConsoleConfigTests(unittest.TestCase):
+    def test_media_inventory_survives_relocation_and_detects_changes(self):
+        runtime = self.root / 'media'
+        runtime.mkdir()
+        (runtime / MANIFEST_NAME).write_text(json.dumps(INDEPENDENT), encoding='utf-8')
+        for name in (*MEDIA_FILES, *MODEL_FILES, *PROVIDER_FILES):
+            file = runtime / name
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_bytes(name.encode())
+        inventory = runtime_fingerprints(runtime)
+        moved = runtime.rename(self.root / 'moved media')
+        self.assertTrue(verify_fingerprints(moved, inventory)['verified'])
+        (moved / MODEL_FILES[0]).write_bytes(b'changed')
+        result = verify_fingerprints(moved, inventory)
+        self.assertFalse(result['verified'])
+        self.assertEqual(result['mismatches'], [MODEL_FILES[0]])
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

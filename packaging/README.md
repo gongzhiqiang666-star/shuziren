@@ -27,6 +27,13 @@ python -m scripts.media_runtime check --root "<新媒体目录>"
 
 此流程复制选定的 Python 和第三方运行环境、提供方源码及模型。将新媒体目录填入控制台配置，使用其中的解释器和依赖。该流程依赖本机已配置的参考资源。输出的 `staging-result.json` 记录解释器重定位和关键入口检查，真实 GPU 推理另行验证。媒体目录保存在仓库外。
 
+移动媒体目录前，可在可信的原目录生成关键文件指纹，并随介质保存清单。到目标目录后校验，再在控制台更新资源路径。校验覆盖预检列出的 Python、FFmpeg、模型和提供方入口文件。
+
+```powershell
+python -m scripts.media_runtime fingerprint --root "<媒体目录>" --inventory "<新清单文件>"
+python -m scripts.media_runtime verify --root "<迁移后的媒体目录>" --inventory "<原清单文件>"
+```
+
 维护者从已提交版本运行 `python -m scripts.console_package build --output <zip路径>`。使用 `verify --archive <zip路径>` 核对清单，再以 `install --archive <zip路径> --destination <新目录>` 安装。校验用于发现文件损坏，来源仍需通过可信交付渠道确认。
 
 ## 版本管理
