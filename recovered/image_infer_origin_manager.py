@@ -170,8 +170,6 @@ class VideoStreamManager:
                 if seek_pending:
                     tape_frames=self.tape.take_frames(self._batch_size,2.0)
                     if not tape_frames:continue
-            detections=self._ensure_face_pipeline().detect_batch([x.image for x in tape_frames])
-            metadata=[self._detection_to_meta(x) for x in detections]
             features=[];audios=[]
             for index,tape_frame in enumerate(tape_frames):
                 batch=interaction[index] if index<len(interaction) else None
@@ -179,10 +177,15 @@ class VideoStreamManager:
                     origin=self._make_origin_audio_batch(tape_frame);features.append(np.zeros((20,256),np.float32));audios.append(origin.original_audio_chunk)
                 else:features.append(batch.wenet_feature);audios.append(batch.original_audio_chunk)
             begin=time.time()
-            frames=self.synthesizer.synthesize_batch(features,[x.image for x in tape_frames],metadata) if has_interact else [x.image for x in tape_frames]
+            images=[x.image for x in tape_frames]
+            frames=images
+            if has_interact:
+                detections=self._ensure_face_pipeline().detect_batch(images)
+                metadata=[self._detection_to_meta(x) for x in detections]
+                frames=self.synthesizer.synthesize_batch(features,images,metadata)
             self.total_synthesis_time+=time.time()-begin
-            for frame,audio,tape_frame in zip(frames,audios,tape_frames):
-                self.player.upload_frame({"frame":frame,"audio":audio,"index":tape_frame.index,"physical_index":tape_frame.frame_index,"audio_path":current_path or "<origin>"})
+            for frame,audio,tape_frame,batch in zip(frames,audios,tape_frames,interaction):
+                self.player.upload_frame({"frame":frame,"audio":audio,"index":tape_frame.index,"physical_index":tape_frame.frame_index,"audio_path":batch.audio_path if batch is not None else "<origin>"})
             self.total_frames_processed+=len(frames)
 
     def start_playing(self):
