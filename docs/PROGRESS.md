@@ -4,6 +4,8 @@
 
 ## 四期开发进度
 
+X15-02 / X16-03 编码影响对照补测。固定同一批解码帧，重新编码后相对源视频的全画面 SSIM 为 MPEG-4 0.998924、NVENC 0.998337，固定嘴部区域为 0.995800、0.993390。两条生成链都使用 MPEG-4 的样片对齐 354 帧后，嘴部 SSIM 仍为 0.906540。测试表明当前样片的嘴部差异不能仅由这组编码配置解释，需进一步对照特征、生成和贴回阶段。证据见 `logs/validation/x15-x16-encoder-only-01/*-ssim.log` 与 `logs/validation/x16-rebuilt-legacy-warm-01/ssim-mouth-vs-native.log`。
+
 X16-03 重建链换用 OpenCV MPEG-4 编码，沿用同人物、WAV、TensorRT FP16 缓存及严格精度设置。两次生成 355 帧，端到端 25.26 / 24.88 秒，音频指纹与双轨解码通过。此前同素材重建 NVENC 两轮为 25.10 / 23.46 秒，GitHub MPEG-4 为 25.42 / 23.26 秒。MPEG-4 补测在后续批次，数据用于核对量级，推理组件单独耗时仍需统一埋点。证据见 `logs/validation/x16-rebuilt-legacy-warm-01`。
 
 X15-02 / X16-03 固定 354 张已解码 BGR 帧及同一 WAV，比较 OpenCV MPEG-4 写入后单独封装 AAC 与重建链 NVENC 直接封装 AAC。交替两轮的写入加封装耗时分别为 1.29 / 1.25 秒和 0.65 / 0.67 秒，四份输出双轨完整解码。NVENC 样片约 6.67 MB，MPEG-4 约 3.45 MB，本轮沿用各自质量设置。该耗时差约 0.6 秒，仅覆盖编码和封装。证据见 `logs/validation/x15-x16-encoder-only-01/result.json`。
