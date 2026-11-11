@@ -124,6 +124,8 @@ def audit_received_voice(path,completed,expected,origin_ns=None):
                 'reference_video_frame':frame_index,'av_offset_ms':delta_ms,'video_uncertainty_ms':uncertainty,
                 'passed':delta_ms is not None and coefficient>=.95 and abs(delta_ms)+uncertainty<=80})
             ready_ns=source.get('wav_ready_unix_ns')
+            if source.get('case_id') is not None:
+                voices[-1]['case_id']=source['case_id']
             if origin_ns is not None and ready_ns is not None and voices[-1]['passed']:
                 origin_from_ready_ms=(origin_ns-ready_ns)/1_000_000
                 voices[-1]['wav_ready_to_received_signal_ms']=(

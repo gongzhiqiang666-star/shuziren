@@ -26,6 +26,19 @@ from scripts.validate_render_tasks import wait
 from scripts.voice_store import VoiceStore
 
 
+def load_first_output_corpus(path):
+    raw=path.read_bytes()
+    corpus=json.loads(raw)
+    items=corpus['items']
+    texts=[item['text'] for item in items]
+    ids=[item['id'] for item in items]
+    if (corpus['version']!='V05-T1-first-output-v1' or len(items)!=50
+            or len(set(ids))!=50 or len(set(texts))!=50
+            or any(not isinstance(text,str) or not text.strip() or len(text)>60 for text in texts)):
+        raise ValueError('Expected 50 unique short V05-T1 utterances')
+    return items,hashlib.sha256(raw).hexdigest()
+
+
 def main():
     parser=argparse.ArgumentParser()
     for name in ['runtime-root','source-voice-data','source-avatar-directory','report-directory','seed-cache']:parser.add_argument('--'+name,required=True,type=Path)
@@ -36,22 +49,30 @@ def main():
     parser.add_argument('--device-buffer-frames',type=int,choices=(2,4),default=2)
     parser.add_argument('--speech-interval-seconds',type=int,
                         help='Add a distinct uncached utterance at each interval, reserving the last 20 seconds for completion')
+    parser.add_argument('--first-output-corpus',type=Path,help='Run the 50-utterance receiver latency cohort')
     parser.add_argument('--video-delay-ms',type=float,default=0);args=parser.parse_args()
     if args.capture_devices and args.device_audio_output is None:parser.error('--capture-devices requires --device-audio-output')
     if args.device_buffer_frames != 2 and args.device_audio_output is None:
         parser.error('--device-buffer-frames requires --device-audio-output')
     if args.speech_interval_seconds is not None and not 0<args.speech_interval_seconds<args.seconds-20:
         parser.error('--speech-interval-seconds requires room for an additional utterance before the final 20 seconds')
-    schedule=[(0,'这是连续输出开始后新生成的第一条语音。'),
-              (0,'这是运行中新生成的第二句话，前后保持音画连续。')]
-    if args.speech_interval_seconds:
+    schedule=[(0,None,'这是连续输出开始后新生成的第一条语音。'),
+              (0,None,'这是运行中新生成的第二句话，前后保持音画连续。')]
+    corpus_hash=None
+    if args.first_output_corpus is not None:
+        if not args.capture_devices or args.seconds<1800 or args.speech_interval_seconds is not None:
+            parser.error('--first-output-corpus requires device capture, at least 1800 seconds and the fixed cohort cadence')
+        items,corpus_hash=load_first_output_corpus(args.first_output_corpus)
+        schedule=[(36*index,item['id'],item['text']) for index,item in enumerate(items)]
+    elif args.speech_interval_seconds:
         interval=args.speech_interval_seconds
-        schedule.extend((offset,f'持续输出第{offset}秒，验证这一条新语音和对应画面。')
+        schedule.extend((offset,None,f'持续输出第{offset}秒，验证这一条新语音和对应画面。')
                         for offset in range(interval,args.seconds-20,interval))
     root=(args.report_directory/('run-'+uuid.uuid4().hex)).resolve();root.mkdir(parents=True)
     report={'status':'failed','phase':'preparing','checks':{},'physical_device_tested':False,'platform_tested':False,
             'device_buffer_frames':args.device_buffer_frames if args.device_audio_output is not None else None,
-            'scheduled_speech_count':len(schedule),'speech_interval_seconds':args.speech_interval_seconds}
+            'scheduled_speech_count':len(schedule),'speech_interval_seconds':args.speech_interval_seconds,
+            'first_output_corpus_sha256':corpus_hash}
     tts=client=receiver=sink=session=ingress=assembler=injector=None
     completed=[];expected={};errors=[];presented=[];offsets=[];submit_costs=[];device_trace=[]
     capture=None
@@ -86,7 +107,12 @@ def main():
             if 'late_ns' in row:
                 presented.append(row['late_ns']/1000000);offsets.append(row['offset_ns']/1000000)
             submit_costs.append(row['submit_ns']/1000000)
-        session=ContinuousSession(speech_session.id,client,receiver,sink,root/'assembled',on_source_complete=completed.append,on_present=on_present)
+        speech_end_samples={}
+        def source_complete(event):
+            completed.append(event)
+            if not event['source_id'].startswith('idle-'):
+                speech_end_samples[event['source_id']]=session.pcm.read_samples
+        session=ContinuousSession(speech_session.id,client,receiver,sink,root/'assembled',on_source_complete=source_complete,on_present=on_present)
         def inject():
             nonlocal capture
             try:
@@ -96,8 +122,12 @@ def main():
                     if not first_device_frame.wait(2):raise TimeoutError('Camera did not send its first frame')
                     if session.stop_event.is_set():return
                     capture=DeviceCapture(ffmpeg,root,max(1,args.seconds-2))
-                for offset,text in schedule:
+                previous=None
+                for offset,case_id,text in schedule:
                     if session.stop_event.wait(max(0,schedule_start+offset-time.monotonic())):return
+                    if corpus_hash and previous is not None:
+                        while previous not in speech_end_samples or sink.presented*960<speech_end_samples[previous]:
+                            if session.stop_event.wait(.01):return
                     script=products.add_script(product,text);products.select_script(product['id'],script)
                     generation_started=time.perf_counter();tts.start(product['id'],script,voice['id'],use_cache=False)
                     audio=wait(tts,195)
@@ -106,8 +136,9 @@ def main():
                     while utterance is None:utterance=assembler.push(ingress.take(timeout=2))
                     expected[utterance.task_id]={'path':audio['result']['output'],'samples':utterance.samples,
                         'pcm_sha256':utterance.pcm_sha256,'generation_started':generation_started,
-                        'wav_ready_unix_ns':audio['result']['wav_ready_unix_ns']}
+                        'wav_ready_unix_ns':audio['result']['wav_ready_unix_ns'],'case_id':case_id}
                     session.submit(utterance)
+                    previous=utterance.task_id
             except BaseException as error:
                 if not session.stop_event.is_set():errors.append(str(error))
         injector=threading.Thread(target=inject,name='new-tts-during-output');injector.start()
@@ -145,6 +176,12 @@ def main():
                 capture.wait()
                 report['receiver']=audit_received_voice(capture.path,completed,expected,capture.timestamp_origin())
                 report['receiver_sync_tested']=True
+                if corpus_hash:
+                    latency=report['receiver']['receiver_latency_calibration']
+                    report['checks']['first_output_cohort_within_budget']=all(
+                        metric['count']==50 and metric['p95_ms']<=1000 for metric in latency.values())
+                    if not report['checks']['first_output_cohort_within_budget']:
+                        report['status']='failed';raise RuntimeError('50-utterance receiver latency cohort failed')
                 if not report['receiver']['voice_sync_passed']:
                     report['status']='failed';raise RuntimeError('Real voice receiver correlation or A/V timing failed')
                 if not report['receiver']['speech_frame_continuity_passed']:
