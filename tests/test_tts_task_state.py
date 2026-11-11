@@ -2,8 +2,12 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
+from unittest.mock import patch
 import uuid
 
 from scripts.product_store import ProductStore,Conflict,ProductError
@@ -66,6 +70,58 @@ class TTSStateTests(unittest.TestCase):
         self.tasks.task=None
         with self.assertRaises(Conflict): self.tasks.start(self.product['id'],'wrong-script',self.voice_id)
         self.assertIsNone(self.tasks.process)
+
+    def test_timeout_kills_owned_worker_and_new_task_recovers(self):
+        marker=self.root/'received'
+        output=self.root/'tts'/'recovered.wav'
+        output.parent.mkdir()
+        worker="""
+import hashlib,json,sys,time,wave
+from pathlib import Path
+request=json.loads(sys.stdin.readline())
+path=Path(sys.argv[2])
+if sys.argv[1]=='stall':
+    path.touch()
+    time.sleep(60)
+else:
+    with wave.open(str(path),'wb') as sound:
+        sound.setparams((1,2,24000,0,'NONE','not compressed'))
+        sound.writeframes(bytes(48000))
+    print(json.dumps({'ok':True,'result':{'output':str(path),'voice_id':request['voice_id'],
+        'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}}),flush=True)
+"""
+        popen=subprocess.Popen
+        children=[]
+
+        def fixture_worker(_command, **kwargs):
+            mode,path=('stall',marker) if not children else ('recover',output)
+            child=popen([sys.executable,'-X','utf8','-c',worker,mode,str(path)],**kwargs)
+            children.append(child)
+            return child
+
+        with patch('scripts.tts_tasks.runtime_python',return_value=Path(sys.executable)), \
+                patch('scripts.tts_tasks.subprocess.Popen',side_effect=fixture_worker):
+            stalled=self.tasks.start(self.product['id'],self.script,self.voice_id)
+            deadline=time.monotonic()+5
+            while not marker.exists() and time.monotonic()<deadline:
+                time.sleep(.01)
+            self.assertTrue(marker.exists())
+            self.tasks._expire(stalled['id'])
+            children[0].wait(timeout=5)
+            self.tasks.monitor.join(timeout=5)
+            self.assertFalse(self.tasks.monitor.is_alive())
+            self.assertEqual(self.tasks.state()['status'],'failed')
+            with self.assertRaises(Conflict):
+                self.tasks.audio(stalled['id'])
+
+            recovered=self.tasks.start(self.product['id'],self.script,self.voice_id)
+            self.tasks._expire(stalled['id'])
+            self.tasks.monitor.join(timeout=5)
+            self.assertFalse(self.tasks.monitor.is_alive())
+            self.assertNotEqual(children[0].pid,children[1].pid)
+            self.assertEqual(self.tasks.state()['status'],'succeeded')
+            self.assertGreater(self.tasks.state()['result']['wav_ready_unix_ns'],0)
+            self.assertEqual(self.tasks.audio(recovered['id']),output.read_bytes())
 
     def test_audio_requires_current_task_owned_path_and_unchanged_hash(self):
         output=self.root/'tts'/'test.wav';output.parent.mkdir(exist_ok=True);content=b'audio-access-fixture'
