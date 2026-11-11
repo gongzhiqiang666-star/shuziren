@@ -435,6 +435,7 @@ renderVideoButtons();
 
 let liveSession = {status:'idle'}, liveTimer, liveBusy = false;
 let rotationSelectionEdited = false;
+let rotationEventCursor = 0;
 const shiftDrafts = new Map();
 function renderShiftFields() {
   const panel = $('live-shifts');
@@ -471,6 +472,7 @@ function renderLiveButtons() {
   $('live-rotation-start').disabled = $('live-control').disabled || !$('live-products').selectedOptions.length;
   $('live-rotation-start').textContent = liveSession.rotation_error ? '重试商品轮播' : '开始商品轮播';
   $('live-rotation-stop').disabled = $('live-control').disabled || !liveSession.rotation_products?.length;
+  $('live-rotation-events').disabled = consoleClosed || liveBusy || !liveSession.id;
   $('live-enqueue').disabled = $('live-control').disabled || !!liveSession.manual;
   $('live-insert').disabled = $('live-enqueue').disabled;
   $('live-audio').disabled = active || liveBusy;
@@ -479,7 +481,14 @@ function renderLiveButtons() {
 async function loadLive() {
   clearTimeout(liveTimer);
   if (consoleClosed) return;
+  const previousSession = liveSession.id;
   liveSession = (await request('/api/live/state')).session;
+  if (previousSession !== liveSession.id) {
+    rotationEventCursor = 0;
+    $('live-rotation-events-list').replaceChildren();
+    $('live-rotation-events-status').textContent = '';
+    $('live-rotation-events').textContent = '查看本场口播记录';
+  }
   if (!rotationSelectionEdited) {
     const configured = new Set(liveSession.rotation_retry_products || liveSession.rotation_products || []);
     let selectionChanged = false;
@@ -526,6 +535,24 @@ $('live-rotation-start').addEventListener('click', () => liveAction(() => {
 $('live-rotation-stop').addEventListener('click', () => liveAction(() => request('/api/live/rotation', {
   session_id:liveSession.id, product_ids:[]
 })));
+$('live-rotation-events').addEventListener('click', () => liveAction(async () => {
+  const sessionId = liveSession.id;
+  const query = new URLSearchParams({session_id:sessionId, after:String(rotationEventCursor)});
+  const result = await request('/api/live/rotation/events?' + query);
+  if (liveSession.id !== sessionId) return;
+  $('live-rotation-events-list').append(...result.events.map(event => {
+    const item = document.createElement('li');
+    const product = savedProducts.find(product => product.id === event.product_id);
+    const completed = new Date(event.completed_at).toLocaleString();
+    item.textContent = `${completed} · ${product?.title || event.product_id} · 商品版本 ${event.product_version} · 第 ${event.segment_index + 1} 段 · 话术 ${event.script_id}`;
+    return item;
+  }));
+  rotationEventCursor = result.next_cursor;
+  $('live-rotation-events-status').textContent = result.events.length
+    ? `已读取 ${result.events.length} 条记录`
+    : (rotationEventCursor ? '暂无更多记录' : '本场暂无口播完成记录');
+  if (rotationEventCursor) $('live-rotation-events').textContent = '读取后续口播记录';
+}));
 $('live-devices').addEventListener('click', () => liveAction(async () => {
   const {devices} = await request('/api/live/devices');
   const selected = $('live-audio').value;
