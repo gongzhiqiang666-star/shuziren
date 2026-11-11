@@ -45,16 +45,18 @@ class ConsoleLive:
             'worker': {'pid': worker.pid, 'exit_code': worker.poll()} if worker is not None else None,
         }
 
-    def start(self, audio_device, *, language='zh-CN'):
+    def start(self, audio_device, *, language='zh-CN', assistant_voice_id=None):
         if type(audio_device) is not int or audio_device < 0:
             raise ProductError('请选择明确的音频输出设备')
         with self.lock:
             if self.status['status'] in self.active_states:
                 raise Conflict('已有场次正在运行或清理')
+            if assistant_voice_id is not None:
+                self.tts.voices.get(assistant_voice_id)
             self.cancel.clear()
             session_id = uuid.uuid4().hex
             self.status = {'id': session_id, 'status': 'preparing', 'audio_device': audio_device,
-                           'frames': 0, 'rotation_language': language}
+                           'frames': 0, 'rotation_language': language, 'assistant_voice_id': assistant_voice_id}
             self.rotation = None
             self.reply_session = None
             self.completed = SimpleQueue()

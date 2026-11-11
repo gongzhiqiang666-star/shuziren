@@ -1,12 +1,22 @@
 import tempfile
 import threading
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from scripts.console_live import ConsoleLive
 
 
 class LiveRotationTests(unittest.TestCase):
+    def test_live_start_validates_and_binds_assistant_voice(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tts = Mock()
+            live = ConsoleLive(tts, directory)
+            with patch('scripts.console_live.threading.Thread') as worker:
+                state = live.start(14, assistant_voice_id='assistant')
+            tts.voices.get.assert_called_once_with('assistant')
+            worker.return_value.start.assert_called_once()
+            self.assertEqual(state['assistant_voice_id'], 'assistant')
+
     def test_failed_rotation_requires_new_request_and_never_enqueues_old_audio(self):
         with tempfile.TemporaryDirectory() as directory:
             tts=Mock()
