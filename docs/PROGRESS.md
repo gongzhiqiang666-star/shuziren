@@ -74,6 +74,8 @@ A01-02 禁用 GPU 可见性后，六项依赖实际导入通过。仅加入 `_in
 
 A01-02 复测用现有 `configure_runtime()` 初始化对照环境，再加入 `bin/voice_infer_v2`，OmniVoice 类正常导入，进程解析到随包 FFmpeg，未再出现 PyDub 路径告警。实际模型初始化与合成待验。
 
+A01-02 已将 ZipVoice 所需的 Vocos 24 kHz 配置和权重下载至本机验证目录 `logs/validation/a01-vocos-24khz`。来源为 [Charactr 固定版本](https://huggingface.co/charactr/vocos-mel-24khz/tree/0feb3fdd929bcd6649e0e7c5a688cf7dd012ef21)，权重 SHA-256 与发布记录一致（`97ec976ad1fd67a33ab2682d29c0ac7df85234fae875aefcc5fb215681a91b2a`）。下一步在隔离模型目录连接该声码器并进行真实生成验证。
+
 V05-04b-36 同场配对 `timeGetTime`、发送单调时钟和接收帧。12秒合成回采300帧，接收 PTS 加输入原点相对同帧发送 `timeGetTime` 的差值范围-11至47毫秒，中位数11.50毫秒，p95为31毫秒。该差值同时包含采集延迟和时钟读数误差，不能直接作为固定校准量。本轮还检出26次重复及22次跳帧，说明 V05-04b-34 的无缺失结果需复验。证据见 `logs/validation/v05-dshow-clock-calibration-01/calibration.json`。校准和接收连续性保持待验。
 
 V05-04b-37 复算同场数据发现，合成发送间隔范围15.30至61.80毫秒，中位数45.12毫秒；重复帧号位置的下一发送间隔中位数46.12毫秒，接收间隔中位数40毫秒。合成发送未稳定在40毫秒，下一轮用生产路径的 Windows 定时精度设置控制发送节拍，复查重复与跳帧。
