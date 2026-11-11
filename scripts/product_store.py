@@ -1,5 +1,7 @@
 """Single-machine product/script persistence with immutable generation snapshots."""
 from contextlib import contextmanager
+import csv
+import io
 import json
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -139,6 +141,15 @@ class ProductStore:
 
     def save_business_metrics(self, product_id, *, source, period_start, period_end, scope,
                               clicks=None, orders=None, refunds=None, stock=None):
+        row = self._business_metric_row(product_id, source=source, period_start=period_start,
+                                        period_end=period_end, scope=scope, clicks=clicks,
+                                        orders=orders, refunds=refunds, stock=stock)
+        self.get(product_id)
+        self._write_business_metrics([row])
+
+    @staticmethod
+    def _business_metric_row(product_id, *, source, period_start, period_end, scope,
+                             clicks=None, orders=None, refunds=None, stock=None):
         source = text(source, '数据来源', 120)
         scope = text(scope, '统计口径', 500)
         try:
@@ -150,15 +161,54 @@ class ProductStore:
         counts = (clicks, orders, refunds, stock)
         if any(count is not None and (type(count) is not int or not 0 <= count < 2**63) for count in counts):
             raise ProductError('点击、订单、退款和库存须为非负整数或留空')
+        return product_id, source, period_start, period_end, scope, *counts
+
+    def import_business_metrics(self, product_id, content):
+        if not isinstance(content, str) or not content.strip():
+            raise ProductError('请选择非空 CSV 报表')
         self.get(product_id)
+        required = {'source', 'period_start', 'period_end', 'scope'}
+        counts = ('clicks', 'orders', 'refunds', 'stock')
+        rows, keys = [], set()
+        try:
+            reader = csv.DictReader(io.StringIO(content.removeprefix('\ufeff'), newline=''), strict=True)
+            fields = reader.fieldnames or []
+            if len(fields) != len(set(fields)) or not required <= set(fields) <= required.union(counts):
+                raise ProductError('CSV 表头须包含 source、period_start、period_end、scope')
+            for values in reader:
+                try:
+                    if None in values or any(value is None for value in values.values()):
+                        raise ValueError('列数与表头不一致')
+                    for name in counts:
+                        value = values.get(name, '').strip()
+                        if value and (len(value) > 19 or not value.isascii() or not value.isdigit()):
+                            raise ValueError('指标须为非负整数或留空')
+                        values[name] = int(value) if value else None
+                    row = self._business_metric_row(product_id, **values)
+                    if row[:5] in keys:
+                        raise ValueError('报表内的来源、日期和口径重复')
+                    keys.add(row[:5])
+                    rows.append(row)
+                except ValueError as error:
+                    raise ProductError(f'CSV 第 {reader.line_num} 行：{error}') from None
+                if len(rows) > 1000:
+                    raise ProductError('每次最多导入 1000 行经营数据')
+        except csv.Error as error:
+            raise ProductError(f'CSV 格式无效：{error}') from None
+        if not rows:
+            raise ProductError('CSV 中没有经营数据行')
+        self._write_business_metrics(rows)
+        return len(rows)
+
+    def _write_business_metrics(self, rows):
         with self.connect() as db:
-            db.execute("""
+            db.executemany("""
                 INSERT INTO product_business_metrics
                     (product_id, source, period_start, period_end, scope, clicks, orders, refunds, stock)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(product_id, source, period_start, period_end, scope) DO UPDATE SET
                     clicks=excluded.clicks, orders=excluded.orders, refunds=excluded.refunds, stock=excluded.stock
-            """, (product_id, source, period_start, period_end, scope, *counts))
+            """, rows)
 
     def business_metrics(self, product_id):
         self.get(product_id)
