@@ -13,6 +13,25 @@ from scripts.speech_assembler import Utterance
 
 
 class SessionLifecycleTests(unittest.TestCase):
+    def test_idle_progress_is_visible_before_worker_reply(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            client = Mock()
+            session = ContinuousSession('s', client, Mock(), Mock(), Path(temporary))
+            session.pcm = Mock()
+
+            def idle(operation, *, progress, **options):
+                self.assertEqual(operation, 'idle')
+                for stage in ('load', 'process', 'send'):
+                    progress({'event': 'idle_stage', 'stage': stage, 'frame_index': 0})
+                    snapshot = session.stall_context()['producer']
+                    self.assertEqual(snapshot['stage'], 'idle_' + stage)
+                    self.assertEqual(snapshot['position'], 0)
+                session.stop_event.set()
+
+            client.request.side_effect = idle
+            session._produce()
+            client.request.assert_called_once()
+
     def test_cleanup_failure_does_not_hide_output_fault_or_skip_other_releases(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
