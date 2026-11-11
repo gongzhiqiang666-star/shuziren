@@ -190,6 +190,8 @@ def main():
                          'video_queue_frames':sink.video_queue.qsize() if isinstance(sink,AVDeviceSink) else None,
                          'gpu':gpu_resources()}
                     samples.write(json.dumps(row)+'\n')
+                    resource_report.setdefault('first_sample_seconds',row['elapsed_seconds'])
+                    resource_report['last_sample']=row
                     resource_report['samples']+=1
                     for name in ('pending','device_queue_frames','video_queue_frames'):
                         if row[name] is not None:
