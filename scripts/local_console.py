@@ -437,7 +437,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         if set(value)!={'task_id'} or not isinstance(value['task_id'],str): raise ProductError('TTS取消字段无效')
                         return self.respond(200,{'task':tts().cancel(value['task_id'])})
                     if path == "/api/products":
-                        allowed = {"title", "content", "product_index", "product_id", "version"}
+                        allowed = {"title", "content", "product_index", "product_id", "version", "product_facts"}
                         if not {"title", "content", "product_index"} <= value.keys() or value.keys() - allowed:
                             raise ProductError("商品字段不完整或包含未知字段")
                         return self.respond(200, {"product": products().save(**value)})

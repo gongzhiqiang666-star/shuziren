@@ -115,13 +115,35 @@ class ProductStore:
         with self.connect() as db:
             return self.decode(db.execute("SELECT * FROM products WHERE id=?", (product_id,)).fetchone())
 
-    def save(self, *, title, content, product_index, product_id=None, version=None, extra=None):
+    def save(self, *, title, content, product_index, product_id=None, version=None, extra=None,
+             product_facts=None):
         title, content = text(title, "商品名称", 200), text(content, "商品信息", 50000)
         numeric = index_value(product_index)
         if product_id is not None and (type(version) is not int or version < 1):
             raise ProductError("编辑商品必须提供有效版本")
         if extra is not None and not isinstance(extra, dict):
             raise ProductError("扩展字段必须为对象")
+        if product_facts is not None:
+            if not isinstance(product_facts, dict):
+                raise ProductError("商品事实必须为对象")
+            for name, fact in product_facts.items():
+                text(name, "事实名称", 100)
+                if not isinstance(fact, dict) or fact.get("status") not in ("verified", "unknown"):
+                    raise ProductError("商品事实必须标明已核对或未知")
+                if fact["status"] == "verified":
+                    text(fact.get("source"), "事实来源", 500)
+                    if fact.get("value") is None:
+                        raise ProductError("已核对的商品事实必须有值")
+                if fact.get("expires_at") is not None:
+                    try:
+                        expires = datetime.fromisoformat(fact["expires_at"].replace("Z", "+00:00"))
+                        if expires.tzinfo is None:
+                            raise ValueError("missing timezone")
+                    except (AttributeError, TypeError, ValueError):
+                        raise ProductError("商品事实有效期必须含时区") from None
+            if extra is None and product_id is not None:
+                extra = self.get(product_id)["extra"]
+            extra = {**(extra or {}), "product_facts": product_facts}
         encoded_extra = json.dumps(extra, ensure_ascii=False, allow_nan=False) if extra is not None else None
         try:
             with self.connect() as db:

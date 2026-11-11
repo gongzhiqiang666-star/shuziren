@@ -16,13 +16,14 @@ class ProductStoreTests(unittest.TestCase):
         original = self.product()
         now = datetime(2026, 11, 11, tzinfo=timezone.utc)
         self.assertEqual(product_prompt_info(original, now=now)['content'], '容量300毫升')
-        edited = self.edit(original, extra={'product_facts': {
+        edited = self.edit(original, product_facts={
             'price': {'value': 100, 'status': 'verified', 'source': 'catalog'},
             'promotion': {'value': 'expired offer', 'status': 'verified',
                           'source': 'catalog', 'expires_at': '2026-11-11T00:00:00Z'},
             'stock': {'value': 10, 'status': 'unknown', 'source': 'catalog'},
-        }})
+        })
         current = self.store.get(edited['id'])
+        self.assertEqual(current['extra']['未知原字段'], original['extra']['未知原字段'])
         self.assertEqual(current['version'], original['version'] + 1)
         self.assertEqual(json.loads(product_prompt_info(current, now=now)['content']), {'price': 100})
 
