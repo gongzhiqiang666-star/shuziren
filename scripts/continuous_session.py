@@ -150,7 +150,10 @@ class ContinuousSession:
                     self.producer_stage=('speech_pcm',time.perf_counter_ns(),span.frame_start)
                     self.pcm.append(timing,utterance.task_id,utterance.path,utterance.pcm_sha256)
                     self.producer_stage=('speech_model',time.perf_counter_ns(),span.frame_start)
-                    self.client.request('stream',timeout=max(360,utterance.samples/24000+60),session_id=self.session_id,task_id=utterance.task_id,
+                    def speech_progress(value):
+                        if value.get('event') == 'speech_stage':
+                            self.producer_stage = ('speech_' + value['stage'], time.perf_counter_ns(), value['frame_index'])
+                    self.client.request('stream',progress=speech_progress,timeout=max(360,utterance.samples/24000+60),session_id=self.session_id,task_id=utterance.task_id,
                         audio=str(utterance.path),pcm_sha256=utterance.pcm_sha256,timing=timing)
                     self._release(utterance.task_id,'model')
                 else:

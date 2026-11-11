@@ -125,6 +125,11 @@ class ResidentAvatar:
             return {'session_id':session,'task_id':task_id,'pcm_sha256':pcm_sha256,'audio_sha256':digest(audio),
                 'output':None,'output_sha256':None,'output_mode':'raw-frame-stream','frames':0,'raw_frames_sent':0,
                 'audio_data_sent':False,'audio_only':True,'frame_offset':self.frame_offset,'next_frame_offset':self.frame_offset,'timing':timing}
+        def report_stage(stage, frame_index):
+            if frame_channel is not None and progress is not None:
+                progress({'event': 'speech_stage', 'stage': stage, 'frame_index': frame_index})
+
+        report_stage('features', self.frame_offset)
         started=time.perf_counter();features,feature_sha=self.features(audio)
         native_count=len(features);indices=feature_indices(native_count,span.frames if span else native_count)
         features=[features[index] for index in indices]
@@ -138,11 +143,14 @@ class ResidentAvatar:
         offset=self.frame_offset;written=0;peak=0
         try:
             for start in range(0,len(features),self.synth.batch_size):
+                report_stage('load', offset + start)
                 indices=sequence[start:start+self.synth.batch_size]
                 images,metadata=self.synth._load_batch_frames(indices)
+                report_stage('process', offset + start)
                 frames=self.synth._process_batch(images,metadata,features[start:start+len(indices)])
                 if len(frames)!=len(indices):raise RuntimeError('Synthesizer dropped frames')
                 peak=max(peak,len(frames))
+                report_stage('send', offset + start)
                 for frame in frames:
                     if writer:writer.write(frame)
                     else:frame_channel.send(session,task_id,offset+written,frame)
