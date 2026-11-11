@@ -187,6 +187,7 @@ def main():
                          'pending':session.ready.qsize(),'process_tree_rss_bytes':rss,
                          'process_tree_cpu_percent':cpu_percent if previous_cpu else None,
                          'device_queue_frames':sink.queue.qsize() if isinstance(sink,AVDeviceSink) else None,
+                         'video_queue_frames':sink.video_queue.qsize() if isinstance(sink,AVDeviceSink) else None,
                          'gpu':gpu_resources()}
                     samples.write(json.dumps(row)+'\n')
                     resource_report['samples']+=1
