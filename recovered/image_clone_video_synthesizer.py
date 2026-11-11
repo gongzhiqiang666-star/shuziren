@@ -31,6 +31,7 @@ class VideoSynthesizer:
         self.wenet_conf_path=str(wenet_conf_path);self.wenet_model_path=str(wenet_model_path);self.device=device;self.batch_size=int(batch_size)
         self.total_frames=len(list(self.frames_dir.glob("*.jpg")));self.current_frame_position=0;self.is_forward=True
         self.engine=FrameSynthesizer(self.data_dir,model_path,device);self.engine.batch_size=self.batch_size
+        self.engine.preserve_offline_crop_border = True
         self.executor=ThreadPoolExecutor(max_workers=max(1,self.batch_size),thread_name_prefix="image-clone-frame")
         self.silence_feature_path=silence_feature_path
         self.wenet_model=None

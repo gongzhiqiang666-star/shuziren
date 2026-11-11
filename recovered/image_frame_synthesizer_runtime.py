@@ -7,7 +7,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .frame_synthesizer import resize_face_crop, get_batch_audio_features
+from .frame_synthesizer import resize_face_crop, get_batch_audio_features, paste_synthesis_interior
 from .heygem_face_fuse import (fuse_crop_heygem_lmk, landmarks_to_crop_coords,
                                paste_fused_crop_rectangle)
 from .occluder_mask import paste_occluder_mask
@@ -94,7 +94,7 @@ class FrameSynthesizer:
         rgb = interior[..., ::-1]
         source = self.tensor_norm_no_training(rgb, self.input_mask[..., None]).transpose(2, 0, 1)
         reference = self.tensor_norm_no_training(rgb).transpose(2, 0, 1)
-        return {"index": index, "bbox": bbox, "original_crop": interior, "source": source.astype(np.float32),
+        return {"index": index, "bbox": bbox, "original_crop": interior, "padded_crop": crop, "source": source.astype(np.float32),
                 "reference": reference.astype(np.float32), "frame_data": frame_data}
 
     def _run_model(self, source, reference, audio):
@@ -123,6 +123,9 @@ class FrameSynthesizer:
             cropped_for_pasting = face
             if self.enable_occluder and data.get("full_mask") is not None:
                 output[index] = paste_occluder_mask(output[index], face, bbox, data["full_mask"])
+            elif getattr(self, "preserve_offline_crop_border", False):
+                cropped_for_pasting = paste_synthesis_interior(item["padded_crop"], face, self.img_size)
+                output[index] = paste_fused_crop_rectangle(output[index], cropped_for_pasting, bbox)
             elif data.get("landmarks") is not None and len(data["landmarks"]) >= 3:
                 fused, _, _ = fuse_crop_heygem_lmk(item["original_crop"], face, data["landmarks"], bbox, self.img_size)
                 cropped_for_pasting = fused
