@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 import json
 import subprocess
 import sys
@@ -7,10 +8,24 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from scripts.product_store import Conflict, ProductError, ProductStore
+from scripts.product_store import Conflict, ProductError, ProductStore, product_prompt_info
 
 
 class ProductStoreTests(unittest.TestCase):
+    def test_versioned_product_prompt_filters_expired_and_unknown_facts(self):
+        original = self.product()
+        now = datetime(2026, 11, 11, tzinfo=timezone.utc)
+        self.assertEqual(product_prompt_info(original, now=now)['content'], '容量300毫升')
+        edited = self.edit(original, extra={'product_facts': {
+            'price': {'value': 100, 'status': 'verified', 'source': 'catalog'},
+            'promotion': {'value': 'expired offer', 'status': 'verified',
+                          'source': 'catalog', 'expires_at': '2026-11-11T00:00:00Z'},
+            'stock': {'value': 10, 'status': 'unknown', 'source': 'catalog'},
+        }})
+        current = self.store.get(edited['id'])
+        self.assertEqual(current['version'], original['version'] + 1)
+        self.assertEqual(json.loads(product_prompt_info(current, now=now)['content']), {'price': 100})
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
