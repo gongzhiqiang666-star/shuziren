@@ -38,6 +38,22 @@ class TTSStateTests(unittest.TestCase):
             'script_id':self.script,'voice_id':self.voice_id,'voice_audio_sha256':self.audio_hash,
             'voice_text_sha256':self.text_hash,'result':{'output':'state-fixture-not-an-actual-output'}}
 
+    def test_rotation_segment_uses_assistant_voice_without_changing_selected_host(self):
+        script = self.products.add_script(self.product, '主讲。{助：补充说明。}{停:1}')
+        self.products.select_script(self.product['id'], script)
+        host = self.voices.get(self.voice_id)
+        assistant = {**host, 'id': 'assistant'}
+        with patch.object(self.tasks.voices, 'get', side_effect={self.voice_id: host, 'assistant': assistant}.__getitem__), \
+                patch.object(self.tasks, '_submit') as submit:
+            self.tasks.start(self.product['id'], script, self.voice_id, rotation=True,
+                             segment_index=1, assistant_voice_id=assistant['id'])
+            submit.assert_called_once_with(self.product, script, assistant, '补充说明。',
+                                           1.0, 'zh-CN', False, kind='rotation',
+                                           selected_voice_id=self.voice_id)
+            with self.assertRaisesRegex(ProductError, '停顿段'):
+                self.tasks.start(self.product['id'], script, self.voice_id, rotation=True, segment_index=2)
+        self.assertEqual(self.voices.selected(), self.voice_id)
+
     def test_engine_change_invalidates_saved_result(self):
         self.tasks._save()
         alternate = TTSTasks(self.root/'no-runtime', self.root, engine='zipvoice')

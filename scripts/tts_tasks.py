@@ -51,7 +51,7 @@ class TTSTasks:
                     voice=self.voices.get(self.task['voice_id'])
                     valid=(product['version']==self.task['product_version']
                         and (self.task.get('kind')=='reply' or self.products.selected_script(product['id'])==self.task['script_id'])
-                        and self.voices.selected()==voice['id']
+                        and self.voices.selected()==self.task.get('selected_voice_id', voice['id'])
                         and voice['audio_sha256']==self.task['voice_audio_sha256']
                         and voice['text_sha256']==self.task['voice_text_sha256'])
                 except Exception: valid=False
@@ -136,7 +136,8 @@ class TTSTasks:
                 if created:destination.unlink(missing_ok=True)
                 raise
 
-    def start(self,product_id,script_id,voice_id,speed=1.0,language='zh-CN',use_cache=False,*,rotation=False):
+    def start(self,product_id,script_id,voice_id,speed=1.0,language='zh-CN',use_cache=False,*,
+              rotation=False, segment_index=None, assistant_voice_id=None):
         with self.lock:
             if self.closed: raise Conflict('TTS服务正在退出')
             if self.task and self.task['status']=='running': raise Conflict('已有语音合成任务')
@@ -149,8 +150,21 @@ class TTSTasks:
             if type(speed) not in (int,float) or not .5<=speed<=2 or type(use_cache) is not bool:
                 raise ProductError('语速或缓存参数无效')
             if not isinstance(language,str) or not language: raise ProductError('请选择语言')
-            return self._submit(product, script_id, voice, script['text'], speed, language, use_cache,
-                                kind='rotation' if rotation else None)
+            text = script['text']
+            if segment_index is not None:
+                from recovered.slice_content import slice_content
+
+                segments = slice_content(text)
+                if not rotation or type(segment_index) is not int or not 0 <= segment_index < len(segments):
+                    raise ProductError('轮播话术分段无效')
+                segment = segments[segment_index]
+                if segment['type'] not in {'host', 'assistant'}:
+                    raise ProductError('停顿段无需语音合成')
+                text = segment['content']
+                if segment['type'] == 'assistant' and assistant_voice_id is not None:
+                    voice = self.voices.get(assistant_voice_id)
+            return self._submit(product, script_id, voice, text, speed, language, use_cache,
+                                kind='rotation' if rotation else None, selected_voice_id=voice_id)
 
     def start_reply(self, product, voice_id, text, *, language='zh-CN'):
         with self.lock:
@@ -163,12 +177,14 @@ class TTSTasks:
             voice=self.voices.get(voice_id)
             return self._submit(product, 'reply-'+uuid.uuid4().hex, voice, text, 1., language, False, kind='reply')
 
-    def _submit(self, product, script_id, voice, text, speed, language, use_cache, *, kind=None):
+    def _submit(self, product, script_id, voice, text, speed, language, use_cache, *, kind=None, selected_voice_id=None):
         process=self._start_worker()
         previous=self.task
         self.task={'id':str(uuid.uuid4()),'status':'running','product_id':product['id'],
             'product_version':product['version'],'script_id':script_id,'voice_id':voice['id']}
         if kind:self.task['kind']=kind
+        if selected_voice_id is not None and selected_voice_id != voice['id']:
+            self.task['selected_voice_id'] = selected_voice_id
         self.task.update(voice_audio_sha256=voice['audio_sha256'],voice_text_sha256=voice['text_sha256'])
         self.task.update(product_title=product['title'],speed=speed,language=language,use_cache=use_cache)
         deadline = product_fact_deadline(product)
@@ -218,7 +234,8 @@ class TTSTasks:
                 if self.task['id']!=task_id or self.task['status']!='running' or self.closed: return
                 if (self.products.get(product['id'])!=product
                     or (self.task.get('kind')!='reply' and self.products.selected_script(product['id'])!=self.task['script_id'])
-                    or self.voices.get(voice['id'])!=voice or self.voices.selected()!=voice['id']):
+                    or self.voices.get(voice['id'])!=voice
+                    or self.voices.selected()!=self.task.get('selected_voice_id', voice['id'])):
                     raise Conflict('商品、选用稿或音色已变化，旧音频不再作为当前结果')
                 output=Path(result['output']).resolve()
                 if output.parent!=(self.data/'tts').resolve() or not output.is_file():
