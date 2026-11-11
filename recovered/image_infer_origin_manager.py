@@ -164,6 +164,22 @@ class VideoStreamManager:
 
     def init_player(self):shared.initialize_output_player(self)
 
+    def configure_audio_output(self, device_index, sample_rate):
+        if type(device_index) is not int or device_index < 0:
+            raise ValueError("请选择有效的音频输出设备")
+        if type(sample_rate) is not int or sample_rate < 8000 or sample_rate % self.fps:
+            raise ValueError("音频采样率必须能按视频帧均匀分配")
+        if self.worker_thread is not None or self.player is not None or self._has_queued_interact():
+            raise RuntimeError("请在开播和插播入队前配置音频设备")
+        tape = OriginTape(self.video_path_for_driving, sample_rate, prefetch=self.tape.prefetch)
+        tape.open()
+        self.tape.close()
+        self.tape = tape
+        self.output_sample_rate = sample_rate
+        self.output_samples_per_frame = sample_rate // self.fps
+        self.init_player()
+        self.player.audio_output_device = device_index
+
     def process_and_manage_audio(self):
         current_path=None
         while not self.stop_event.is_set() and self.player and self.player.running:
