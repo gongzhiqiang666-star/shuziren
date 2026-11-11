@@ -1,6 +1,7 @@
 """Diagnostic frame counters and actual camera/cable voice alignment."""
 import subprocess
 import wave
+from bisect import bisect_right
 from collections import Counter
 import av
 import numpy as np
@@ -48,17 +49,19 @@ class DeviceCapture:
 
 
 def audit_received_voice(path,completed,expected):
-    video=[];blocks=[];times=[]
+    video=[];blocks=[];block_times=[];block_offsets=[];sample_count=0
     with av.open(str(path)) as container:
         for packet in container.demux():
             for frame in packet.decode():
                 if isinstance(frame,av.VideoFrame):video.append((read_counter(frame.to_ndarray(format='bgr24')),float(frame.time)))
                 else:
                     if frame.sample_rate!=48000 or frame.layout.nb_channels!=1:raise ValueError('Expected 48k mono receiver audio')
-                    block=frame.to_ndarray().reshape(-1).astype(float);blocks.append(block)
-                    times.append(float(frame.time)+np.arange(len(block))/48000)
+                    block=frame.to_ndarray().reshape(-1)
+                    if block_times and frame.time < block_times[-1]:raise ValueError('Receiver audio timestamp reordered')
+                    block_times.append(float(frame.time));block_offsets.append(sample_count)
+                    sample_count+=len(block);blocks.append(block)
     if not video or not blocks:raise ValueError('Receiver missed video or audio')
-    received=np.concatenate(blocks);audio_times=np.concatenate(times);source_start=0;voices=[]
+    received=np.concatenate(blocks);blocks.clear();source_start=0;voices=[]
     speech_frames=set()
     for event in completed:
         if event['source_id'] in expected:
@@ -66,21 +69,37 @@ def audit_received_voice(path,completed,expected):
             with wave.open(source['path'],'rb') as sound:
                 if (sound.getframerate(),sound.getnchannels(),sound.getsampwidth())!=(24000,1,2):raise ValueError('Unexpected reference PCM format')
                 reference=signal.resample_poly(np.frombuffer(sound.readframes(sound.getnframes()),dtype='<i2').astype(float),2,1)
-            if len(reference)>len(received):raise ValueError('Receiver audio shorter than utterance')
-            correlation=signal.correlate(received,reference,mode='valid',method='fft');offset=int(np.argmax(correlation))
-            aligned=received[offset:offset+len(reference)];denominator=np.linalg.norm(aligned)*np.linalg.norm(reference)
-            coefficient=float(np.dot(aligned,reference)/denominator) if denominator else 0.
             target=source_start//960
             end=(source_start+event['samples']+959)//960
             speech_frames.update(range(target,end))
             frame_index,video_time=min(video,key=lambda item:abs(item[0]-target))
             uncertainty=abs(frame_index-target)*40
             expected_video_time=video_time+(source_start-frame_index*960)/24000
-            delta_ms=(float(audio_times[offset])-expected_video_time)*1000
+            # Search around the source-aligned video, wider than the 80 ms acceptance window.
+            # A bounded window avoids correlating against an entire long recording or a later repeat.
+            window_start=expected_video_time-.5
+            window_end=expected_video_time+.5+len(reference)/48000
+            first=max(0,bisect_right(block_times,window_start)-1)
+            after=bisect_right(block_times,window_end)
+            start=block_offsets[first]
+            end=block_offsets[after] if after<len(block_offsets) else sample_count
+            window=received[start:end].astype(float)
+            coefficient=0.
+            audio_time=delta_ms=None
+            if len(window)>=len(reference):
+                correlation=signal.correlate(window,reference,mode='valid',method='fft')
+                relative=int(np.argmax(correlation))
+                aligned=window[relative:relative+len(reference)]
+                denominator=np.linalg.norm(aligned)*np.linalg.norm(reference)
+                coefficient=float(np.dot(aligned,reference)/denominator) if denominator else 0.
+                offset=start+relative
+                block_index=bisect_right(block_offsets,offset)-1
+                audio_time=block_times[block_index]+(offset-block_offsets[block_index])/48000
+                delta_ms=(audio_time-expected_video_time)*1000
             voices.append({'task_id':event['source_id'],'source_start_sample':source_start,'samples':event['samples'],
-                'correlation':coefficient,'audio_receive_start_seconds':float(audio_times[offset]),
+                'correlation':coefficient,'audio_receive_start_seconds':audio_time,
                 'reference_video_frame':frame_index,'av_offset_ms':delta_ms,'video_uncertainty_ms':uncertainty,
-                'passed':coefficient>=.95 and abs(delta_ms)+uncertainty<=80})
+                'passed':delta_ms is not None and coefficient>=.95 and abs(delta_ms)+uncertainty<=80})
         source_start+=event['samples']
     steps=[b[0]-a[0] for a,b in zip(video,video[1:])]
     received_speech=[index for index,_ in video if index in speech_frames]
@@ -88,6 +107,9 @@ def audit_received_voice(path,completed,expected):
     speech_missing=len(speech_frames-speech_counts.keys())
     speech_repeated=sum(count-1 for count in speech_counts.values())
     speech_reordered=sum(next_index<index for index,next_index in zip(received_speech,received_speech[1:]))
+    drift=None
+    if len(voices)>1 and voices[0]['passed'] and voices[-1]['passed']:
+        drift=abs(voices[-1]['av_offset_ms']-voices[0]['av_offset_ms'])
     return {'voices':voices,'received_video_frames':len(video),'received_audio_samples':len(received),
         'missing_frames':sum(max(0,step-1) for step in steps),'repeated_frames':sum(step==0 for step in steps),
         'reordered_frames':sum(step<0 for step in steps),'frame_continuity_passed':bool(steps) and all(step==1 for step in steps),
@@ -95,4 +117,6 @@ def audit_received_voice(path,completed,expected):
         'speech_video_frames_expected':len(speech_frames),'speech_missing_frames':speech_missing,
         'speech_repeated_frames':speech_repeated,'speech_reordered_frames':speech_reordered,
         'speech_frame_continuity_passed':bool(speech_frames) and not (speech_missing or speech_repeated or speech_reordered),
+        'speech_av_drift_ms':drift,
+        'speech_measurement_span_seconds':(voices[-1]['source_start_sample']-voices[0]['source_start_sample'])/24000 if drift is not None else None,
         'timing_acceptance':False,'markers_are_diagnostic_overlay':True}

@@ -34,13 +34,24 @@ def main():
     parser.add_argument('--capture-devices',action='store_true')
     parser.add_argument('--smooth-device-clock',action='store_true')
     parser.add_argument('--device-buffer-frames',type=int,choices=(2,4),default=2)
+    parser.add_argument('--speech-interval-seconds',type=int,
+                        help='Add a distinct uncached utterance at each interval, reserving the last 20 seconds for completion')
     parser.add_argument('--video-delay-ms',type=float,default=0);args=parser.parse_args()
     if args.capture_devices and args.device_audio_output is None:parser.error('--capture-devices requires --device-audio-output')
     if args.device_buffer_frames != 2 and args.device_audio_output is None:
         parser.error('--device-buffer-frames requires --device-audio-output')
+    if args.speech_interval_seconds is not None and not 0<args.speech_interval_seconds<args.seconds-20:
+        parser.error('--speech-interval-seconds requires room for an additional utterance before the final 20 seconds')
+    schedule=[(0,'这是连续输出开始后新生成的第一条语音。'),
+              (0,'这是运行中新生成的第二句话，前后保持音画连续。')]
+    if args.speech_interval_seconds:
+        interval=args.speech_interval_seconds
+        schedule.extend((offset,f'持续输出第{offset}秒，验证这一条新语音和对应画面。')
+                        for offset in range(interval,args.seconds-20,interval))
     root=(args.report_directory/('run-'+uuid.uuid4().hex)).resolve();root.mkdir(parents=True)
     report={'status':'failed','phase':'preparing','checks':{},'physical_device_tested':False,'platform_tested':False,
-            'device_buffer_frames':args.device_buffer_frames if args.device_audio_output is not None else None}
+            'device_buffer_frames':args.device_buffer_frames if args.device_audio_output is not None else None,
+            'scheduled_speech_count':len(schedule),'speech_interval_seconds':args.speech_interval_seconds}
     tts=client=receiver=sink=session=ingress=assembler=injector=None
     completed=[];expected={};errors=[];presented=[];offsets=[];submit_costs=[];device_trace=[]
     capture=None
@@ -80,12 +91,13 @@ def main():
             nonlocal capture
             try:
                 if not session.started.wait(30):raise TimeoutError('Continuous output did not start')
+                schedule_start=time.monotonic()
                 if args.capture_devices:
                     if not first_device_frame.wait(2):raise TimeoutError('Camera did not send its first frame')
                     if session.stop_event.is_set():return
                     capture=DeviceCapture(ffmpeg,root,max(1,args.seconds-2))
-                for text in ['这是连续输出开始后新生成的第一条语音。','这是运行中新生成的第二句话，前后保持音画连续。']:
-                    if session.stop_event.is_set():return
+                for offset,text in schedule:
+                    if session.stop_event.wait(max(0,schedule_start+offset-time.monotonic())):return
                     script=products.add_script(product,text);products.select_script(product['id'],script)
                     generation_started=time.perf_counter();tts.start(product['id'],script,voice['id'],use_cache=False)
                     audio=wait(tts,195)
@@ -103,7 +115,8 @@ def main():
         report['wall_seconds']=time.perf_counter()-started;injector.join(timeout=5)
         if injector.is_alive() or errors:raise RuntimeError('New speech injection failed: '+str(errors))
         done={event['source_id']:event for event in completed if not event['source_id'].startswith('idle-')}
-        if len(expected)!=2 or set(done)!=set(expected):raise RuntimeError('Continuous output ended before both real utterances completed')
+        if len(expected)!=len(schedule) or set(done)!=set(expected):
+            raise RuntimeError('Continuous output ended before all scheduled real utterances completed')
         for task,source_audio in expected.items():
             if done[task]['samples']!=source_audio['samples'] or done[task]['pcm_sha256']!=source_audio['pcm_sha256']:raise RuntimeError('Continuous speech truncated or changed')
         reference_path=root/'reference.wav';total=0;fingerprint=hashlib.sha256()
@@ -125,7 +138,7 @@ def main():
                 device_video_frames=sink.camera.frames,device_queue_peak=sink.peak,underflows=sink.underflows,
                 output_closed=sink.closed,avatar_closed=client.process.poll() is not None,video_delay_ms=args.video_delay_ms,
                 timing_acceptance=False,receiver_sync_tested=False,smooth_device_clock=args.smooth_device_clock)
-            report['checks'].update(two_new_utterances_during_output=True,source_pcm_exact=True,device_callbacks_complete=True)
+            report['checks'].update(all_scheduled_utterances_completed=True,source_pcm_exact=True,device_callbacks_complete=True)
             if capture:
                 capture.wait();report['receiver']=audit_received_voice(capture.path,completed,expected)
                 report['receiver_sync_tested']=True
@@ -145,7 +158,7 @@ def main():
             submission_early_max_ms=max(0,-min(offsets)),submission_abs_offset_p95_ms=float(np.percentile(np.abs(offsets),95)),
             submit_cost_p95_ms=float(np.percentile(submit_costs,95)),
             timing_acceptance=False)
-        report['checks'].update(two_new_utterances_during_output=True,idle_speech_idle_one_mux=True,source_pcm_exact=True,one_video_audio_clock=True,complete_media=True)
+        report['checks'].update(all_scheduled_utterances_completed=True,idle_speech_idle_one_mux=True,source_pcm_exact=True,one_video_audio_clock=True,complete_media=True)
     except Exception as error:report.update(status='failed',error_type=type(error).__name__,error=str(error))
     finally:
         report.update(expected_sources=expected,completed_sources=completed,injection_errors=errors)
