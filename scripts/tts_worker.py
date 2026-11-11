@@ -160,15 +160,17 @@ class TTSProvider:
         if not path or not Path(path).is_file(): raise ValueError('TTS未生成有效文件')
         path=Path(path).resolve()
         if path.parent not in {(self.outputs/'cache').resolve(),self.cache.root}: raise ValueError('TTS输出越界')
-        if cached is None:
-            normalize_task_wav(path)
-        with wave.open(str(path),'rb') as reader:
-            duration=reader.getnframes()/reader.getframerate()
-            if duration<=0: raise ValueError('TTS输出为空')
-            rate=reader.getframerate()
-        if cached is None: self.cache.put(cache_key,path)
-        target=self.outputs/(str(uuid.uuid4())+'.wav');shutil.copy2(path,target)
-        if cached is None: path.unlink(missing_ok=True)  # Only this request's owned scratch output.
+        try:
+            if cached is None:
+                normalize_task_wav(path)
+            with wave.open(str(path),'rb') as reader:
+                duration=reader.getnframes()/reader.getframerate()
+                if duration<=0: raise ValueError('TTS输出为空')
+                rate=reader.getframerate()
+            if cached is None: self.cache.put(cache_key,path)
+            target=self.outputs/(str(uuid.uuid4())+'.wav');shutil.copy2(path,target)
+        finally:
+            if cached is None: path.unlink(missing_ok=True)  # Only this request's owned scratch output.
         return {'output':str(target),'duration':duration,'sample_rate':rate,'seconds':time.perf_counter()-started,
                 'initialization_seconds':initialization,'model_loaded':cold,'model_load_count':self.loads,
                 'sha256':hashlib.sha256(target.read_bytes()).hexdigest(),'voice_id':voice['id'],
