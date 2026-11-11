@@ -558,7 +558,9 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
   const history = result.session;
   $('live-event-session').textContent = history?.ended_at
     ? `${liveLabels[history.status]} · ${history.frames} 帧 · ${new Date((history.started_at ?? history.requested_at) * 1000).toLocaleString()} 至 ${new Date(history.ended_at * 1000).toLocaleString()}`
-    : '';
+    : history?.started_at
+      ? `开播时间 ${new Date(history.started_at * 1000).toLocaleString()}`
+      : '';
   $('live-rotation-events-list').append(...result.events.map(event => {
     const item = document.createElement('li');
     const product = savedProducts.find(product => product.id === event.product_id);

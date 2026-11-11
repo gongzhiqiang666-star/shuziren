@@ -15,6 +15,11 @@ from scripts.product_store import Conflict, ProductError, ProductStore, product_
 class ProductStoreTests(unittest.TestCase):
     def test_live_session_terminal_record_survives_reopen_and_retry(self):
         self.store.record_live_session('scene', 100)
+        self.store.record_live_session('scene', 100, started_at=102, status='running')
+        running = self.store.live_session_record('scene')
+        self.assertEqual(running['status'], 'running')
+        self.assertEqual(running['started_at'], 102)
+        self.assertIsNone(running['ended_at'])
         self.store.record_live_session('scene', 100, started_at=102, ended_at=110, status='stopped', frames=200)
         reopened = ProductStore(self.store.path.parent)
         reopened.record_live_session('scene', 100)

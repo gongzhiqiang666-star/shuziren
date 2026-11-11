@@ -285,10 +285,14 @@ class ConsoleLive:
 
     def _rotate(self, session_id, stop):
         pending = None
+        startup_recorded = False
         while not stop.wait(.15):
             with self.lock:
                 if self.cancel.is_set() or self.status['status'] != 'running' or self.session is None:
                     continue
+                if not startup_recorded and 'started_at' in self.status:
+                    self._record_session()
+                    startup_recorded = True
                 self._record_completed()
                 rotation = self.rotation
                 control = self.session.control_state()
