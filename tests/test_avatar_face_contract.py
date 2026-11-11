@@ -6,9 +6,24 @@ import numpy as np
 
 from recovered.image_clone_generate_data import _face_landmarks
 from recovered.image_face_detect import FaceDetect, resolve_landmark_model_file
+from recovered.image_clone_video_synthesizer import VideoSynthesizer
 
 
 class FaceContractTests(unittest.TestCase):
+    def test_offline_synthesis_keeps_the_five_pixel_crop_border(self):
+        frame = np.full((280, 280, 3), 17, dtype=np.uint8)
+        metadata = {'bounding_box': [7, 273, 7, 273]}
+        generated = np.zeros((1, 3, 256, 256), dtype=np.float32)
+        generated[:, 0] = 1
+        with tempfile.TemporaryDirectory() as directory:
+            with VideoSynthesizer(directory, Path(directory) / 'absent.onnx', '', '', device='cpu') as synth:
+                synth.engine._run_model = lambda *_: generated
+                output = synth._process_batch([frame], [metadata], [np.zeros((20, 256), dtype=np.float32)])[0]
+        expected = frame.copy()
+        expected[12:268, 12:268] = [0, 0, 255]
+        np.testing.assert_array_equal(output, expected)
+        self.assertTrue(np.all(frame == 17))
+
     def test_reference_crop_context_two_passes_and_integer_offsets(self):
         class Detector:
             def get_bboxes(self, frame):
