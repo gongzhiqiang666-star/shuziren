@@ -160,6 +160,16 @@ class VideoStreamManager:
             if not tape_frames:continue
             interaction,current_path=self._get_next_audio_batch(current_path);has_interact=any(x is not None for x in interaction)
             if has_interact and not self._in_interact:self._in_interact=True;self._fade_out_remaining=self._fade_out_total
+            if self._in_interact and not has_interact and not self._has_queued_interact():
+                with self._seek_lock:
+                    self._in_interact=False
+                    seek_pending=self._pending_seek_ms is not None
+                    self._consume_pending_seek_locked()
+                self._fade_in_remaining=self._fade_in_total
+                current_path=None
+                if seek_pending:
+                    tape_frames=self.tape.take_frames(self._batch_size,2.0)
+                    if not tape_frames:continue
             detections=self._ensure_face_pipeline().detect_batch([x.image for x in tape_frames])
             metadata=[self._detection_to_meta(x) for x in detections]
             features=[];audios=[]
@@ -174,9 +184,6 @@ class VideoStreamManager:
             for frame,audio,tape_frame in zip(frames,audios,tape_frames):
                 self.player.upload_frame({"frame":frame,"audio":audio,"index":tape_frame.index,"physical_index":tape_frame.frame_index,"audio_path":current_path or "<origin>"})
             self.total_frames_processed+=len(frames)
-            if self._in_interact and not has_interact and not self._has_queued_interact():
-                self._in_interact=False;self._fade_in_remaining=self._fade_in_total;current_path=None
-                with self._seek_lock:self._consume_pending_seek_locked()
 
     def start_playing(self):
         if self.worker_thread is not None and self.worker_thread.is_alive():
