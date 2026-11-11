@@ -15,6 +15,7 @@ from scripts.media_runtime import (
 ENV_DIRS = ('DLLs', 'Lib', 'Library', 'CUDA', 'ffmpeg', 'nltk_data', 'share', 'include', 'libs', 'conda-meta', 'etc')
 PROVIDERS = ('bin/voice_infer_v3/indextts', 'bin/image_clone/wenet')
 ZIPVOICE_PROVIDER = 'bin/voice_infer/zipvoice'
+OMNIVOICE_PROVIDER = 'bin/voice_infer_v2/omnivoice'
 
 
 def reparse(path):
@@ -32,7 +33,7 @@ def ignore_provider(directory, names):
                        and Path(name).suffix.lower() not in {'.py', '.txt', '.json', '.yaml', '.yml'}]
 
 
-def stage(reference, destination, *, include_zipvoice=False):
+def stage(reference, destination, *, include_zipvoice=False, include_omnivoice=False):
     reference = reference.resolve(strict=True)
     destination = destination.resolve()
     if destination.is_relative_to(reference) or reference.is_relative_to(destination):
@@ -41,6 +42,8 @@ def stage(reference, destination, *, include_zipvoice=False):
     required = (LEGACY_PYTHON, *MEDIA_FILES[1:], *MODEL_FILES, *PROVIDER_FILES)
     if include_zipvoice:
         required += (f'_internal/{ZIPVOICE_PROVIDER}/bin/infer_zipvoice.py',)
+    if include_omnivoice:
+        required += (f'_internal/{OMNIVOICE_PROVIDER}/models/omnivoice.py',)
     for name in required:
         path = reference / name
         if not path.is_file() or not path.resolve().is_relative_to(source.resolve()) or reparse(path):
@@ -70,6 +73,8 @@ def stage(reference, destination, *, include_zipvoice=False):
         copy_tree(relative, ignore_provider)
     if include_zipvoice:
         copy_tree(ZIPVOICE_PROVIDER, ignore_provider)
+    if include_omnivoice:
+        copy_tree(OMNIVOICE_PROVIDER, ignore_provider)
     for name in MODEL_FILES:
         original = reference / name
         target = destination / name
@@ -94,8 +99,11 @@ def main():
     parser.add_argument('--destination', required=True, type=Path)
     parser.add_argument('--include-zipvoice', action='store_true',
                         help='Stage ZipVoice Python sources; supply its model root separately')
+    parser.add_argument('--include-omnivoice', action='store_true',
+                        help='Stage OmniVoice Python sources; supply its model root separately')
     args = parser.parse_args()
-    result = stage(args.reference, args.destination, include_zipvoice=args.include_zipvoice)
+    result = stage(args.reference, args.destination, include_zipvoice=args.include_zipvoice,
+                   include_omnivoice=args.include_omnivoice)
     print(json.dumps({'ready': result['ready'], 'python': result['python'], 'checks': len(result['checks'])}))
 
 
