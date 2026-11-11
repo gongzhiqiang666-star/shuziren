@@ -36,6 +36,10 @@ class ProductStoreTests(unittest.TestCase):
             self.assertIsNone(self.store.selected_script(product['id']))
             with self.assertRaises(Conflict):
                 self.store.select_script(product['id'], script)
+            prompt = product_prompt_info(product, now=datetime(2026, 11, 11, tzinfo=timezone.utc))
+            with self.assertRaisesRegex(Conflict, '生成期间商品事实已到期'):
+                self.store.add_script(product, '迟到的话术', source='llm', expected_prompt_info=prompt)
+            self.assertEqual([row['id'] for row in self.store.scripts(product['id'])], [script])
 
     def test_versioned_product_prompt_filters_expired_and_unknown_facts(self):
         original = self.product()
