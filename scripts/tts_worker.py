@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import time
 import uuid
@@ -20,6 +21,26 @@ class OwnedSynthesizer(VoiceSynthesizer):
     def _get_temp_path(self):
         self.output_directory.mkdir(parents=True,exist_ok=True)
         return str(self.output_directory)
+
+
+def normalize_task_wav(path):
+    """Keep readable PCM intact and normalize other WAV encodings for playback."""
+    try:
+        with wave.open(str(path), 'rb'):
+            return
+    except wave.Error:
+        pass
+    normalized = path.with_name(f'{uuid.uuid4()}.wav')
+    try:
+        subprocess.run(
+            ['ffmpeg', '-nostdin', '-v', 'error', '-i', str(path),
+             '-map', '0:a:0', '-ac', '1', '-ar', '24000', '-c:a', 'pcm_s16le',
+             str(normalized)],
+            check=True, timeout=60,
+        )
+        normalized.replace(path)
+    finally:
+        normalized.unlink(missing_ok=True)
 
 
 class TTSProvider:
@@ -85,6 +106,8 @@ class TTSProvider:
         if not path or not Path(path).is_file(): raise ValueError('TTS未生成有效文件')
         path=Path(path).resolve()
         if path.parent not in {(self.outputs/'cache').resolve(),self.cache.root}: raise ValueError('TTS输出越界')
+        if cached is None:
+            normalize_task_wav(path)
         with wave.open(str(path),'rb') as reader:
             duration=reader.getnframes()/reader.getframerate()
             if duration<=0: raise ValueError('TTS输出为空')
