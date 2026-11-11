@@ -920,11 +920,15 @@ def add_audio_to_queue(
 
 def extract_audio_features(manager, audio_path: str) -> list[np.ndarray]:
     """Extract WeNet bottleneck features and align windows to 25 fps."""
+    from pathlib import Path
+
     import librosa
-    from bin.image_infer_v2.wenet.compute_ctc_att_bnf import get_weget
+    from bin.image_infer_v2.wenet.compute_ctc_att_bnf import get_weget, load_ppg_model
 
     waveform, _ = librosa.load(audio_path, sr=16000)
     frame_count = int(len(waveform) / 16000 * 25)
+    if isinstance(manager.wenet_model, (str, Path)):
+        manager.wenet_model = load_ppg_model(manager.wenet_conf_path, manager.wenet_model_path, manager.device)
     features = get_weget(audio_path, manager.wenet_model, 560000)
     window_count = features.shape[0] - 20
     intervals = max(frame_count - 1, 1)

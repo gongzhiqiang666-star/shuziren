@@ -1,6 +1,7 @@
 """Construct the packaged image-inference runtime from recovered parameters."""
 
 from importlib import import_module
+from pathlib import Path
 
 from .digital_model_paths import resolve_character_dir, resolve_digital_model_paths
 
@@ -18,6 +19,13 @@ def create_image_runtime(config, runtime_dir, params):
         "enable_occluder": params["enable_occluder"],
         "occluder_model_path": params["occluder_model_path"],
     }
+    face_dir = config.get("face_model_dir")
+    if face_dir:
+        common["face_model_dir"] = str(Path(runtime_dir) / face_dir)
+    else:
+        packaged_faces = Path(runtime_dir) / (config.get("models_base_path") or "assets/pretrained_models") / "face_detect"
+        if packaged_faces.is_dir():
+            common["face_model_dir"] = str(packaged_faces)
     if params["origin_idle_video_mode"]:
         module = import_module(".bin.image_infer_origin_frame.infer_api", __package__)
         return module.VideoStreamManager(**common)
