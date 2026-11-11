@@ -13,6 +13,22 @@ from scripts.product_store import Conflict, ProductError, ProductStore, product_
 
 
 class ProductStoreTests(unittest.TestCase):
+    def test_business_metrics_preserve_unknowns_and_source_scope(self):
+        product_id = self.product()['id']
+        period = {'period_start': '2026-11-01', 'period_end': '2026-11-07', 'scope': '店铺商品，按报表时区'}
+        self.store.save_business_metrics(product_id, source='商家报表', orders=0, **period)
+        self.store.save_business_metrics(product_id, source='人工盘点', stock=12, **period)
+        self.store.save_business_metrics(product_id, source='商家报表', orders=0, clicks=9, **period)
+        records = {row['source']: row for row in ProductStore(self.store.path.parent).business_metrics(product_id)}
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records['商家报表']['orders'], 0)
+        self.assertEqual(records['商家报表']['clicks'], 9)
+        self.assertIsNone(records['商家报表']['refunds'])
+        self.assertIsNone(records['人工盘点']['orders'])
+        self.assertEqual(records['人工盘点']['stock'], 12)
+        with self.assertRaises(ProductError):
+            self.store.save_business_metrics(product_id, source='商家报表', orders=True, **period)
+
     def test_live_control_revision_is_deduplicated(self):
         self.store.record_live_control('scene', 1, True, 102)
         self.store.record_live_control('scene', 1, True, 103)

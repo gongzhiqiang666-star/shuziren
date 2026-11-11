@@ -1,7 +1,7 @@
 """Single-machine product/script persistence with immutable generation snapshots."""
 from contextlib import contextmanager
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 import sqlite3
 import uuid
@@ -110,6 +110,11 @@ class ProductStore:
                 CREATE TABLE IF NOT EXISTS live_control_events (
                     session_id TEXT NOT NULL, revision INTEGER NOT NULL, manual INTEGER NOT NULL,
                     occurred_at REAL NOT NULL, PRIMARY KEY(session_id, revision));
+                CREATE TABLE IF NOT EXISTS product_business_metrics (
+                    product_id TEXT NOT NULL REFERENCES products(id),
+                    source TEXT NOT NULL, period_start TEXT NOT NULL, period_end TEXT NOT NULL,
+                    scope TEXT NOT NULL, clicks INTEGER, orders INTEGER, refunds INTEGER, stock INTEGER,
+                    PRIMARY KEY(product_id, source, period_start, period_end, scope));
             ''')
             db.execute('BEGIN IMMEDIATE')
             columns = {row[1] for row in db.execute('PRAGMA table_info(scripts)')}
@@ -131,6 +136,38 @@ class ProductStore:
                 yield db
         finally:
             db.close()
+
+    def save_business_metrics(self, product_id, *, source, period_start, period_end, scope,
+                              clicks=None, orders=None, refunds=None, stock=None):
+        source = text(source, '数据来源', 120)
+        scope = text(scope, '统计口径', 500)
+        try:
+            start, end = date.fromisoformat(period_start), date.fromisoformat(period_end)
+            if start.isoformat() != period_start or end.isoformat() != period_end or start > end:
+                raise ValueError
+        except (TypeError, ValueError):
+            raise ProductError('请填写有效的起止日期，格式为 YYYY-MM-DD') from None
+        counts = (clicks, orders, refunds, stock)
+        if any(count is not None and (type(count) is not int or not 0 <= count < 2**63) for count in counts):
+            raise ProductError('点击、订单、退款和库存须为非负整数或留空')
+        self.get(product_id)
+        with self.connect() as db:
+            db.execute("""
+                INSERT INTO product_business_metrics
+                    (product_id, source, period_start, period_end, scope, clicks, orders, refunds, stock)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(product_id, source, period_start, period_end, scope) DO UPDATE SET
+                    clicks=excluded.clicks, orders=excluded.orders, refunds=excluded.refunds, stock=excluded.stock
+            """, (product_id, source, period_start, period_end, scope, *counts))
+
+    def business_metrics(self, product_id):
+        self.get(product_id)
+        with self.connect() as db:
+            rows = db.execute("""
+                SELECT * FROM product_business_metrics WHERE product_id = ?
+                ORDER BY period_end DESC, period_start DESC, source, scope
+            """, (product_id,)).fetchall()
+        return [dict(row) for row in rows]
 
     def record_live_session(self, session_id, requested_at, *, started_at=None, ended_at=None,
                             status='preparing', frames=0):
