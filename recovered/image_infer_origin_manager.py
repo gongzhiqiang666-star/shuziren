@@ -236,19 +236,23 @@ class VideoStreamManager:
                 if seek_pending:
                     tape_frames=self.tape.take_frames(self._batch_size,2.0)
                     if not tape_frames:continue
-            features=[];audios=[]
-            for index,tape_frame in enumerate(tape_frames):
-                batch=interaction[index] if index<len(interaction) else None
+            features=[];audios=[];driven_indices=[]
+            for index,(tape_frame,batch) in enumerate(zip(tape_frames,interaction)):
                 if batch is None:
-                    origin=self._make_origin_audio_batch(tape_frame);features.append(np.zeros((20,256),np.float32));audios.append(origin.original_audio_chunk)
-                else:features.append(batch.wenet_feature);audios.append(batch.original_audio_chunk)
+                    audios.append(self._make_origin_audio_batch(tape_frame).original_audio_chunk)
+                else:
+                    driven_indices.append(index)
+                    features.append(batch.wenet_feature)
+                    audios.append(batch.original_audio_chunk)
             begin=time.time()
-            images=[x.image for x in tape_frames]
-            frames=images
-            if has_interact:
+            frames=[x.image for x in tape_frames]
+            if driven_indices:
+                images=[frames[index] for index in driven_indices]
                 detections=self._ensure_face_pipeline().detect_batch(images)
                 metadata=[self._detection_to_meta(x) for x in detections]
-                frames=self.synthesizer.synthesize_batch(features,images,metadata)
+                driven_frames=self.synthesizer.synthesize_batch(features,images,metadata)
+                for index,frame in zip(driven_indices,driven_frames):
+                    frames[index]=frame
             self.total_synthesis_time+=time.time()-begin
             for frame,audio,tape_frame,batch in zip(frames,audios,tape_frames,interaction):
                 while self.player.running and self.player.get_queue_length() >= max(1,self.buffer_threshold):
