@@ -114,6 +114,8 @@ A01-02 OmniVoice 同一进程以同一参考音执行中文、英文、中文、
 
 A01-02 在 RTX 3060 固定文案、参考音和语速，仅切换 en-US 与 zh-CN。两个语言参数分别触发一次推理，缓存键不同，重复请求分别命中并返回相同音频摘要。两段初次输出均为 2.0 秒，共加载一次模型。证据见 `logs/validation/a01-omni-languages/language-only.json`。本项验证语言参数的缓存隔离，发音和听感继续待验。
 
+A01-02 使用本机 Chrome 无头模式分别打开三个引擎配置的控制台，检查实际渲染的「当前语音引擎」文本，IndexTTS、ZipVoice 与 OmniVoice 三项均匹配。此轮不加载模型，页面内引擎切换继续待验。
+
 A01-02 使用 `--include-zipvoice` 构建本机独立媒体目录，目录内 Python 3.10.16 与 22 项基础清单检查通过。使用该目录的 Python、FFmpeg 与推理代码，配合外置 ZipVoice 和 Vocos 权重，在 RTX 3060 完成常驻复用、取消、恢复、拒收过期音频、关闭回收及完整解码六项验证。证据见 `logs/validation/a01-zipvoice-independent/run-b041480ef0ee4df2a732be5fde241f1d/result.json`。干净 Windows 整机安装与直播串联继续待验。
 
 A01-02 使用 `--include-omnivoice` 构建的本机独立媒体目录通过 22 项基础检查，并在 RTX 3060 完成 OmniVoice 常驻复用、取消、恢复、过期结果拒收、关闭回收及完整解码。模型由外置目录提供。证据见 `logs/validation/a01-omnivoice-independent/run-ff6d99875d454ea1a551506e09bfebd6/result.json`。人工听感、直播串联与干净 Windows 整机安装继续待验。
