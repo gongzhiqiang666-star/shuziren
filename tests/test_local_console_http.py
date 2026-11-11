@@ -14,9 +14,29 @@ from urllib.request import Request, urlopen
 
 from scripts.local_console import InstanceLock, create_server
 from scripts.local_console_config import ConfigStore
+from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_rotation_event_pages_preserve_order_and_scene_isolation(self):
+        store = ProductStore(self.directory.name)
+        product = store.save(title='茶杯', content='口播验收', product_index=1)
+        script = store.add_script(product, '这是一只茶杯。')
+        item = {'product_id': product['id'], 'product_version': product['version'], 'script_id': script}
+        for index in range(101):
+            store.record_rotation_completion('scene', str(index), item, 0)
+            store.record_rotation_completion('another-scene', str(index), item, 0)
+
+        route = '/api/live/rotation/events?session_id=scene'
+        status, first = self.call(route)
+        self.assertEqual(status, 200)
+        self.assertEqual([row['task_id'] for row in first['events']], [str(index) for index in range(100)])
+        status, second = self.call(route + '&after=' + str(first['next_cursor']))
+        self.assertEqual(status, 200)
+        self.assertEqual([row['task_id'] for row in second['events']], ['100'])
+        self.assertTrue(all(row['session_id'] == 'scene' for row in first['events'] + second['events']))
+        self.assertEqual(self.call(route + '&after=' + str(second['next_cursor']))[1]['events'], [])
+
     def test_taobao_routes_require_login_explicit_room_and_console_token(self):
         state = self.call('/api/taobao/state')[1]['capture']
         self.assertEqual(state['status'], 'idle')
