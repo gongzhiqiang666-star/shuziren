@@ -42,8 +42,10 @@ def load_first_output_corpus(path):
 
 
 def main():
+    launched_ns=time.perf_counter_ns()
     parser=argparse.ArgumentParser()
-    for name in ['runtime-root','source-voice-data','source-avatar-directory','report-directory','seed-cache']:parser.add_argument('--'+name,required=True,type=Path)
+    for name in ['runtime-root','source-voice-data','source-avatar-directory','report-directory']:parser.add_argument('--'+name,required=True,type=Path)
+    parser.add_argument('--seed-cache',type=Path,help='Copy an existing engine cache before startup')
     parser.add_argument('--seconds',type=int,default=20)
     parser.add_argument('--device-audio-output',type=int)
     parser.add_argument('--capture-devices',action='store_true')
@@ -103,7 +105,10 @@ def main():
         tts.start(product['id'],warm_script,voice['id'],use_cache=False);warm=wait(tts,195)
         if warm['status']!='succeeded':raise RuntimeError('TTS preparation failed')
         ingress=LiveSpeechIngress(tts,avatars,root);speech_session=ingress.start();assembler=SpeechAssembler(root/'assembled')
-        shutil.copytree(args.seed_cache,root/'engine-cache');client=LiveAvatarClient(args.runtime_root,avatars.directory(avatar['id']),root,root/'engine-cache')
+        if args.seed_cache is not None:
+            shutil.copytree(args.seed_cache,root/'engine-cache')
+        report['startup']={'engine_cache_seeded':args.seed_cache is not None}
+        client=LiveAvatarClient(args.runtime_root,avatars.directory(avatar['id']),root,root/'engine-cache')
         client.request('start',session_id=speech_session.id);report['avatar_prepare']=client.request('prepare');save()
         receiver=FrameReceiver(speech_session.id,avatar['width'],avatar['height']);client.request('attach_frames',channel=receiver.descriptor())
         if sink is None:
@@ -111,6 +116,7 @@ def main():
         trace=(root/'presented.jsonl').open('w',encoding='utf-8')
         first_queued_ns={}
         def on_present(row):
+            report['startup'].setdefault('first_submission_seconds',(row['presented_ns']-launched_ns)/1e9)
             trace.write(json.dumps(row)+'\n')
             task_id=row.get('task_id')
             if task_id in expected:
