@@ -15,8 +15,8 @@ class AVDeviceSink:
         import sounddevice as sd
         if type(audio_device) is not int:raise ValueError('Explicit output device required')
         if type(smooth_clock) is not bool:raise ValueError('Explicit clock mode required')
-        if type(buffer_frames) is not int or buffer_frames not in (2,4):
-            raise ValueError('Device buffer must hold two or four frames')
+        if type(buffer_frames) is not int or buffer_frames not in (2,4,8):
+            raise ValueError('Device buffer must hold two, four or eight frames')
         self.smooth_clock=smooth_clock
         if type(video_delay_ms) not in (int,float) or not 0<=video_delay_ms<=120:raise ValueError('Video compensation must be 0 to 120ms')
         self.sd=sd;self.width=width;self.height=height;self.on_present=on_present
