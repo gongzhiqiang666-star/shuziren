@@ -19,13 +19,13 @@ def create_image_runtime(config, runtime_dir, params):
         "occluder_model_path": params["occluder_model_path"],
     }
     if params["origin_idle_video_mode"]:
-        module = import_module("bin.image_infer_origin_frame.infer_api")
+        module = import_module(".bin.image_infer_origin_frame.infer_api", __package__)
         return module.VideoStreamManager(**common)
 
     data_dir = ""
     if params["model_id"]:
         data_dir = resolve_character_dir(config, runtime_dir, params["model_id"])
-    module = import_module("bin.image_infer_v2.infer_api")
+    module = import_module(".bin.image_infer_v2.infer_api", __package__)
     return module.VideoStreamManager(
         **common,
         data_dir=data_dir,
