@@ -98,6 +98,8 @@ A01-02 控制台 HTTP 入口在 RTX 3060 上通过真实 ZipVoice 合成。生�
 
 A01-02 OmniVoice 在 RTX 3060 上使用 v122 对照环境及本地权重完成真实中文合成。SoundFile 读取 58560 个有效、有限且非静音的采样，24 kHz、2.440 秒。调用清理后进程退出码 0，本次未量化显存回收。证据见 `logs/validation/a01-omnivoice-01/inference.log`。常驻任务、语言切换、缓存隔离及人工听感继续待验。
 
+A01-02 使用 `--include-zipvoice` 构建本机独立媒体目录，目录内 Python 3.10.16 与 22 项基础清单检查通过。使用该目录的 Python、FFmpeg 与推理代码，配合外置 ZipVoice 和 Vocos 权重，在 RTX 3060 完成常驻复用、取消、恢复、拒收过期音频、关闭回收及完整解码六项验证。证据见 `logs/validation/a01-zipvoice-independent/run-b041480ef0ee4df2a732be5fde241f1d/result.json`。干净 Windows 整机安装与直播串联继续待验。
+
 V05-04b-36 同场配对 `timeGetTime`、发送单调时钟和接收帧。12秒合成回采300帧，接收 PTS 加输入原点相对同帧发送 `timeGetTime` 的差值范围-11至47毫秒，中位数11.50毫秒，p95为31毫秒。该差值同时包含采集延迟和时钟读数误差，不能直接作为固定校准量。本轮还检出26次重复及22次跳帧，说明 V05-04b-34 的无缺失结果需复验。证据见 `logs/validation/v05-dshow-clock-calibration-01/calibration.json`。校准和接收连续性保持待验。
 
 V05-04b-37 复算同场数据发现，合成发送间隔范围15.30至61.80毫秒，中位数45.12毫秒；重复帧号位置的下一发送间隔中位数46.12毫秒，接收间隔中位数40毫秒。合成发送未稳定在40毫秒，下一轮用生产路径的 Windows 定时精度设置控制发送节拍，复查重复与跳帧。
