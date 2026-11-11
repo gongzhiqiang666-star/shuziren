@@ -35,6 +35,15 @@ class ConsoleLive:
                 state.update(self.session.control_state())
             return state
 
+    def stall_snapshot(self):
+        with self.lock:
+            session = self.session
+            worker = self.client.process if self.client is not None else None
+        return {
+            'session': session.stall_context() if session is not None else None,
+            'worker': {'pid': worker.pid, 'exit_code': worker.poll()} if worker is not None else None,
+        }
+
     def start(self, audio_device):
         if type(audio_device) is not int or audio_device < 0:
             raise ProductError('请选择明确的音频输出设备')

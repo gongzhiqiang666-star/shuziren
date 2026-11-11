@@ -139,6 +139,11 @@ def main():
                     last_frames = state['frames']
                     last_progress = now
                 if now - last_progress > 5:
+                    report['stall'] = {
+                        'seconds_without_progress': now - last_progress,
+                        'last_frame': last_frames,
+                        **live.stall_snapshot(),
+                    }
                     raise RuntimeError('No output frame progress for five seconds')
                 wavs = list((directory / 'tts').glob('*.wav'))
                 wav_sizes = []
@@ -167,6 +172,7 @@ def main():
         report['status'] = 'completed'
     except BaseException as error:
         report.update(status='failed', error=str(error))
+        save()
         raise
     finally:
         try:
