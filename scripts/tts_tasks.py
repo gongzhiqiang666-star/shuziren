@@ -18,6 +18,8 @@ class TTSTasks:
         if engine not in {'indextts','zipvoice','omnivoice'}:
             raise ProductError('不支持的TTS引擎')
         self.engine=engine
+        self.provider={'indextts':'recovered-voice-infer-v3','zipvoice':'recovered-zipvoice',
+                       'omnivoice':'recovered-omnivoice'}[engine]
         self.model_root=Path(model_root).resolve() if model_root is not None else None
         self.runtime=Path(runtime_root).resolve();self.data=Path(data_directory).resolve()
         self.products=ProductStore(self.data);self.voices=VoiceStore(self.data)
@@ -38,6 +40,12 @@ class TTSTasks:
     def state(self):
         with self.lock:
             if self.task and self.task['status']=='succeeded':
+                previous_provider=self.task.get('result',{}).get('provider','recovered-voice-infer-v3')
+                if previous_provider!=self.provider:
+                    self.task.update(status='failed',error='语音引擎已变更，请重新合成')
+                    self.task['previous_result']=self.task.pop('result',None)
+                    self._save()
+                    return dict(self.task)
                 try:
                     product=self.products.get(self.task['product_id'])
                     voice=self.voices.get(self.task['voice_id'])

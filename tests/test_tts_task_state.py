@@ -37,6 +37,17 @@ class TTSStateTests(unittest.TestCase):
             'script_id':self.script,'voice_id':self.voice_id,'voice_audio_sha256':self.audio_hash,
             'voice_text_sha256':self.text_hash,'result':{'output':'state-fixture-not-an-actual-output'}}
 
+    def test_engine_change_invalidates_saved_result(self):
+        self.tasks._save()
+        alternate = TTSTasks(self.root/'no-runtime', self.root, engine='zipvoice')
+        self.addCleanup(alternate.close)
+        state = alternate.state()
+        self.assertEqual(state['status'], 'failed')
+        self.assertIn('语音引擎已变更', state['error'])
+        self.assertIn('previous_result', state)
+        with self.assertRaises(Conflict):
+            alternate.audio(state['id'])
+
     def test_product_change_invalidates_completed_result(self):
         self.assertEqual(self.tasks.state()['status'],'succeeded')
         self.products.save(title='测试商品',content='版本二',product_index=8,product_id=self.product['id'],version=1)
