@@ -7,11 +7,36 @@ import sqlite3
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from scripts.product_store import Conflict, ProductError, ProductStore, product_prompt_info
 
 
 class ProductStoreTests(unittest.TestCase):
+    def test_selected_script_expires_with_its_product_facts(self):
+        product = self.edit(self.product(), product_facts={
+            'promotion': {'value': 'offer', 'status': 'verified', 'source': 'catalog',
+                          'expires_at': '2026-11-12T00:00:00Z'},
+        })
+        script = self.store.add_script(product, '活动话术')
+        with self.store.connect() as db:
+            db.execute('UPDATE scripts SET created_at=? WHERE id=?',
+                       ('2026-11-11T00:00:00.000Z', script))
+        class Clock(datetime):
+            current = datetime(2026, 11, 11, tzinfo=timezone.utc)
+
+            @classmethod
+            def now(cls, tz=None):
+                return cls.current
+
+        with patch('scripts.product_store.datetime', Clock):
+            self.store.select_script(product['id'], script)
+            self.assertEqual(self.store.selected_script(product['id']), script)
+            Clock.current = datetime(2026, 11, 12, tzinfo=timezone.utc)
+            self.assertIsNone(self.store.selected_script(product['id']))
+            with self.assertRaises(Conflict):
+                self.store.select_script(product['id'], script)
+
     def test_versioned_product_prompt_filters_expired_and_unknown_facts(self):
         original = self.product()
         now = datetime(2026, 11, 11, tzinfo=timezone.utc)
