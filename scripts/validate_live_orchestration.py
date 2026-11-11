@@ -20,6 +20,8 @@ def main():
     parser.add_argument('--runtime-root', type=Path, required=True)
     parser.add_argument('--fixture-directory', type=Path, required=True)
     parser.add_argument('--report-directory', type=Path, required=True)
+    parser.add_argument('--tts-engine', choices=('indextts', 'zipvoice', 'omnivoice'), default='indextts')
+    parser.add_argument('--tts-model-root', type=Path)
     parser.add_argument('--cycles', type=int, default=20)
     parser.add_argument('--interactions', type=int, default=None, help='Set to 0 to exercise start/stop only')
     parser.add_argument('--capture-seconds', type=int, default=35)
@@ -46,14 +48,14 @@ def main():
 
     store = ConfigStore(directory)
     store.save({'version': 1, 'port': 5158, 'runtime_root': str(args.runtime_root.resolve())})
-    server = create_server(store, port=0)
+    server = create_server(store, port=0, tts_engine=args.tts_engine, tts_model_root=args.tts_model_root)
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
     address = f'http://127.0.0.1:{server.server_port}'
     token = None
     capture = None
     report = {'status': 'running', 'requested_starts': args.cycles, 'requested_interactions': interactions,
-              'starts': [], 'interactions': [], 'rotation': []}
+              'tts_engine': args.tts_engine, 'starts': [], 'interactions': [], 'rotation': []}
 
     def save():
         (directory / 'result.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
