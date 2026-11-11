@@ -365,7 +365,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                                                 '/api/voices/select', '/api/avatar-preparation/start', '/api/render/start'}:
                         raise Conflict('请先停止本机场次')
                     if path == '/api/live/start':
-                        if set(value) - {'audio_device', 'rotation_language', 'assistant_voice_id'} or type(value.get('audio_device')) is not int or value['audio_device'] < 0:
+                        if set(value) - {'audio_device', 'rotation_language', 'assistant_voice_id', 'video_path'} or type(value.get('audio_device')) is not int or value['audio_device'] < 0:
                             raise ProductError('请选择音频输出设备')
                         assistant_voice_id = value.get('assistant_voice_id')
                         if assistant_voice_id is not None and (not isinstance(assistant_voice_id, str) or not assistant_voice_id):
@@ -378,6 +378,10 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                                 raise Conflict('请先完成或取消视频任务')
                         if live_manager is None:
                             live_manager = ConsoleLive(tts(), store.directory)
+                        if 'video_path' in value:
+                            if set(value) != {'audio_device', 'video_path'}:
+                                raise ProductError('本地视频模式仅接受视频路径和音频设备')
+                            return self.respond(202, {'session': live_manager.start_video(value['audio_device'], value['video_path'])})
                         return self.respond(202, {'session': live_manager.start(
                             value['audio_device'], language=language, assistant_voice_id=assistant_voice_id,
                         )})

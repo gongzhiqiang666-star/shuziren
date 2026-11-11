@@ -555,7 +555,7 @@ function renderLiveButtons() {
   const active = ['preparing','running','stopping'].includes(liveSession.status);
   $('live-start').disabled = consoleClosed || liveBusy || active || !$('live-audio').value;
   $('live-stop').disabled = consoleClosed || liveBusy || !['preparing','running'].includes(liveSession.status);
-  $('live-control').disabled = consoleClosed || liveBusy || liveSession.status !== 'running';
+  $('live-control').disabled = consoleClosed || liveBusy || liveSession.status !== 'running' || liveSession.mode === 'local_video';
   $('live-control').textContent = liveSession.manual ? '恢复自动调度' : '手动接管';
   $('live-speak').disabled = $('live-control').disabled || !liveSession.manual;
   $('live-rotation-start').disabled = $('live-control').disabled || !$('live-products').selectedOptions.length;
@@ -569,6 +569,7 @@ function renderLiveButtons() {
   $('live-enqueue').disabled = $('live-control').disabled || !!liveSession.manual;
   $('live-insert').disabled = $('live-enqueue').disabled;
   $('live-audio').disabled = active || liveBusy;
+  $('live-video-path').disabled = consoleClosed || active || liveBusy;
   $('live-assistant-voice').disabled = consoleClosed || active || liveBusy;
 }
 async function loadLive() {
@@ -679,10 +680,15 @@ $('live-devices').addEventListener('click', () => liveAction(async () => {
   $('live-audio').replaceChildren(new Option('请选择设备',''), ...devices.map(device => new Option(`${device.name} · ${device.host}`,device.id)));
   $('live-audio').value = devices.some(device => String(device.id) === selected) ? selected : '';
 }));
-$('live-start').addEventListener('click', () => liveAction(() => request('/api/live/start',{
-  audio_device:Number($('live-audio').value), rotation_language:$('tts-language').value,
-  assistant_voice_id:$('live-assistant-voice').value || null
-})));
+$('live-start').addEventListener('click', () => liveAction(() => {
+  const audio_device = Number($('live-audio').value);
+  const video_path = $('live-video-path').value.trim();
+  const payload = video_path ? {audio_device, video_path} : {
+    audio_device, rotation_language:$('tts-language').value,
+    assistant_voice_id:$('live-assistant-voice').value || null
+  };
+  return request('/api/live/start', payload);
+}));
 $('live-stop').addEventListener('click', () => liveAction(() => request('/api/live/stop',{session_id:liveSession.id})));
 async function enqueueLive(path) {
   requireSavedProduct();

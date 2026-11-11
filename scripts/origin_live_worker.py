@@ -47,8 +47,9 @@ def main():
         while not stopped.wait(.05):
             if not manager.worker_thread.is_alive() or not manager.player.running:
                 raise RuntimeError("本地视频播放意外停止")
-            if manager.player.get_playback_stats_snapshot()["output_frames"]:
-                print(json.dumps({"event": "running"}), flush=True)
+            frames = manager.player.get_playback_stats_snapshot()["output_frames"]
+            if frames:
+                print(json.dumps({"event": "running", "frames": frames}), flush=True)
                 break
             if time.monotonic() >= deadline:
                 raise RuntimeError("本地视频首帧输出超时")
@@ -58,7 +59,7 @@ def main():
     finally:
         manager.stop_playing()
         manager.tape.close()
-    print(json.dumps({"event": "stopped"}), flush=True)
+    print(json.dumps({"event": "stopped", "frames": manager.player.get_playback_stats_snapshot()["output_frames"]}), flush=True)
 
 
 if __name__ == "__main__":

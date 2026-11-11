@@ -1,10 +1,12 @@
 """Run a local live session from the console's existing selections."""
 from collections import deque
+import json
 import logging
 import sqlite3
 from pathlib import Path
 from queue import Empty, Full, SimpleQueue
 import sys
+import subprocess
 import threading
 import time
 import uuid
@@ -173,6 +175,104 @@ class ConsoleLive:
                         error = error or str(exc)
             if ole32 is not None:
                 ole32.CoUninitialize()
+            with self.lock:
+                self.status.update(status='failed' if error else 'stopped', error=error, ended_at=time.time())
+                self._record_session()
+
+    def start_video(self, audio_device, video_path):
+        if type(audio_device) is not int or audio_device < 0:
+            raise ProductError('请选择明确的音频输出设备')
+        if not isinstance(video_path, str) or not video_path.strip():
+            raise ProductError('请选择本地驱动视频')
+        video = Path(video_path).expanduser()
+        if not video.is_absolute() or not video.is_file():
+            raise ProductError('本地驱动视频不存在')
+        with self.lock:
+            if self.status['status'] in self.active_states:
+                raise Conflict('已有场次正在运行或清理')
+            self.cancel.clear()
+            session_id = uuid.uuid4().hex
+            self.status = {'id': session_id, 'status': 'preparing', 'mode': 'local_video',
+                           'audio_device': audio_device, 'frames': 0, 'requested_at': time.time()}
+            self.rotation = self.reply_session = None
+            self._record_session()
+            self.thread = threading.Thread(target=self._run_video, args=(session_id, audio_device, video.resolve()),
+                                           name='console-origin-live')
+            self.thread.start()
+            return self.state()
+
+    def _run_video(self, session_id, audio_device, video):
+        from scripts.media_runtime import runtime_python
+
+        error = None
+        process = None
+        reader = None
+        final_frames = None
+        try:
+            directory = self.directory / 'live' / session_id
+            directory.mkdir(parents=True)
+            command = [str(runtime_python(self.tts.runtime)), '-X', 'utf8', '-m', 'scripts.origin_live_worker',
+                       '--runtime-root', str(self.tts.runtime), '--video', str(video), '--audio-device', str(audio_device)]
+            events = SimpleQueue()
+            with (directory / 'origin-worker.log').open('w', encoding='utf-8') as log:
+                process = subprocess.Popen(command, cwd=Path(__file__).resolve().parents[1],
+                                           stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log,
+                                           text=True, encoding='utf-8',
+                                           creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+
+                def read_events():
+                    for line in process.stdout:
+                        try:
+                            event = json.loads(line)
+                        except ValueError:
+                            continue
+                        if isinstance(event, dict):
+                            events.put(event)
+
+                reader = threading.Thread(target=read_events, daemon=True)
+                reader.start()
+                deadline = time.monotonic() + 60
+                stopping = False
+                while process.poll() is None:
+                    if self.cancel.is_set() and not stopping:
+                        process.stdin.close()
+                        stopping = True
+                        deadline = time.monotonic() + 10
+                    try:
+                        event = events.get(timeout=.1)
+                    except Empty:
+                        event = {}
+                    if event.get('event') == 'running' and not stopping:
+                        with self.lock:
+                            if not self.cancel.is_set():
+                                self.status.update(status='running', started_at=time.time(), frames=event['frames'])
+                                self._record_session()
+                        deadline = float('inf')
+                    elif event.get('event') == 'stopped':
+                        final_frames = event['frames']
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError('本地视频场次启动或停止超时')
+                if process.returncode or not self.cancel.is_set():
+                    raise RuntimeError('本地视频工作进程意外退出，请查看场次日志')
+        except Exception as exc:
+            logging.exception('本地视频场次失败')
+            error = str(exc)
+        finally:
+            if process is not None:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
+                if reader is not None:
+                    reader.join()
+                while not events.empty():
+                    event = events.get_nowait()
+                    if event.get('event') == 'stopped':
+                        final_frames = event['frames']
+                process.stdin.close()
+                process.stdout.close()
+                if final_frames is not None:
+                    with self.lock:
+                        self.status['frames'] = final_frames
             with self.lock:
                 self.status.update(status='failed' if error else 'stopped', error=error, ended_at=time.time())
                 self._record_session()
