@@ -567,8 +567,12 @@ def run_live_frame_worker(manager) -> None:
 
         try:
             frames, detections = next(manager.face_reader_iterator)
+            if manager.live_frame_stop_event is None or manager.live_frame_stop_event.is_set():
+                break
             publish_live_frame_batch(manager, frames, detections)
         except StopIteration:
+            if manager.live_frame_stop_event is None or manager.live_frame_stop_event.is_set():
+                break
             if (
                 manager.input_mode == "video"
                 and manager.face_reader
@@ -623,10 +627,13 @@ def stop_playing(manager) -> None:
         manager.player.stop_playing()
         manager.player = None
 
-    stop_live_frame_pipeline(manager)
+    if manager.live_frame_stop_event:
+        manager.live_frame_stop_event.set()
     if manager.face_reader:
         manager.face_reader.stop_capture()
         manager.face_reader = None
+    stop_live_frame_pipeline(manager)
+    manager.face_reader_iterator = None
 
     if manager.preload_stop_event:
         manager.preload_stop_event.set()

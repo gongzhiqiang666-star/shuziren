@@ -3,11 +3,41 @@ import queue
 import threading
 import unittest
 from unittest.mock import Mock, patch
+from types import SimpleNamespace
 
+from recovered import image_infer_audio
 from recovered.image_rtmp_face_reader import RtmpFaceReader
 
 
 class RtmpFirstFrameTests(unittest.TestCase):
+    def test_stop_releases_blocking_reader_before_join_and_discards_late_frame(self):
+        reading, released, stopped = threading.Event(), threading.Event(), threading.Event()
+
+        def pending_frames():
+            reading.set()
+            if released.wait(3):
+                yield [], []
+
+        manager = SimpleNamespace(
+            player=None, face_reader=Mock(stop_capture=released.set),
+            face_reader_iterator=iter(pending_frames()), live_frame_stop_event=stopped,
+            preload_stop_event=None, preload_thread=None, audio_queues={},
+        )
+        worker = threading.Thread(target=image_infer_audio.run_live_frame_worker, args=(manager,))
+        manager.live_frame_thread = worker
+        with patch.object(image_infer_audio, 'publish_live_frame_batch') as publish:
+            worker.start()
+            try:
+                self.assertTrue(reading.wait(1))
+                image_infer_audio.stop_playing(manager)
+                self.assertFalse(worker.is_alive())
+                self.assertIsNone(manager.face_reader_iterator)
+                publish.assert_not_called()
+            finally:
+                stopped.set()
+                released.set()
+                worker.join(3)
+
     def test_probe_rejects_audio_only_and_preserves_odd_video_dimensions(self):
         reader = RtmpFaceReader.__new__(RtmpFaceReader)
         with patch('recovered.image_rtmp_face_reader.subprocess.run') as run:
