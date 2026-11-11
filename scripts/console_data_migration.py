@@ -154,9 +154,11 @@ def migrate_v122_assets(root, runtime, voices, avatars, products=None):
 def import_v122_products(snapshot, source):
     source = source.resolve(strict=True)
     payload = json.loads(source.read_text(encoding='utf-8-sig'))
-    products = payload.get('product_scripts') if isinstance(payload, dict) else None
-    if isinstance(payload, dict) and not products:
-        products = payload.get('products')
+    products = None
+    if isinstance(payload, dict):
+        face_hand = 'face_hand_live' in (payload.get('live_type'), payload.get('room_template_type'))
+        primary, fallback = ('products', 'product_scripts') if face_hand else ('product_scripts', 'products')
+        products = payload.get(primary) or payload.get(fallback)
     if not isinstance(products, list) or not products:
         raise ValueError('Legacy live configuration needs a nonempty product_scripts or products list')
     selected = index_value(payload.get('current_product_index', -1))

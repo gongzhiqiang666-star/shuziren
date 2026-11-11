@@ -44,6 +44,12 @@ class ConsolePackageTests(unittest.TestCase):
             self.assertEqual(alternate_store.selected(), alternate['product_id'])
             self.assertEqual([row['text'] for row in alternate_store.scripts(alternate['product_id'])],
                              ['单条话术'])
+            source.write_text(json.dumps({
+                **payload, 'live_type': 'face_hand_live', 'products': [products[1]],
+                'current_product_index': 3,
+            }), encoding='utf-8')
+            face_hand = migrate_v122_products(root / 'face-hand', source)['products']
+            self.assertEqual([item['legacy_index'] for item in face_hand], [3])
             products[1]['product_index'] = 7
             source.write_text(json.dumps(payload), encoding='utf-8')
             with self.assertRaises(ValueError):
