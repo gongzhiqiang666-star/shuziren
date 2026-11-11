@@ -142,6 +142,8 @@ class SessionLifecycleTests(unittest.TestCase):
                 def stream(operation, **options):
                     played.append(options['task_id'])
                     if len(played) == 1:
+                        options['progress']({'event': 'speech_stage', 'stage': 'process',
+                                             'frame_index': 0})
                         started.set()
                         if not resume.wait(2):
                             raise TimeoutError('Test did not release current utterance')
@@ -159,6 +161,7 @@ class SessionLifecycleTests(unittest.TestCase):
                 producer.start()
                 try:
                     self.assertTrue(started.wait(2))
+                    self.assertEqual(session.stall_context()['producer']['stage'], 'speech_process')
                     session.submit(utterance('normal-1'))
                     session.submit(utterance('urgent-1'), priority=True)
                     session.submit(utterance('normal-2'))
