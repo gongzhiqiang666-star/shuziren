@@ -30,6 +30,18 @@ A01-01 的一期语音基线来自 `scripts/tts_worker.py`、`scripts/tts_tasks.
 | A01-04 | 实现主播/助播与换班 | 接通音色、话术归属、商品及换班配置，覆盖手动接管与取消 | 实际输出正确，切换不串商品/声音；20次切换与接管回归通过 |
 | A01-05 | 补齐原驱动输入与综合回归 | 核对文件、摄像头、视频、RTMP 等剩余驱动及并发资源 | 每类真实输入和断流恢复通过；默认路径及持续30分钟输出达冻结指标 |
 
+### A01-02 本机复验入口
+
+从仓库根目录执行。构建目标需是新的目录，`$reference` 为已有的授权运行资源，`$voiceData` 为带已选参考音的验证数据目录。
+
+```powershell
+python -m scripts.stage_media_runtime --reference $reference --destination $runtime --include-zipvoice --include-omnivoice
+& "$runtime/_internal/env/python.exe" -X utf8 -m scripts.validate_tts_tasks --runtime-root $runtime --source-data $voiceData --report-directory $reports --engine omnivoice --model-root $omniModels
+& "$runtime/_internal/env/python.exe" -X utf8 -m scripts.validate_tts_tasks --runtime-root $runtime --source-data $voiceData --report-directory $reports --engine zipvoice --model-root $zipModels
+```
+
+OmniVoice 模型目录提供主模型、配置及 `audio_tokenizer`。ZipVoice 模型根目录提供 `zipvoice_distill` 和 `vocos-mel-24khz`。控制台启动时通过 `--tts-engine` 和 `--tts-model-root` 指定同一引擎及外置模型目录，并在配置中选定相应的媒体运行资源。任务验证报告包含模型复用、取消与恢复、过期结果拒收、进程关闭和完整解码。人工听感与直播输出按各自用例登记。
+
 ## A02 原平台完整适配
 
 前置：A01-05 通过。步骤顺序如下。
