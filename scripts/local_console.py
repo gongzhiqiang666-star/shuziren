@@ -203,7 +203,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         return self.respond(503, {'error': '无法读取音频设备：' + str(error)})
                     return self.respond(200, {'devices': devices})
                 if path == "/api/session":
-                    return self.respond(200, {"token": token})
+                    return self.respond(200, {"token": token, "tts_engine": tts_engine})
                 if path == '/api/voices':
                     voices=VoiceStore(store.directory)
                     return self.respond(200,{'voices':voices.list(),'selected':voices.selected()})

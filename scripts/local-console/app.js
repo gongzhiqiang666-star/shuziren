@@ -21,6 +21,8 @@ async function action(work) {
 async function load() {
   clearChecks();
   const session = await request('/api/session'); token = session.token;
+  const engineName = {indextts: 'IndexTTS', zipvoice: 'ZipVoice', omnivoice: 'OmniVoice'}[session.tts_engine];
+  $('tts-engine').textContent = engineName ? '当前语音引擎：' + engineName : '';
   let state;
   try { state = await request('/api/state'); }
   catch(error) { $('live-status').textContent = '状态读取失败'; throw error; }
