@@ -28,6 +28,8 @@ N05 新候选包 `logs/validation/n05-console-bcd638f.zip` 纳入 PCM 诊断及�
 
 N05 从 `8c02b4f` 构建更新候选包 `logs/validation/n05-console-8c02b4f.zip`，438 个文件通过构建、清单验证和本机隔离安装。SHA-256 为 `9824f89401ff1424c58f4a90343cff521a86ef4008c3cf404b9b8ec53764f88c`。本包包含空闲帧诊断和语音引擎结果校验，安装后运行回归继续待验。
 
+N05 从 `8c02b4f` 的隔离安装目录导入实际包内控制台代码，使用外部独立媒体目录的 Python 与 FFmpeg，运行仓库 HTTP 回归，19 项通过（13.345 秒，无跳过）。证据见 `logs/validation/n05-installed-http-8c02b4f.log`。更新包的实机直播串联和干净 Windows 整机安装继续待验。
+
 V08-01i 首版候选包形成后启动8小时本机双商品轮播基线，使用四帧设备队列。报告目录 `logs/validation/v08-first-candidate-8h-01`。本轮验证本机输出持续性及资源曲线，接收端和故障组合仍按相应子项验证。
 
 V08-01i 在约16分钟因设备队列欠载结束，提交24042帧、完成163条轮播。欠载时消费端处于 PCM 读取阶段约200毫秒，最后一次设备提交已返回；最近完成的空闲请求加载26.41、模型处理165.02、发送114.53毫秒。两者的因果关系待核对，8小时验收未通过。证据见 `logs/validation/v08-first-candidate-8h-01/result.json`。
