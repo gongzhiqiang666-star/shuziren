@@ -13,9 +13,10 @@ from scripts.product_store import Conflict, ProductError, product_prompt_info
 def _worker(connection, snapshot, instructions, config):
     try:
         from recovered.generate_structured_speech import generate_structured_speech_with_config
+        prompt_info = product_prompt_info(snapshot)
         result = generate_structured_speech_with_config(
-            product_prompt_info(snapshot), instructions, llm_config=config)
-        connection.send({'text': result})
+            prompt_info, instructions, llm_config=config)
+        connection.send({'text': result, 'prompt_info': prompt_info})
     except Exception:
         connection.send({'error': '生成失败，请检查服务授权、超时和模型返回后重试'})
     finally:
@@ -90,7 +91,8 @@ class LLMTasks:
                 if self.closed or self.task['status']!='running': return
                 try:
                     if not message or 'text' not in message: raise ProductError('生成失败或超时，请检查服务后重试')
-                    script_id=self.store.add_script(snapshot,message['text'],source='llm')
+                    script_id=self.store.add_script(snapshot,message['text'],source='llm',
+                                                    expected_prompt_info=message.get('prompt_info'))
                     self.task.update(status='succeeded',script_id=script_id)
                 except (ProductError, OSError, sqlite3.Error):
                     self.task.update(status='failed',error='生成失败或商品已修改；未保存新话术，请重新读取后重试')

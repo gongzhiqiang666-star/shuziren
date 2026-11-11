@@ -50,10 +50,11 @@ def generate(store, product_id, expected_version, instructions='', *, config=Non
     settings = environment_config() if config is None else config
     try:
         from recovered.generate_structured_speech import generate_structured_speech_with_config
-        result = generate_structured_speech_with_config(product_prompt_info(snapshot),
+        prompt_info = product_prompt_info(snapshot)
+        result = generate_structured_speech_with_config(prompt_info,
                                             instructions, llm_config=settings)
     except Exception:
         # Upstream exceptions can contain URLs, response bodies or credentials.
         raise LLMError('话术生成失败，请检查服务授权、超时及模型返回；未保存话术，可重试') from None
-    script_id = store.add_script(snapshot, result, source='llm')
+    script_id = store.add_script(snapshot, result, source='llm', expected_prompt_info=prompt_info)
     return {'id': script_id, 'product_id': snapshot['id'], 'product_version': snapshot['version'], 'text': result}

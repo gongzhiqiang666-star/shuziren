@@ -180,7 +180,8 @@ class ProductStore:
             row = db.execute("SELECT product_id FROM selection WHERE singleton=1").fetchone()
             return row[0] if row else None
 
-    def add_script(self, snapshot, script, source="manual", parent_script_id=None):
+    def add_script(self, snapshot, script, source="manual", parent_script_id=None,
+                   *, expected_prompt_info=None):
         script = text(script, "话术", 100000)
         if source not in {"manual", "llm"}:
             raise ProductError("未知话术来源")
@@ -191,6 +192,8 @@ class ProductStore:
             current = self.decode(db.execute("SELECT * FROM products WHERE id=?", (snapshot["id"],)).fetchone())
             if current != snapshot:
                 raise Conflict("商品内容已变更，请重新生成或确认话术")
+            if expected_prompt_info is not None and expected_prompt_info != product_prompt_info(current):
+                raise Conflict("生成期间商品事实已到期，请重新生成")
             if parent_script_id is not None:
                 if not isinstance(parent_script_id, str) or source != 'manual':
                     raise ProductError('修改稿来源无效')
