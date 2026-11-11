@@ -19,6 +19,8 @@
 
 一期仍有 V03、V04、V05、V07、V08、V09 六项整体验收待完成。计数按阶段编号，子任务实测通过不提升整体验收状态。
 
+V04-05h 审核素材逐文件核对通过。50条原始语音、50条 CUDA 成片及50条 TensorRT 成片的 SHA-256 均与生成记录一致，路径均在本轮输出目录内。证据为 `logs/validation/v04-corrected-gpu/run-49832e1e562144a18031efb1c5e53a18/review-integrity.json`。完整播放、动态口型及人工听感待验。
+
 V09-04k 补验安装包启动后的 HTTP 读取。控制台返回迁移后的3号选中商品及其话术，随后经退出接口正常结束，退出码为0。证据为 `logs/validation/v09-face-hand-4df07785/console-run-result.json`。
 
 V09-04k 从提交 `a739c86` 构建并安装437文件的控制台包，在解包目录运行迁移命令。双商品字段测试模板只迁入 `products` 中编号3的商品，重新打开数据层后确认选中项和话术均保留。本机证据目录为 `logs/validation/v09-face-hand-4df07785`。真实旧模板及干净 Windows 验收待完成。
