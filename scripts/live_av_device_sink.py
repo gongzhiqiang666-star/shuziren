@@ -29,6 +29,7 @@ class AVDeviceSink:
         self.error=None;self.frames=0;self.samples=0;self.presented=0;self.peak=0;self.underflows=0
         self.underrun=None
         self.underrun_context=None
+        self.submit_stage=None
         self.finished=threading.Event();self.pcm_hash=hashlib.sha256();self.camera=None;self.stream=None
         info=sd.query_devices(audio_device)
         settings=sd.WasapiSettings(auto_convert=True) if sd.query_hostapis(info['hostapi'])['name']=='Windows WASAPI' else None
@@ -56,6 +57,7 @@ class AVDeviceSink:
                 self.underflows+=1
                 self.underrun={'callback_ns':time.perf_counter_ns(), 'next_frame':self.presented,
                                'submitted_frames':self.frames}
+                self.underrun['device_submit']=self.submit_stage
                 context=self.underrun_context
                 if context is not None:
                     self.underrun['pipeline']=context()
@@ -97,14 +99,18 @@ class AVDeviceSink:
             raise ValueError('Next BGR frame and 960 PCM16 samples required')
         if not self.started and self.frames==self.buffer_frames-1 and threading.get_ident()!=self.owner_thread:
             raise RuntimeError('WASAPI stream must start on its creating thread')
+        self.submit_stage={'stage':'prepare_frame','frame_index':index,'since_ns':time.perf_counter_ns()}
         packet=(index,self.prepare_camera_frame(image),pcm,time.perf_counter_ns());deadline=time.monotonic()+2
+        self.submit_stage={'stage':'queue_put','frame_index':index,'since_ns':packet[3]}
         while True:
             if self.closed or self.error:raise RuntimeError(self.error or 'Combined output stopped')
             try:self.queue.put(packet,timeout=.02);break
             except queue.Full:
                 if time.monotonic()>=deadline:raise TimeoutError('Audio device stopped consuming frames')
+        self.submit_stage={'stage':'accounting','frame_index':index,'since_ns':time.perf_counter_ns()}
         self.frames+=1;self.samples+=960;self.pcm_hash.update(pcm);self.peak=max(self.peak,self.queue.qsize())
         if not self.started and self.frames==self.buffer_frames:self.stream.start();self.started=True
+        self.submit_stage={'stage':'returned','frame_index':index,'since_ns':time.perf_counter_ns()}
         return {'queued_frames':self.queue.qsize()}
 
     def finish_input(self):
