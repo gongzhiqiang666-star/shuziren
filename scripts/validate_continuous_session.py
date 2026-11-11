@@ -51,7 +51,7 @@ def main():
     parser.add_argument('--capture-devices',action='store_true')
     parser.add_argument('--dshow-video-clock',action='store_true')
     parser.add_argument('--smooth-device-clock',action='store_true')
-    parser.add_argument('--device-buffer-frames',type=int,choices=(2,4),default=2)
+    parser.add_argument('--device-buffer-frames',type=int,choices=(2,4,8),default=2)
     parser.add_argument('--camera-i420',action='store_true')
     parser.add_argument('--idle-frames',type=int,choices=(4,8),default=8)
     parser.add_argument('--speech-interval-seconds',type=int,
