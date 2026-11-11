@@ -19,9 +19,11 @@ def generate_reply(product, content, settings):
         reply = ' '.join(result.split())
         if not 1 <= len(reply) <= 240:
             raise ValueError('Reply length')
-        return reply
     except Exception:
         raise LLMError('评论回复生成失败，请检查LLM服务或重试') from None
+    if product_prompt_info(product) != info:
+        raise LLMError('生成期间商品事实已到期，请重新生成评论回复')
+    return reply
 
 
 class ConsoleCommentReply:
