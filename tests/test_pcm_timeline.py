@@ -35,6 +35,7 @@ class PCMTests(unittest.TestCase):
             events=[];ledger=PCMTimeline('s',events.append);self.addCleanup(ledger.close)
             clock=SampleTimeline('s')
             ledger.append(asdict(clock.reserve('s',1001)),'speech',path,hashlib.sha256(pcm).hexdigest())
+            path.unlink()
             ledger.append(asdict(clock.reserve('s',919)),'idle')
             self.assertEqual(ledger.read(960)+ledger.read(960),pcm+bytes(919*2))
             self.assertEqual([event['samples'] for event in events],[1001,919])
