@@ -56,7 +56,7 @@ class OriginTape:
         self._opened = True
 
     def _load_origin_audio(self, duration: float):
-        command = [shutil.which("ffmpeg") or "ffmpeg", "-v", "error", "-i", self.video_path, "-vn", "-ac", "1",
+        command = [shutil.which("ffmpeg") or "ffmpeg", "-nostdin", "-v", "error", "-i", self.video_path, "-vn", "-ac", "1",
                    "-ar", str(self.output_sample_rate), "-f", "f32le", "-"]
         result = subprocess.run(command, capture_output=True)
         expected = max(0, round(duration * self.output_sample_rate))
