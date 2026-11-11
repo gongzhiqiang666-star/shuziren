@@ -66,6 +66,8 @@ V08-01l 最终于约 1732 秒欠载，累计提交 43301 帧、完成 366 条轮
 
 V05 / V08 接收端对照沿用 `v05-i420-cohort-04` 的音色、人物及引擎缓存，设备编号 14。使用 `scripts.validate_continuous_session` 分别指定四帧、八帧，固定 `--capture-devices --dshow-video-clock --camera-i420 --idle-frames 4 --video-delay-ms 100`，两轮使用相同话术间隔及独立报告目录。以接收帧连续性、音画偏差和首尾漂移比较缓冲影响。DirectShow 时钟下的绝对首输出延迟仍需校准。
 
+V08-01m 四帧设备缓冲的 300 秒发送侧实测完成，提交 7510 帧、轮播 49 条，无设备队列欠载。八帧对照在四帧进程退出后启动，第 11 秒已提交 286 帧，最终结果待验。证据分别见 `logs/validation/v08-speech-stage-300s-01/result.json` 和 `logs/validation/v08-buffer8-300s-01/result.json`。
+
 N05 / V09 从 `bc38082` 构建并隔离安装含 PCM 预读改动的候选包，438 个文件通过校验。确认从安装目录加载控制台代码后，使用独立媒体目录的 FFmpeg 运行 HTTP 回归，19 项全部通过。安装包为 `logs/validation/n05-console-bc38082.zip`，实机直播串联和干净 Windows 安装仍待验。
 
 N05 / V09 确认从该隔离安装目录导入 `scripts.pcm_timeline` 后，PCM 与持续场次测试共 12 项通过，包括源 WAV 入队后删除仍可跨语音和静音边界完整读取。该结果覆盖安装包内代码的回归，实机串联由后续设备验证确认。
