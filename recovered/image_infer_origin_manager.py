@@ -164,6 +164,33 @@ class VideoStreamManager:
 
     def init_player(self):shared.initialize_output_player(self)
 
+    def configure_console_audio_output(self, device_index):
+        """Resolve the console's sounddevice selection in the playback backend."""
+        import pyaudio
+        import sounddevice
+
+        if type(device_index) is not int or device_index < 0:
+            raise ValueError("请选择有效的音频输出设备")
+        selected = sounddevice.query_devices(device_index, "output")
+        host = sounddevice.query_hostapis(selected["hostapi"])["name"]
+        audio = pyaudio.PyAudio()
+        try:
+            matches = []
+            for index in range(audio.get_device_count()):
+                device = audio.get_device_info_by_index(index)
+                if (device["name"] == selected["name"] and device["maxOutputChannels"] > 0
+                        and audio.get_host_api_info_by_index(device["hostApi"])["name"] == host):
+                    matches.append(device)
+            if len(matches) != 1:
+                raise ValueError("无法唯一匹配所选音频输出设备")
+            device = matches[0]
+            sample_rate = int(device["defaultSampleRate"])
+            audio.is_format_supported(sample_rate, output_device=device["index"],
+                                      output_channels=1, output_format=pyaudio.paFloat32)
+        finally:
+            audio.terminate()
+        self.configure_audio_output(device["index"], sample_rate)
+
     def configure_audio_output(self, device_index, sample_rate):
         if type(device_index) is not int or device_index < 0:
             raise ValueError("请选择有效的音频输出设备")
