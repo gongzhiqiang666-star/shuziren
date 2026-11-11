@@ -19,6 +19,18 @@ class ReceivedVoiceTests(unittest.TestCase):
         self.assertFalse(audit_device_deadlines(rows)['passed'])
         self.assertFalse(audit_device_deadlines(rows[:8])['passed'])
 
+    def test_device_deadline_attribution_tracks_first_threshold_crossing(self):
+        rows=[]
+        for index,(taken,start,end) in enumerate([(6,7,8),(1,7,8),(-5,2,8),(1,2,3)],8):
+            due=index*40_000_000
+            rows.append({'event':'video_sent','frame_index':index,'due_ns':due,
+                'video_dequeued_ns':due+taken*1_000_000,'camera_send_started_ns':due+start*1_000_000,
+                'camera_sent_ns':due+end*1_000_000})
+        result=audit_device_deadlines(rows)
+        self.assertEqual(result['over_5ms_attributed'],{'before_dequeue':1,'before_send':1,'during_send':1})
+        self.assertEqual(result['stages']['camera_send']['max_ms'],6)
+        self.assertFalse(result['passed'])
+
     def fixture(self,root,delay,wrong_voice=False,replace_frame=None,origin_ns=None):
         source=np.random.default_rng(123).integers(-4000,4000,2400,dtype=np.int16)
         reference=root/'voice.wav'

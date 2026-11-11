@@ -75,10 +75,13 @@ class AVDeviceSink:
                 except queue.Empty:
                     if self.draining and self.finished.is_set() and self.camera.frames==self.frames:return
                     continue
-                if self.stop_event.wait(max(0,(due-time.perf_counter_ns())/1e9)):return
+                dequeued=time.perf_counter_ns()
+                if self.stop_event.wait(max(0,(due-dequeued)/1e9)):return
+                send_started=time.perf_counter_ns()
                 self.camera.send(index,image)
                 if self.on_present:self.on_present({'event':'video_sent','frame_index':index,
-                    'due_ns':due,'camera_sent_ns':time.perf_counter_ns()})
+                    'due_ns':due,'video_dequeued_ns':dequeued,'camera_send_started_ns':send_started,
+                    'camera_sent_ns':time.perf_counter_ns()})
         except BaseException as error:self.error=str(error)
         finally:self.video_finished.set()
 

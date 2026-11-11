@@ -74,8 +74,23 @@ def audit_device_deadlines(trace):
     p95,p99=(float(value) for value in np.percentile(late,[95,99]))
     maximum=float(late.max())
     above=float(np.mean(late>5))
-    return {'count':len(rows),'p95_ms':p95,'p99_ms':p99,'max_ms':maximum,'above_5ms_ratio':above,
+    report={'count':len(rows),'p95_ms':p95,'p99_ms':p99,'max_ms':maximum,'above_5ms_ratio':above,
             'passed':p95<=5 and p99<=20 and maximum<=40 and above<=.01}
+    if all('video_dequeued_ns' in row and 'camera_send_started_ns' in row for row in rows):
+        dequeue=[];wake=[];send=[]
+        for row in rows:
+            due=row['due_ns'];taken=row['video_dequeued_ns'];started=row['camera_send_started_ns']
+            dequeue.append(max(0,taken-due)/1_000_000)
+            wake.append(max(0,started-max(due,taken))/1_000_000)
+            send.append((row['camera_sent_ns']-started)/1_000_000)
+        report['stages']={name:{'p95_ms':float(np.percentile(values,95)),'max_ms':max(values)}
+                          for name,values in (('dequeue_late',dequeue),('wake_late',wake),('camera_send',send))}
+        late_rows=[index for index,value in enumerate(late) if value>5]
+        report['over_5ms_attributed']={
+            'before_dequeue':sum(dequeue[index]>5 for index in late_rows),
+            'before_send':sum(dequeue[index]<=5<dequeue[index]+wake[index] for index in late_rows),
+            'during_send':sum(dequeue[index]+wake[index]<=5 for index in late_rows)}
+    return report
 
 
 def audit_received_voice(path,completed,expected,origin_ns=None):
