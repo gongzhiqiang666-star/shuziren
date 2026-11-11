@@ -41,12 +41,19 @@ class OriginTape:
         if self._opened: return
         if not Path(self.video_path).is_file(): raise FileNotFoundError(self.video_path)
         capture = cv2.VideoCapture(self.video_path)
-        if not capture.isOpened(): raise RuntimeError(f"无法打开视频: {self.video_path}")
-        self.capture = capture; self.source_fps = float(capture.get(cv2.CAP_PROP_FPS) or ORIGIN_FPS)
-        self.source_frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        self.width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH) or 0); self.height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
-        duration = self.source_frame_count / self.source_fps if self.source_fps else 0
-        self.total_frames = max(1, round(duration * ORIGIN_FPS)); self._load_origin_audio(duration); self._opened = True
+        try:
+            if not capture.isOpened(): raise RuntimeError(f"无法打开视频: {self.video_path}")
+            self.source_fps = float(capture.get(cv2.CAP_PROP_FPS) or ORIGIN_FPS)
+            self.source_frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            self.width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH) or 0); self.height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+            duration = self.source_frame_count / self.source_fps if self.source_fps else 0
+            self.total_frames = max(1, round(duration * ORIGIN_FPS))
+            self._load_origin_audio(duration)
+        except BaseException:
+            capture.release()
+            raise
+        self.capture = capture
+        self._opened = True
 
     def _load_origin_audio(self, duration: float):
         command = [shutil.which("ffmpeg") or "ffmpeg", "-v", "error", "-i", self.video_path, "-vn", "-ac", "1",
