@@ -80,18 +80,26 @@ class ResidentAvatar:
         for key in ['inference_ms','prepare_ms','paste_ms']:stats[key].clear()
         stats['frames']=stats['batches']=0
         written=0
+        load_ns=process_ns=send_ns=0
         try:
             for start in range(0,len(sequence),self.synth.batch_size):
+                started=time.perf_counter_ns()
                 indices=sequence[start:start+self.synth.batch_size];images,metadata=self.synth._load_batch_frames(indices)
                 features=[self.silence_features[(start+index)%len(self.silence_features)] for index in range(len(indices))]
+                loaded=time.perf_counter_ns()
                 frames=self.synth._process_batch(images,metadata,features)
+                processed=time.perf_counter_ns()
                 if len(frames)!=len(indices):raise RuntimeError('Idle frame missing')
                 for frame in frames:frame_channel.send(session,task_id,offset+written,frame);written+=1
+                load_ns+=loaded-started
+                process_ns+=processed-loaded
+                send_ns+=time.perf_counter_ns()-processed
         except BaseException:frame_channel.close();raise
         self.frame_offset+=written;self.sample_offset+=span.samples
         return {'session_id':session,'task_id':task_id,'timing':timing,'frames':written,'raw_frames_sent':written,
             'output':None,'output_mode':'raw-frame-stream','audio_data_sent':False,'idle':True,
-            'frame_offset':offset,'next_frame_offset':self.frame_offset,'source_first':sequence[0],'source_last':sequence[-1]}
+            'frame_offset':offset,'next_frame_offset':self.frame_offset,'source_first':sequence[0],'source_last':sequence[-1],
+            'idle_stage_ns':{'load':load_ns,'process':process_ns,'send':send_ns}}
 
     def render(self,session,task_id,audio,output,pcm_sha256,progress=None,timing=None,frame_channel=None):
         if session!=self.session:raise ValueError('Stale avatar session')

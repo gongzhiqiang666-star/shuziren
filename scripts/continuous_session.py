@@ -30,11 +30,14 @@ class ContinuousSession:
         self.submit_costs=deque(maxlen=64)
         self.producer_stage=('starting',time.perf_counter_ns(),None)
         self.consumer_stage=('starting',time.perf_counter_ns(),None)
+        self.last_idle_timing=None
 
     def stall_context(self):
-        return {name:{'stage':stage,'since_ns':since,'position':position}
+        context={name:{'stage':stage,'since_ns':since,'position':position}
                 for name,(stage,since,position) in (
                     ('producer',self.producer_stage),('consumer',self.consumer_stage))}
+        if self.last_idle_timing is not None:context['last_completed_idle']=self.last_idle_timing
+        return context
 
     def submit(self,utterance,*,priority=False,manual_revision=None,reply_guard=None):
         if not isinstance(utterance,Utterance) or utterance.session_id!=self.session_id or utterance.path.resolve().parent!=self.root:
@@ -147,7 +150,9 @@ class ContinuousSession:
                     self.producer_stage=('idle_pcm',time.perf_counter_ns(),span.frame_start)
                     self.pcm.append(timing,source_id)
                     self.producer_stage=('idle_model',time.perf_counter_ns(),span.frame_start)
-                    self.client.request('idle',session_id=self.session_id,task_id=source_id,timing=timing)
+                    result=self.client.request('idle',session_id=self.session_id,task_id=source_id,timing=timing)
+                    if isinstance(result,dict) and 'idle_stage_ns' in result:
+                        self.last_idle_timing={'frame_index':span.frame_start,'stage_ns':result['idle_stage_ns']}
         except BaseException as error:
             if not self.stop_event.is_set():self.errors.append(str(error));self.stop_event.set()
 
