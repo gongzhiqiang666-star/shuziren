@@ -5,11 +5,12 @@ import threading
 import time
 
 from scripts.console_llm import LLMError, environment_config
-from scripts.product_store import Conflict
+from scripts.product_store import Conflict, product_prompt_info
 
 
 def generate_reply(product, content, settings):
-    prompt = json.dumps({'商品': product['title'], '已知信息': product['content'], '观众评论': content}, ensure_ascii=False)
+    info = product_prompt_info(product)
+    prompt = json.dumps({'商品': info['title'], '已知信息': info['content'], '观众评论': content}, ensure_ascii=False)
     try:
         from recovered.llm_base_chat import base_chat
         result = base_chat(prompt, '用中文简短回答观众，输出可直接口播的纯文本。只使用已知商品信息。'

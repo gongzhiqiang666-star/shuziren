@@ -7,14 +7,14 @@ import time
 import uuid
 
 from scripts.console_llm import environment_config
-from scripts.product_store import Conflict, ProductError
+from scripts.product_store import Conflict, ProductError, product_prompt_info
 
 
 def _worker(connection, snapshot, instructions, config):
     try:
         from recovered.generate_structured_speech import generate_structured_speech_with_config
         result = generate_structured_speech_with_config(
-            {'title': snapshot['title'], 'content': snapshot['content']}, instructions, llm_config=config)
+            product_prompt_info(snapshot), instructions, llm_config=config)
         connection.send({'text': result})
     except Exception:
         connection.send({'error': '生成失败，请检查服务授权、超时和模型返回后重试'})

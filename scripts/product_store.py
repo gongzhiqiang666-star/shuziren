@@ -1,6 +1,7 @@
 """Single-machine product/script persistence with immutable generation snapshots."""
 from contextlib import contextmanager
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 import sqlite3
 import uuid
@@ -18,6 +19,29 @@ def text(value, label, limit):
     if not isinstance(value, str) or not value.strip() or len(value) > limit:
         raise ProductError(label + "不能为空或超出长度限制")
     return value.strip()
+
+
+def product_prompt_info(snapshot, *, now=None):
+    """Project a versioned product into the facts permitted in a prompt."""
+    extra = snapshot.get("extra") or {}
+    if "product_facts" not in extra:
+        return {"title": snapshot["title"], "content": snapshot["content"]}
+    now = datetime.now(timezone.utc) if now is None else now
+    facts = extra["product_facts"]
+    verified = {}
+    if isinstance(facts, dict):
+        for name, fact in facts.items():
+            if not isinstance(fact, dict) or fact.get("status") != "verified" or not fact.get("source"):
+                continue
+            try:
+                expires = fact.get("expires_at")
+                if expires is not None and datetime.fromisoformat(expires.replace("Z", "+00:00")) <= now:
+                    continue
+            except (AttributeError, TypeError, ValueError):
+                continue
+            if fact.get("value") is not None:
+                verified[name] = fact["value"]
+    return {"title": snapshot["title"], "content": json.dumps(verified, ensure_ascii=False)}
 
 
 def index_value(value):

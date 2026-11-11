@@ -2,7 +2,7 @@
 import os
 from urllib.parse import urlsplit
 
-from scripts.product_store import Conflict, ProductError
+from scripts.product_store import Conflict, ProductError, product_prompt_info
 
 
 class LLMError(ValueError):
@@ -50,7 +50,7 @@ def generate(store, product_id, expected_version, instructions='', *, config=Non
     settings = environment_config() if config is None else config
     try:
         from recovered.generate_structured_speech import generate_structured_speech_with_config
-        result = generate_structured_speech_with_config({'title': snapshot['title'], 'content': snapshot['content']},
+        result = generate_structured_speech_with_config(product_prompt_info(snapshot),
                                             instructions, llm_config=settings)
     except Exception:
         # Upstream exceptions can contain URLs, response bodies or credentials.
