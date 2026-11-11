@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 from pathlib import Path
 import sqlite3
@@ -7,7 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import uuid
 
 from scripts.product_store import ProductStore,Conflict,ProductError
@@ -47,6 +48,22 @@ class TTSStateTests(unittest.TestCase):
         self.assertIn('previous_result', state)
         with self.assertRaises(Conflict):
             alternate.audio(state['id'])
+
+    def test_rejects_wrong_engine_at_startup_or_in_result(self):
+        for response in (
+            {'event': 'ready', 'provider': 'recovered-zipvoice'},
+            {'ok': True, 'result': {'provider': 'recovered-zipvoice'}},
+        ):
+            with self.subTest(response=response):
+                process = Mock(stdin=io.StringIO(), stdout=io.StringIO(json.dumps(response) + '\n'))
+                process.poll.return_value = None
+                self.tasks.task = {'id': 'wrong-engine', 'status': 'running'}
+                self.tasks.worker_usable = True
+                self.tasks._run(process, {}, self.product, {}, 'wrong-engine')
+                self.assertEqual(self.tasks.state()['status'], 'failed')
+                self.assertNotIn('result', self.tasks.state())
+                self.assertFalse(self.tasks.worker_usable)
+                process.terminate.assert_called_once()
 
     def test_product_change_invalidates_completed_result(self):
         self.assertEqual(self.tasks.state()['status'],'succeeded')
