@@ -61,8 +61,8 @@
 | MED-002 | 音频裁剪与编辑器 | `process_audio_clip/launch_audio_editor` | `audio_clip.py`, `edit_audio.py` | 静态验证通过 | Windows GUI、MP3/WAV、边界时长和编码失败 |
 | MED-003 | Whisper/FunASR 识别及 SRT | 原生 ASR 模块调用链 | `whisper_runtime.py`, `funasr_runtime.py`, `get_srt.py` | 静态验证通过 | 真实模型、CPU/GPU、长音频、多语言准确性 |
 | MED-004 | 本地音色克隆预处理 | `clone_voice_local` Ghidra 主体 | `voice_clone_infer_api.py`, `clone_manager.py` | 静态验证通过 | 真实 FFmpeg/ASR、模型资源、坏音频和中文路径 |
-| MED-005 | ZipVoice 本地语音推理 | `voice_infer.pyd` | `voice_infer.py` | 静态验证通过 | 真实权重、CPU/GPU、缓存、并发和音质 |
-| MED-006 | OmniVoice 本地语音推理 | `voice_infer_v2.pyd` | `voice_infer_v2.py` | 静态验证通过 | 真实权重、显存、参考音隔离、缓存和音质 |
+| MED-005 | ZipVoice 本地语音推理 | `voice_infer.pyd` | `voice_infer.py`、`scripts/tts_worker.py` | 静态验证通过 | A01-02 已有 Windows CPU/CUDA 合成、双参考音缓存隔离、显存清理及独立媒体任务证据。原程序差分、并发、人工音质和直播待验 |
+| MED-006 | OmniVoice 本地语音推理 | `voice_infer_v2.pyd` | `voice_infer_v2.py`、`scripts/tts_worker.py` | 静态验证通过 | A01-02 已有 RTX 3060 合成、中英语言缓存隔离及独立媒体任务证据。原程序差分、显存量化、双参考音、人工音质和直播待验 |
 | MED-007 | IndexTTS 本地语音推理 | `voice_infer_v3.pyd` | `voice_infer_v3.py` | 开发中 | V03真实CUDA新文本、缓存/取消/恢复、双参考A/B/A和ASR/声纹自动核验已通过对应范围；人工听感、长文本、峰值/长稳及录音实机仍待验收 |
 | MED-008 | 马来语/越南语本地语音 | 对应 `voice_infer_*_local.pyd` | `voice_infer_malai_local.py`, `voice_infer_vietnam_local.py` | 开发中 | 真实模型、语言发音、CPU/GPU |
 | MED-009 | Minimax/CosyVoice 在线音色克隆与生成 | `start_voice_clone_*`、在线语音模块 | `online_voice_generate.py`, `cosyvoice.py` | 静态验证通过 | 真实账号、区域端点、上传、鉴权和计费错误 |
