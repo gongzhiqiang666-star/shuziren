@@ -222,6 +222,10 @@ def main():
                 cursor = 0
                 while True:
                     page = call(f'/api/live/rotation/events?session_id={session_id}&after={cursor}')
+                    history = page['session']
+                    if (not history or history['status'] != 'stopped' or history['frames'] != stopped['frames']
+                            or not history['requested_at'] <= history['started_at'] <= history['ended_at']):
+                        raise RuntimeError('Persisted live session did not match stopped session')
                     if not page['events']:
                         break
                     if page['next_cursor'] <= cursor:

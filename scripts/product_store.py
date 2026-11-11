@@ -138,6 +138,11 @@ class ProductStore:
                 WHERE live_sessions.ended_at IS NULL
             """, (session_id, requested_at, started_at, ended_at, status, frames))
 
+    def live_session_record(self, session_id):
+        with self.connect() as db:
+            row = db.execute('SELECT * FROM live_sessions WHERE session_id = ?', (session_id,)).fetchone()
+        return dict(row) if row is not None else None
+
     def record_rotation_completion(self, session_id, task_id, item, segment_index):
         with self.connect() as db:
             db.execute("""

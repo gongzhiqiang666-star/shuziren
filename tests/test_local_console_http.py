@@ -23,6 +23,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         product = store.save(title='茶杯', content='口播验收', product_index=1)
         script = store.add_script(product, '这是一只茶杯。')
         item = {'product_id': product['id'], 'product_version': product['version'], 'script_id': script}
+        store.record_live_session('scene', 100, started_at=101, ended_at=110, status='stopped', frames=225)
         for index in range(101):
             store.record_rotation_completion('scene', str(index), item, 0)
             store.record_rotation_completion('another-scene', str(index), item, 0)
@@ -30,6 +31,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         route = '/api/live/rotation/events?session_id=scene'
         status, first = self.call(route)
         self.assertEqual(status, 200)
+        self.assertEqual(first['session']['frames'], 225)
+        self.assertEqual(first['session']['status'], 'stopped')
         self.assertEqual([row['task_id'] for row in first['events']], [str(index) for index in range(100)])
         status, second = self.call(route + '&after=' + str(first['next_cursor']))
         self.assertEqual(status, 200)
@@ -61,7 +64,7 @@ class ConsoleHTTPTests(unittest.TestCase):
     def test_live_routes_reject_stale_or_unauthorized_actions(self):
         self.assertEqual(self.call('/api/live/state')[1], {'session': {'status': 'idle'}})
         self.assertEqual(self.call('/api/live/rotation/events?session_id=scene&after=7')[1],
-                         {'events': [], 'next_cursor': 7})
+                         {'session': None, 'events': [], 'next_cursor': 7})
         self.assertEqual(self.call('/api/live/rotation/events?session_id=scene&after=-1')[0], 400)
         self.assertEqual(self.call('/api/live/start', {'audio_device': True})[0], 400)
         self.assertEqual(self.call('/api/live/start', {'audio_device': 14})[0], 400)

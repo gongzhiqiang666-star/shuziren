@@ -446,6 +446,7 @@ function resetRotationEvents() {
   rotationEventCursor = 0;
   $('live-rotation-events-list').replaceChildren();
   $('live-rotation-events-status').textContent = '';
+  $('live-event-session').textContent = '';
   $('live-rotation-events').textContent = '查看本场口播记录';
 }
 const shiftDrafts = new Map();
@@ -554,6 +555,10 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
   if (taskId) query.set('task_id', taskId);
   const result = await request('/api/live/rotation/events?' + query);
   if (liveSession.id !== sessionId) return;
+  const history = result.session;
+  $('live-event-session').textContent = history?.ended_at
+    ? `${liveLabels[history.status]} · ${history.frames} 帧 · ${new Date((history.started_at ?? history.requested_at) * 1000).toLocaleString()} 至 ${new Date(history.ended_at * 1000).toLocaleString()}`
+    : '';
   $('live-rotation-events-list').append(...result.events.map(event => {
     const item = document.createElement('li');
     const product = savedProducts.find(product => product.id === event.product_id);

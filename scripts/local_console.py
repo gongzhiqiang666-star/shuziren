@@ -207,8 +207,12 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             or int(cursors[0]) >= 2**63):
                         raise ProductError('场次或轮播记录游标无效')
                     after = int(cursors[0])
-                    events = products().rotation_events(sessions[0], after=after, **filters)
-                    return self.respond(200, {'events': events, 'next_cursor': events[-1]['cursor'] if events else after})
+                    data = products()
+                    events = data.rotation_events(sessions[0], after=after, **filters)
+                    return self.respond(200, {
+                        'session': data.live_session_record(sessions[0]), 'events': events,
+                        'next_cursor': events[-1]['cursor'] if events else after,
+                    })
                 if path == '/api/taobao/state':
                     return self.respond(200, {'capture': taobao.state(), 'reply': replies.state()})
                 if path == '/api/live/devices':
