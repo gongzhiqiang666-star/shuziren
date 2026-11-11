@@ -133,8 +133,9 @@ def main():
             if old_session:
                 call('/api/live/stop', {'session_id': old_session}, 409)
             if cycle == 0 and interactions:
+                live(lambda state: state['id'] == session_id and state.get('camera_frames', 0) > 0)
                 ffmpeg = args.runtime_root / '_internal/env/ffmpeg/bin/ffmpeg.exe'
-                capture = DeviceCapture(ffmpeg, directory, args.capture_seconds)
+                capture = DeviceCapture(ffmpeg, directory, args.capture_seconds, dshow_video_clock=True)
                 rotate(session_id, exercise_pause=True)
                 for interaction in range(interactions):
                     urgent = speech()

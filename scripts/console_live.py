@@ -13,7 +13,7 @@ from scripts.product_store import Conflict, ProductError
 class ConsoleLive:
     active_states = {'preparing', 'running', 'stopping'}
 
-    def __init__(self, tts, directory, *, device_buffer_frames=2):
+    def __init__(self, tts, directory, *, device_buffer_frames=8):
         self.tts = tts
         self.directory = Path(directory).resolve()
         self.device_buffer_frames = device_buffer_frames
@@ -32,6 +32,7 @@ class ConsoleLive:
             state = dict(self.status)
             if self.session is not None:
                 state['frames'] = self.session.frames_written
+                state['camera_frames'] = self.session.sink.camera.frames
                 state.update(self.session.control_state())
             return state
 
@@ -103,7 +104,11 @@ class ConsoleLive:
                 return
             receiver = FrameReceiver(binding.id, avatar['width'], avatar['height'])
             client.request('attach_frames', channel=receiver.descriptor())
-            sink = AVDeviceSink(avatar['width'], avatar['height'], audio_device, buffer_frames=self.device_buffer_frames)
+            sink = AVDeviceSink(
+                avatar['width'], avatar['height'], audio_device,
+                buffer_frames=self.device_buffer_frames, video_delay_ms=100,
+                smooth_clock=True, camera_i420=True,
+            )
 
             def started():
                 with self.lock:
@@ -123,7 +128,7 @@ class ConsoleLive:
 
             session = ContinuousSession(binding.id, client, receiver, sink, assembler.root,
                                         on_started=started, on_present=presented,
-                                        on_source_complete=source_complete)
+                                        on_source_complete=source_complete, idle_frames=4)
             sink.underrun_context = session.stall_context
             with self.lock:
                 self.session = session
