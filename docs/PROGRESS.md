@@ -4,6 +4,8 @@
 
 ## 四期开发进度
 
+A01-05 原视频模式指定 WASAPI 虚拟声卡后，通过独立 DirectShow 进程回采。播放器发送 101 帧，3 秒接收窗口解码得到 75 帧与 143895 个音频采样，原声测试信号峰值 630.13 Hz，设备按 48 kHz 配置。证据见 `logs/validation/a01-origin-managed-receiver-01/result.json`。本轮覆盖双轨接收，逐帧连续性、同步和插播回采仍待验。
+
 从 `7761025` 在 Windows 配置真实 FFmpeg 和本机媒体运行目录，执行 `tests/` 全量 unittest，251 项通过，无跳过。另有视频读取、V2 队列选择和播放器三项恢复版检查通过。控制台开播入口目前使用预制形象工作进程，本地视频直驱已在原应用运行入口验证，仍需单独接入控制台场次生命周期。日志见 `logs/validation/direct-video-full-regression.log`。
 
 A01-05 有界队列修复后的实际设备短测通过。直驱管理器使用真实视频和 CUDA 模型，音频设备回调消费插播帧 0～5，10143 个采样逐值一致，下一帧恢复至原视频第 25 帧。虚拟摄像头发送 7 帧，队列峰值 4 帧，停播释放摄像头与音频流。证据见 `logs/validation/a01-origin-bounded-interaction-device.json`。接收端同步与控制台完整流程仍待验。
