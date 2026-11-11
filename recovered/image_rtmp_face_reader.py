@@ -29,6 +29,7 @@ class RtmpFaceReader(VideoFaceReader):
     def __init__(self, device="cuda:0", enable_occluder=False, occluder_model_path="", face_model_dir=""):
         super().__init__(device, 1, enable_occluder, occluder_model_path, face_model_dir)
         self.ffmpeg_process = None; self.stderr_thread = None; self.rtmp_url = ""
+        self.first_frame = threading.Event()
 
     @staticmethod
     def _make_even(value, minimum=2): return max(minimum, int(value) // 2 * 2)
@@ -59,6 +60,7 @@ class RtmpFaceReader(VideoFaceReader):
     def start_capture(self, rtmp_url):
         self.stop_capture(); self.rtmp_url = str(rtmp_url); self.width, self.height, self.fps = self._get_video_properties(self.rtmp_url)
         self.stop_event.clear(); self._reset_pipeline_state()
+        self.first_frame.clear()
         self.ffmpeg_process = subprocess.Popen(self._build_ffmpeg_command(self.rtmp_url, self.fps), stdout=subprocess.PIPE,
                                                stderr=subprocess.PIPE, bufsize=self.width * self.height * 3 * 2)
         self.stderr_thread = threading.Thread(target=self._drain_stderr, name="rtmp-ffmpeg-stderr", daemon=True)
@@ -72,20 +74,24 @@ class RtmpFaceReader(VideoFaceReader):
     def _wait_for_initial_frame(self, timeout):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            if not self.raw_frames_queue.empty() or not self.processed_frames_queue.empty(): return True
+            if self.first_frame.is_set(): return True
             if self.ffmpeg_process and self.ffmpeg_process.poll() is not None: return False
             time.sleep(.02)
         return False
 
     def _capture_thread(self):
         size = self.width * self.height * 3
+        process = self.ffmpeg_process
         try:
             while not self.stop_event.is_set():
-                data = self.ffmpeg_process.stdout.read(size)
+                data = process.stdout.read(size)
                 if len(data) != size: break
                 frame = np.frombuffer(data, np.uint8).reshape(self.height, self.width, 3).copy()
                 while not self.stop_event.is_set():
-                    try: self.raw_frames_queue.put(frame, timeout=.1); break
+                    try:
+                        self.raw_frames_queue.put(frame, timeout=.1)
+                        self.first_frame.set()
+                        break
                     except queue.Full: continue
         finally:
             try: self.raw_frames_queue.put(None, timeout=.2)
@@ -116,9 +122,13 @@ class RtmpFaceReader(VideoFaceReader):
             process.terminate()
             try: process.wait(timeout=2)
             except subprocess.TimeoutExpired: process.kill(); process.wait(timeout=1)
-        self.ffmpeg_process = None
         for thread in (self.capture_thread, self.preprocess_thread, self.stderr_thread):
             if thread and thread.is_alive() and thread is not threading.current_thread(): thread.join(timeout=2)
+        if process:
+            for pipe in (process.stdout, process.stderr):
+                if pipe is not None:
+                    pipe.close()
+        self.ffmpeg_process = None
         self.capture_thread = self.preprocess_thread = self.stderr_thread = None
 
     def rewind(self): return False
