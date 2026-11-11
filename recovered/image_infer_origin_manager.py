@@ -93,10 +93,15 @@ class VideoStreamManager:
     def _has_queued_interact(self): return any(not q.empty() for q in self.audio_queues.values())
 
     def _get_next_audio_batch(self,current_audio_path):
+        return self._dequeue_interaction(self._batch_size)
+
+    def _dequeue_interaction(self,frame_count):
         selected=next((name for name in self.queue_priority if not self.audio_queues[name].empty()),None);items=[]
         if selected:
             q=self.audio_queues[selected]
-            while len(items)<self._batch_size and not q.empty():items.append(q.get())
+            while len(items)<frame_count:
+                try:items.append(q.get_nowait())
+                except queue.Empty:break
         path=items[-1].audio_path if items else None
         items.extend([None]*(self._batch_size-len(items)))
         return items,path
@@ -158,7 +163,11 @@ class VideoStreamManager:
         while not self.stop_event.is_set() and self.player and self.player.running:
             tape_frames=self.tape.take_frames(self._batch_size,2.0)
             if not tape_frames:continue
-            interaction,current_path=self._get_next_audio_batch(current_path);has_interact=any(x is not None for x in interaction)
+            if len(tape_frames)==self._batch_size:
+                interaction,current_path=self._get_next_audio_batch(current_path)
+            else:
+                interaction,current_path=self._dequeue_interaction(len(tape_frames))
+            has_interact=any(x is not None for x in interaction)
             if has_interact and not self._in_interact:self._in_interact=True;self._fade_out_remaining=self._fade_out_total
             if has_interact and not self._has_queued_interact():
                 with self._seek_lock:
