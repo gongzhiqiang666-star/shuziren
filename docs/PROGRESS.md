@@ -4,6 +4,8 @@
 
 ## 四期开发进度
 
+A01-05 从 `a055d81` 构建并隔离安装 438 文件候选包，从解包目录加载直驱模块、配置控制台枚举的虚拟声卡并播放本地视频。CUDA 模型加载成功，48 kHz 音频设备启动，摄像头发送 12 帧后停播，两设备均释放。证据见 `logs/validation/a01-installed-direct-video.json`。此轮由安装包内管理器启动，控制台 HTTP 接入待完成。
+
 A01-05 以控制台枚举的设备编号 14 调用直驱设备适配，实际选择 WASAPI 虚拟声卡并按 48 kHz 开播。独立接收端录得 75 帧、143023 个音频采样和 629.94 Hz 原声测试信号。证据见 `logs/validation/a01-console-device-receiver-01/result.json`。该轮直接调用管理器，HTTP 开播入口及插播回采仍待验。
 
 A01-05 原视频模式指定 WASAPI 虚拟声卡后，通过独立 DirectShow 进程回采。播放器发送 101 帧，3 秒接收窗口解码得到 75 帧与 143895 个音频采样，原声测试信号峰值 630.13 Hz，设备按 48 kHz 配置。证据见 `logs/validation/a01-origin-managed-receiver-01/result.json`。本轮覆盖双轨接收，逐帧连续性、同步和插播回采仍待验。
