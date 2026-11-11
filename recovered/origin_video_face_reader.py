@@ -54,13 +54,13 @@ class VideoFaceReader:
 
     def stop_capture(self):
         self.stop_event.set()
-        for thread in (self.capture_thread, self.preprocess_thread):
-            if thread and thread.is_alive() and thread is not threading.current_thread(): thread.join(timeout=2)
         process,self.ffmpeg_process=self.ffmpeg_process,None
         if process is not None and process.poll() is None:
             process.terminate()
             try:process.wait(timeout=2)
             except subprocess.TimeoutExpired:process.kill();process.wait(timeout=2)
+        for thread in (self.capture_thread, self.preprocess_thread):
+            if thread and thread.is_alive() and thread is not threading.current_thread(): thread.join(timeout=2)
         for pipe in (getattr(process,"stdout",None),getattr(process,"stderr",None)):
             if pipe is not None:
                 try:pipe.close()
