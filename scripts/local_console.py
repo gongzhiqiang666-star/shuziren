@@ -191,6 +191,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                                               "live_status": live_label(), "data_directory": str(store.directory.resolve())})
                 if path == '/api/live/state':
                     return self.respond(200, {'session': live_manager.state() if live_manager else {'status': 'idle'}})
+                if path == '/api/live/history':
+                    return self.respond(200, {'sessions': products().recent_live_sessions()})
                 if path == '/api/live/rotation/events':
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                     sessions = query.get('session_id', [])

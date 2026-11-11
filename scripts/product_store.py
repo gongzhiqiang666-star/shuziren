@@ -143,6 +143,11 @@ class ProductStore:
             row = db.execute('SELECT * FROM live_sessions WHERE session_id = ?', (session_id,)).fetchone()
         return dict(row) if row is not None else None
 
+    def recent_live_sessions(self):
+        with self.connect() as db:
+            rows = db.execute('SELECT * FROM live_sessions ORDER BY requested_at DESC, rowid DESC LIMIT 100').fetchall()
+        return [dict(row) for row in rows]
+
     def record_rotation_completion(self, session_id, task_id, item, segment_index):
         with self.connect() as db:
             db.execute("""

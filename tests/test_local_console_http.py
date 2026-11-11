@@ -24,6 +24,10 @@ class ConsoleHTTPTests(unittest.TestCase):
         script = store.add_script(product, '这是一只茶杯。')
         item = {'product_id': product['id'], 'product_version': product['version'], 'script_id': script}
         store.record_live_session('scene', 100, started_at=101, ended_at=110, status='stopped', frames=225)
+        store.record_live_session('another-scene', 120)
+        status, history = self.call('/api/live/history')
+        self.assertEqual(status, 200)
+        self.assertEqual([row['session_id'] for row in history['sessions']], ['another-scene', 'scene'])
         for index in range(101):
             store.record_rotation_completion('scene', str(index), item, 0)
             store.record_rotation_completion('another-scene', str(index), item, 0)

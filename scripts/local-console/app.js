@@ -447,7 +447,7 @@ function resetRotationEvents() {
   $('live-rotation-events-list').replaceChildren();
   $('live-rotation-events-status').textContent = '';
   $('live-event-session').textContent = '';
-  $('live-rotation-events').textContent = '查看本场口播记录';
+  $('live-rotation-events').textContent = '查看口播记录';
 }
 const shiftDrafts = new Map();
 function renderShiftFields() {
@@ -485,7 +485,9 @@ function renderLiveButtons() {
   $('live-rotation-start').disabled = $('live-control').disabled || !$('live-products').selectedOptions.length;
   $('live-rotation-start').textContent = liveSession.rotation_error ? '重试商品轮播' : '开始商品轮播';
   $('live-rotation-stop').disabled = $('live-control').disabled || !liveSession.rotation_products?.length;
-  $('live-rotation-events').disabled = consoleClosed || liveBusy || !liveSession.id;
+  $('live-event-scene').disabled = consoleClosed || liveBusy;
+  $('live-event-refresh').disabled = consoleClosed || liveBusy;
+  $('live-rotation-events').disabled = consoleClosed || liveBusy || !($('live-event-scene').value || liveSession.id);
   $('live-event-product').disabled = $('live-rotation-events').disabled;
   $('live-event-task').disabled = $('live-rotation-events').disabled;
   $('live-enqueue').disabled = $('live-control').disabled || !!liveSession.manual;
@@ -498,7 +500,7 @@ async function loadLive() {
   if (consoleClosed) return;
   const previousSession = liveSession.id;
   liveSession = (await request('/api/live/state')).session;
-  if (previousSession !== liveSession.id) resetRotationEvents();
+  if (previousSession !== liveSession.id && !$('live-event-scene').value) resetRotationEvents();
   if (!rotationSelectionEdited) {
     const configured = new Set(liveSession.rotation_retry_products || liveSession.rotation_products || []);
     let selectionChanged = false;
@@ -547,14 +549,24 @@ $('live-rotation-stop').addEventListener('click', () => liveAction(() => request
 })));
 $('live-event-product').addEventListener('change', resetRotationEvents);
 $('live-event-task').addEventListener('input', resetRotationEvents);
+$('live-event-scene').addEventListener('change', () => { resetRotationEvents(); renderLiveButtons(); });
+$('live-event-refresh').addEventListener('click', () => liveAction(async () => {
+  const select = $('live-event-scene');
+  const selected = select.value;
+  const {sessions} = await request('/api/live/history');
+  select.replaceChildren(new Option('当前场次', ''), ...sessions.map(session =>
+    new Option(`${new Date(session.requested_at * 1000).toLocaleString()} · ${session.session_id}`, session.session_id)));
+  select.value = sessions.some(session => session.session_id === selected) ? selected : '';
+  if (select.value !== selected) resetRotationEvents();
+}));
 $('live-rotation-events').addEventListener('click', () => liveAction(async () => {
-  const sessionId = liveSession.id;
+  const sessionId = $('live-event-scene').value || liveSession.id;
   const query = new URLSearchParams({session_id:sessionId, after:String(rotationEventCursor)});
   if ($('live-event-product').value) query.set('product_id', $('live-event-product').value);
   const taskId = $('live-event-task').value.trim();
   if (taskId) query.set('task_id', taskId);
   const result = await request('/api/live/rotation/events?' + query);
-  if (liveSession.id !== sessionId) return;
+  if (($('live-event-scene').value || liveSession.id) !== sessionId) return;
   const history = result.session;
   $('live-event-session').textContent = history?.ended_at
     ? `${liveLabels[history.status]} · ${history.frames} 帧 · ${new Date((history.started_at ?? history.requested_at) * 1000).toLocaleString()} 至 ${new Date(history.ended_at * 1000).toLocaleString()}`
@@ -571,7 +583,7 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
   rotationEventCursor = result.next_cursor;
   $('live-rotation-events-status').textContent = result.events.length
     ? `已读取 ${result.events.length} 条记录`
-    : (rotationEventCursor ? '暂无更多记录' : '本场暂无口播完成记录');
+    : (rotationEventCursor ? '暂无更多记录' : '该场次暂无口播完成记录');
   if (rotationEventCursor) $('live-rotation-events').textContent = '读取后续口播记录';
 }));
 $('live-devices').addEventListener('click', () => liveAction(async () => {
