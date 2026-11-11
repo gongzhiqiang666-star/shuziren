@@ -111,6 +111,22 @@ class ConsoleHTTPTests(unittest.TestCase):
         with response:
             return response.status, json.load(response)
 
+    def test_session_reports_configured_speech_engine(self):
+        self.assertEqual(self.call('/api/session')[1]['tts_engine'], 'indextts')
+        for engine in ('zipvoice', 'omnivoice'):
+            with self.subTest(engine=engine):
+                server = create_server(self.store, port=0, tts_engine=engine)
+                thread = threading.Thread(target=server.serve_forever)
+                thread.start()
+                try:
+                    url = f'http://127.0.0.1:{server.server_port}/api/session'
+                    with urlopen(url, timeout=3) as response:
+                        self.assertEqual(json.load(response)['tts_engine'], engine)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join()
+
     def test_refresh_does_not_create_config_or_live_session(self):
         for _ in range(3):
             status, value = self.call('/api/state')
