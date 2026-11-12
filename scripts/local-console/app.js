@@ -851,6 +851,12 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       lines.push(`${title} · 重复问题 ${group.evidence.length} 次：${group.question}`,
         '对应问答任务：' + group.evidence.map(item => item.task_id).join('、'));
     }
+    if (review.replies_without_playback_record.length) {
+      lines.push('待核对播放结果的问答');
+      for (const reply of review.replies_without_playback_record) {
+        lines.push(`${formatTime(reply.queued_at)} · ${reply.question} · 任务 ${reply.task_id}`);
+      }
+    }
     output.replaceChildren(...lines.map(line => {
       const paragraph = document.createElement('p');
       paragraph.textContent = line;

@@ -57,6 +57,9 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(question['question'], '什么材质？')
         self.assertEqual([item['task_id'] for item in question['evidence']], ['reply', 'second-reply'])
         self.assertIsNone(question['evidence'][1]['played_at'])
+        pending, = review['replies_without_playback_record']
+        self.assertEqual(pending['task_id'], 'second-reply')
+        self.assertEqual(pending['product_version'], 3)
         product, next_product = report['products']
         self.assertEqual(product['completed_segments'], 2)
         self.assertEqual(next_product['completed_segments'], 1)

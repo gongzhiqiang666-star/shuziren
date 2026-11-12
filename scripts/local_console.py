@@ -223,6 +223,11 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             'session_id': sessions[0], 'missing': report['missing'],
                             'repeated_questions': [group for group in questions.values()
                                                    if len(group['evidence']) > 1],
+                            'replies_without_playback_record': [
+                                {name: reply[name] for name in
+                                 ('task_id', 'product_id', 'product_version', 'question', 'queued_at')}
+                                for reply in report['queued_replies'] if reply['played_at'] is None
+                            ],
                             'findings': [{
                                 'evidence': {'event_id': fault['event_id'], 'occurred_at': fault['occurred_at']},
                                 'fact': fault['reason'],
