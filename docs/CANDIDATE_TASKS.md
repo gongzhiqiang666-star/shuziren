@@ -252,3 +252,5 @@ X02-02 当前版 IndexTTS 实机复跑通过。独立媒体环境确认无缓存
 X02-03 当前版独立媒体环境复跑通过。两条真实无缓存新语音复用常驻进程，第二条运行中加入，逐段 PCM 顺序和摘要一致。重复拒绝、停止后迟到结果拒绝及商品变更清队列均通过。报告在 logs/validation/x02-ingress-current-01。此用例使用测试消费者，设备回采和平台另验。
 
 X02-03 真实合成与受控背压复测通过。测试消费者收到首段后暂停，第二条无缓存语音生成完成时确认第一条仍待交付。恢复消费后两条 PCM 顺序、采样区间和摘要一致。报告在 logs/validation/x02-ingress-backpressure-01。真实设备高负载验收单独保留。
+
+X03-01 上游源码基线已固定：[MuseTalk](https://github.com/TMElyralab/MuseTalk/tree/0a89dec45a0192b824e3cf4daf96c239440c5ed8) 作为独立口型原型，[LiveTalking](https://github.com/lipku/LiveTalking/tree/c7269433a2b6ecebcd9342445d2ecc882c98b0da) 作为传输和适配参考。本机验证目录未找到两者的运行报告。MuseTalk 上游速度数据基于 Tesla V100，RTX 3060 的同素材、同输出规格及模型依赖核对仍待执行。
