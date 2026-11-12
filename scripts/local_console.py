@@ -79,7 +79,7 @@ def browser_metrics(values):
 def live_advice(session):
     if session['status'] != 'running':
         return []
-    return [
+    advice = [
         {'code': field, 'evidence': session[field], 'recommendation': recommendation}
         for field, recommendation in (
             ('rotation_error', '检查故障原因并核对轮播配置，再决定是否重试'),
@@ -87,6 +87,11 @@ def live_advice(session):
         )
         if session.get(field)
     ]
+    if session.get('automatic_queue_full') is True:
+        advice.append({'code': 'automatic_queue_full',
+                       'evidence': f"普通口播队列已满，待播 {session['pending']} 条",
+                       'recommendation': '等待队列释放后再添加口播'})
+    return advice
 
 
 def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=None):

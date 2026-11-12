@@ -35,6 +35,12 @@ class ConsoleHTTPTests(unittest.TestCase):
             self.assertEqual((advice['code'], advice['evidence']), ('rotation_error', '合成超时'))
             live.return_value.state.return_value['rotation_error'] = None
             self.assertEqual(self.call(route)[1]['advice'], [])
+            live.return_value.state.return_value.update(automatic_queue_full=True, pending=4)
+            advice, = self.call(route)[1]['advice']
+            self.assertEqual(advice['code'], 'automatic_queue_full')
+            self.assertIn('待播 4 条', advice['evidence'])
+            live.return_value.state.return_value.update(automatic_queue_full=False, pending=3)
+            self.assertEqual(self.call(route)[1]['advice'], [])
 
     def test_live_comparison_requires_distinct_ended_sessions(self):
         store = ProductStore(self.directory.name)
