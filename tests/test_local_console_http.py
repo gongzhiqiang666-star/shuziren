@@ -140,6 +140,14 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(response['comparison']['spend_difference_minor'], -150)
         self.assertEqual(response['comparison']['conclusion'], 'uncertain')
+        trial = {**payload, 'period_start': '2026-11-04', 'period_end': '2026-11-06'}
+        self.assertEqual(self.call(route, {**trial, 'asset': 'clip-2', 'spend_minor': 900})[0], 200)
+        self.assertEqual(self.call(compare_url), (200, response))
+        self.assertEqual(self.call(route, {**trial, 'spend_minor': 450})[0], 200)
+        updated = self.call(compare_url)[1]['comparison']
+        self.assertEqual(updated['spend_difference_minor'], 50)
+        self.assertIn('net_result', updated['missing'])
+        self.assertEqual(updated['conclusion'], 'uncertain')
 
     def test_sourcing_candidates_preserve_source_and_leave_missing_terms_unknown(self):
         route = '/api/sourcing/candidates'
