@@ -293,7 +293,7 @@ preparationPreview.addEventListener('click', async () => {
   preparationSave.disabled = true;
   $('preparation-error').textContent = '';
   try {
-    const {items, segments, missing, revision, review} = await request(preparationRoute + '/package');
+    const {items, segments, missing, revision, review, improvements} = await request(preparationRoute + '/package');
     const lines = ['开场', segments.opening];
     for (const [index, item] of items.entries()) {
       if (index) lines.push('', '转场', segments.transition);
@@ -305,6 +305,10 @@ preparationPreview.addEventListener('click', async () => {
     }
     lines.push('', '收尾', segments.closing);
     if (missing.length) lines.push('', '场次待补条件', ...missing);
+    if (improvements.length) {
+      lines.push('', '已采用的改进任务', ...improvements.map(task =>
+        `${task.owner} · ${task.goal}（场次 ${task.session_id}，故障 ${task.fault_id}）`));
+    }
     preparationRevision = revision;
     $('preparation-package').value = review ?? lines.join('\n');
     $('preparation-package-panel').hidden = false;
@@ -890,7 +894,12 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       button.textContent = '保存改进任务';
       const status = document.createElement('p');
       status.setAttribute('role', 'status');
-      form.append(heading, ownerLabel, goalLabel, button, status);
+      const adopted = document.createElement('input');
+      adopted.type = 'checkbox';
+      adopted.checked = task?.adopted ?? false;
+      const adoptedLabel = document.createElement('label');
+      adoptedLabel.append(adopted, ' 纳入直播准备包');
+      form.append(heading, ownerLabel, goalLabel, adoptedLabel, button, status);
       form.addEventListener('submit', async event => {
         event.preventDefault();
         if (button.disabled || consoleClosed) return;
@@ -899,6 +908,7 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
         try {
           await request('/api/live/improvements', {
             session_id:sessionId, fault_id:fault.event_id, owner:owner.value, goal:goal.value,
+            adopted:adopted.checked,
           });
           status.textContent = '改进任务已保存';
         } catch (error) {

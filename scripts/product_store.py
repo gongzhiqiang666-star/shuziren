@@ -146,6 +146,8 @@ class ProductStore:
                     revision TEXT PRIMARY KEY, review TEXT NOT NULL);
             ''')
             db.execute('BEGIN IMMEDIATE')
+            if 'adopted' not in {row[1] for row in db.execute('PRAGMA table_info(live_improvement_tasks)')}:
+                db.execute('ALTER TABLE live_improvement_tasks ADD COLUMN adopted INTEGER NOT NULL DEFAULT 0')
             columns = {row[1] for row in db.execute('PRAGMA table_info(scripts)')}
             if 'parent_script_id' not in columns:
                 db.execute('ALTER TABLE scripts ADD COLUMN parent_script_id TEXT REFERENCES scripts(id)')
@@ -216,7 +218,7 @@ class ProductStore:
                 'missing': [] if facts else ['补充并核对商品事实'],
                 'assets': ['核对商品展示图或实拍视频'],
             })
-        package = {**preparation, 'items': items, 'segments': {
+        package = {**preparation, 'items': items, 'improvements': self.live_improvements(adopted_only=True), 'segments': {
             'opening': '欢迎来到直播间，接下来为大家逐一介绍本场商品。',
             'transition': '接下来介绍下一件商品。',
             'closing': '感谢观看，本场商品介绍到这里。',
@@ -470,29 +472,34 @@ class ProductStore:
         with self.connect() as db:
             db.execute('INSERT INTO live_rotation_faults VALUES (?, ?, ?)', (session_id, occurred_at, reason))
 
-    def save_live_improvement(self, session_id, fault_id, owner, goal):
+    def save_live_improvement(self, session_id, fault_id, owner, goal, adopted=False):
         owner = text(owner, '负责人', 120)
         goal = text(goal, '改进目标', 2000)
         if type(fault_id) is not int or not 0 < fault_id < 2**63:
             raise ProductError('轮播故障编号无效')
+        if type(adopted) is not bool:
+            raise ProductError('采用状态无效')
         with self.connect() as db:
             result = db.execute("""
-                INSERT INTO live_improvement_tasks (session_id, fault_id, owner, goal)
-                SELECT session_id, rowid, ?, ? FROM live_rotation_faults WHERE session_id=? AND rowid=?
-                ON CONFLICT(session_id, fault_id) DO UPDATE SET owner=excluded.owner, goal=excluded.goal
-            """, (owner, goal, session_id, fault_id))
+                INSERT INTO live_improvement_tasks (session_id, fault_id, owner, goal, adopted)
+                SELECT session_id, rowid, ?, ?, ? FROM live_rotation_faults WHERE session_id=? AND rowid=?
+                ON CONFLICT(session_id, fault_id) DO UPDATE SET
+                    owner=excluded.owner, goal=excluded.goal, adopted=excluded.adopted
+            """, (owner, goal, adopted, session_id, fault_id))
             if not result.rowcount:
                 raise ProductError('该场次没有对应的轮播故障记录')
 
-    def live_improvements(self, session_id):
+    def live_improvements(self, session_id=None, *, adopted_only=False):
         with self.connect() as db:
             rows = db.execute("""
-                SELECT task.fault_id, task.owner, task.goal, fault.reason, fault.occurred_at
+                SELECT task.session_id, task.fault_id, task.owner, task.goal, task.adopted,
+                       fault.reason, fault.occurred_at
                 FROM live_improvement_tasks task
                 JOIN live_rotation_faults fault ON fault.rowid=task.fault_id AND fault.session_id=task.session_id
-                WHERE task.session_id=? ORDER BY task.fault_id
-            """, (session_id,)).fetchall()
-        return [dict(row) for row in rows]
+                WHERE (? IS NULL OR task.session_id=?) AND (NOT ? OR task.adopted=1)
+                ORDER BY task.fault_id
+            """, (session_id, session_id, adopted_only)).fetchall()
+        return [{**dict(row), 'adopted': bool(row['adopted'])} for row in rows]
 
     def record_rotation_completion(self, session_id, task_id, item, segment_index, *,
                                    sample_start=None, sample_end=None):

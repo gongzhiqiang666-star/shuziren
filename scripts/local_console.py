@@ -575,7 +575,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         if set(value)!={'task_id'} or not isinstance(value['task_id'],str): raise ProductError('TTS取消字段无效')
                         return self.respond(200,{'task':tts().cancel(value['task_id'])})
                     if path == "/api/live/improvements":
-                        if set(value) != {'session_id', 'fault_id', 'owner', 'goal'} or not isinstance(value['session_id'], str):
+                        required = {'session_id', 'fault_id', 'owner', 'goal'}
+                        if set(value) - {'adopted'} != required or not isinstance(value['session_id'], str):
                             raise ProductError('改进任务字段无效')
                         data = products()
                         data.save_live_improvement(**value)

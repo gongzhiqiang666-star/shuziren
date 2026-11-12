@@ -61,10 +61,18 @@ class ConsoleHTTPTests(unittest.TestCase):
         status, saved = self.call(task_route, {**task, 'goal': '复测两次语音合成'})
         self.assertEqual(status, 200)
         self.assertEqual(saved['tasks'], [{
-            'fault_id': 1, 'owner': '运营', 'goal': '复测两次语音合成',
+            'session_id': 'scene', 'fault_id': 1, 'owner': '运营', 'goal': '复测两次语音合成', 'adopted': False,
             'reason': '语音合成超时', 'occurred_at': 104,
         }])
         self.assertEqual(self.call(task_route + '?session_id=scene'), (200, saved))
+        product = store.save(title='茶杯', content='验收商品', product_index=1)
+        store.save_live_preparation(product_ids=[product['id']])
+        package_route = '/api/live/preparation/package'
+        self.assertEqual(self.call(package_route)[1]['improvements'], [])
+        self.assertEqual(self.call(task_route, {**task, 'adopted': True})[0], 200)
+        self.assertEqual(self.call(package_route)[1]['improvements'][0]['fault_id'], 1)
+        self.assertEqual(self.call(task_route, {**task, 'adopted': False})[0], 200)
+        self.assertEqual(self.call(package_route)[1]['improvements'], [])
         self.assertIn('questions_and_answers', review['missing'])
         unqueued, = review['unqueued_replies']
         self.assertEqual((unqueued['question'], unqueued['status'], unqueued['reason']),
