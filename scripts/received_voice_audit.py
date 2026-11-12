@@ -187,8 +187,9 @@ def audit_received_voice(path,completed,expected,origin_ns=None):
     timestamp_steps = [b[1] - a[1] for a, b in zip(video, video[1:])]
     repeated_frame_indices = Counter(first[0] for first, second in zip(video, video[1:])
                                      if first[0] == second[0])
-    missing_frame_ranges = [[first[0] + 1, second[0] - 1]
-                            for first, second in zip(video, video[1:]) if second[0] - first[0] > 1]
+    received_indices = sorted({index for index, _ in video})
+    missing_frame_ranges = [[first + 1, second - 1]
+                            for first, second in zip(received_indices, received_indices[1:]) if second - first > 1]
     received_speech=[index for index,_ in video if index in speech_frames]
     speech_counts=Counter(received_speech)
     missing_speech_indices=sorted(speech_frames-speech_counts.keys())
@@ -208,7 +209,8 @@ def audit_received_voice(path,completed,expected,origin_ns=None):
     return {'voices':voices,'received_video_frames':len(video),'received_audio_samples':len(received),
         'first_received_frame_index': video[0][0], 'last_received_frame_index': video[-1][0],
         'received_video_span_seconds':video[-1][1]-video[0][1],
-        'missing_frames':sum(max(0,step-1) for step in steps),'repeated_frames':sum(repeated_frame_indices.values()),
+        'missing_frames':sum(end - start + 1 for start, end in missing_frame_ranges),
+        'repeated_frames':sum(repeated_frame_indices.values()),
         'repeated_frame_indices': dict(repeated_frame_indices),
         'missing_frame_ranges': missing_frame_ranges,
         'reordered_frames':sum(step<0 for step in steps),'frame_continuity_passed':bool(steps) and all(step==1 for step in steps),
