@@ -509,7 +509,7 @@ async function sourcingAction(save) {
         fact.textContent = `${label}：${candidate.details[key] ?? '未知'}`;
         facts.append(fact);
       }
-      row.append(title, facts, sourcingTrialEditor(candidate));
+      row.append(title, facts, sourcingTrialEditor(candidate), sourcingDecisionEditor(candidate));
       return row;
     }));
     status.textContent = save ? '采购候选已保存' : candidates.length ? '' : '暂无采购候选';
@@ -577,6 +577,76 @@ function sourcingTrialEditor(candidate) {
       await request(route, {candidate_id:candidate.id, sample_evidence:sample.value, trial_evidence:trial.value,
         cost_minor:cost.value === '' ? null : cost.valueAsNumber, verdict:verdict.value});
       status.textContent = '样品与试卖记录已保存';
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  });
+  return panel;
+}
+function sourcingDecisionEditor(candidate) {
+  const route = '/api/sourcing/decision';
+  const panel = document.createElement('details');
+  const summary = document.createElement('summary');
+  summary.textContent = '采购辅助结论';
+  const form = document.createElement('form');
+  const decision = document.createElement('select');
+  decision.append(new Option('继续试验', 'continue'), new Option('采用', 'adopt'), new Option('放弃', 'drop'));
+  const rationale = document.createElement('textarea');
+  const constraints = document.createElement('textarea');
+  rationale.required = constraints.required = true;
+  rationale.maxLength = constraints.maxLength = 2000;
+  for (const [caption, input] of [['商家结论', decision], ['结论依据', rationale], ['资金及库存约束', constraints]]) {
+    const label = document.createElement('label');
+    label.append(caption, input);
+    form.append(label);
+  }
+  const button = document.createElement('button');
+  button.type = 'submit';
+  button.textContent = '保存采购结论';
+  button.disabled = true;
+  const status = document.createElement('p');
+  status.setAttribute('role', 'status');
+  const evidence = document.createElement('p');
+  form.append(button, status, evidence);
+  panel.append(summary, form);
+  function showEvidence(record) {
+    const snapshot = record?.trial;
+    evidence.textContent = snapshot
+      ? `保存结论时的样品依据：${snapshot.sample_evidence} · 试卖：${snapshot.trial_evidence} · 样品成本：${snapshot.cost_minor ?? '未知'}${snapshot.cost_minor == null ? '' : ' 分'}`
+      : '';
+  }
+  let loaded = false;
+  let loading = false;
+  panel.addEventListener('toggle', async () => {
+    if (!panel.open || loaded || loading || consoleClosed) return;
+    loading = true;
+    try {
+      const query = new URLSearchParams({candidate_id:candidate.id});
+      const {decision: record} = await request(route + '?' + query);
+      decision.value = record?.decision ?? 'continue';
+      rationale.value = record?.rationale ?? '';
+      constraints.value = record?.constraints ?? '';
+      showEvidence(record);
+      status.textContent = '';
+      loaded = true;
+      button.disabled = false;
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      loading = false;
+    }
+  });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (button.disabled || consoleClosed) return;
+    button.disabled = true;
+    try {
+      const {decision: record} = await request(route, {candidate_id:candidate.id, decision:decision.value,
+        rationale:rationale.value, constraints:constraints.value});
+      showEvidence(record);
+      status.textContent = '采购辅助结论已保存';
     } catch (error) {
       status.textContent = error.message;
     } finally {
