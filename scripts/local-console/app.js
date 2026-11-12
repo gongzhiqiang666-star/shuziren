@@ -284,7 +284,8 @@ async function promotionSpendAction(save) {
         if (savePlan.disabled || currentProduct !== product || consoleClosed || !budget.reportValidity()) return;
         savePlan.disabled = true;
         try {
-          await request('/api/promotion/plans', {...billIdentity, budget_minor:budget.valueAsNumber, rationale:rationale.value});
+          await request('/api/promotion/plans', {...billIdentity, budget_minor:budget.valueAsNumber,
+            rationale:rationale.value, expected_bill:record});
           previewStatus.textContent = '本机投放方案已保存';
           await loadPromotionPlans(product);
         } catch (error) {

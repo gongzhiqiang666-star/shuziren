@@ -1321,7 +1321,8 @@ class ProductStore:
                 DO UPDATE SET spend_minor=excluded.spend_minor, attribution=excluded.attribution
             """, (*key, campaign, asset, spend_minor, attribution))
 
-    def save_promotion_plan(self, product_id, source, period_start, period_end, campaign, asset, budget_minor, rationale):
+    def save_promotion_plan(self, product_id, source, period_start, period_end, campaign, asset,
+                            budget_minor, rationale, expected_bill=_UNCHANGED):
         rationale = text(rationale, '调整理由', 2000)
         if type(budget_minor) is not int or not 0 <= budget_minor < 2**53:
             raise ProductError('预算上限须为非负整数分')
@@ -1336,6 +1337,8 @@ class ProductStore:
             """, keys).fetchone()
             if not bill:
                 raise ProductError('缺少对应的投放账单')
+            if expected_bill is not _UNCHANGED and expected_bill != dict(bill):
+                raise Conflict('投放账单已变化，请重新读取后核对预算')
             if bill['spend_minor'] > budget_minor:
                 raise Conflict('账单支出已超过预算上限')
             snapshot = {'id': str(uuid.uuid4()), 'bill': dict(bill), 'budget_minor': budget_minor,
