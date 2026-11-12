@@ -237,6 +237,8 @@ class ProductStore:
                 db.execute('ALTER TABLE product_after_sales_tasks ADD COLUMN revoked INTEGER NOT NULL DEFAULT 0')
             if 'withdrawn' not in {row[1] for row in db.execute('PRAGMA table_info(live_content_drafts)')}:
                 db.execute('ALTER TABLE live_content_drafts ADD COLUMN withdrawn INTEGER NOT NULL DEFAULT 0')
+            if 'revision_count' not in {row[1] for row in db.execute('PRAGMA table_info(live_content_drafts)')}:
+                db.execute('ALTER TABLE live_content_drafts ADD COLUMN revision_count INTEGER')
             if 'revoked_at' not in {row[1] for row in db.execute('PRAGMA table_info(live_advice_acknowledgments)')}:
                 db.execute('ALTER TABLE live_advice_acknowledgments ADD COLUMN revoked_at REAL')
             fault_columns = {row[1] for row in db.execute('PRAGMA table_info(live_rotation_faults)')}
@@ -855,7 +857,7 @@ class ProductStore:
         with self.connect() as db:
             row = db.execute("""
                 SELECT live_content_schedule.account, audience, publish_at, planned_body=body AS draft_matches,
-                       publication_id, withdrawn
+                       publication_id, withdrawn, revision_count
                 FROM live_content_schedule JOIN live_content_drafts USING (session_id, task_id)
                 LEFT JOIN live_content_receipts USING (session_id, task_id)
                 WHERE session_id=? AND task_id=?
@@ -937,8 +939,9 @@ class ProductStore:
             raise Conflict('商品事实或片段来源需要重新核对')
         with self.connect() as db:
             result = db.execute("""
-                INSERT INTO live_content_drafts (session_id, task_id, body) VALUES (?, ?, ?)
-                ON CONFLICT(session_id, task_id) DO UPDATE SET body=excluded.body
+                INSERT INTO live_content_drafts (session_id, task_id, body, revision_count) VALUES (?, ?, ?, 0)
+                ON CONFLICT(session_id, task_id) DO UPDATE SET
+                    revision_count=revision_count + (body <> excluded.body), body=excluded.body
                 WHERE live_content_drafts.withdrawn=0
             """, (session_id, task_id, body))
             if not result.rowcount:

@@ -443,6 +443,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(saved_schedule['schedule']['publish_at'], '2027-01-01T01:00:00+00:00')
         self.assertTrue(saved_schedule['schedule']['draft_matches'])
+        self.assertEqual(saved_schedule['schedule']['revision_count'], 0)
         self.assertEqual(self.call('/api/live/content-draft', {**body, 'body': '改稿'})[0], 200)
         self.assertFalse(self.call(schedule_route + '?session_id=scene&task_id=assistant-task')[1]['schedule']['draft_matches'])
         receipt_route = '/api/live/content-receipt'
@@ -451,6 +452,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call('/api/live/content-draft', body)[0], 200)
         self.assertEqual(self.call(receipt_route, {**receipt, 'task_id': 'task'})[0], 409)
         self.assertEqual(self.call(receipt_route, receipt)[1]['schedule']['publication_id'], 'platform-001')
+        self.assertEqual(self.call('/api/live/content-draft', body)[0], 200)
+        self.assertEqual(self.call(receipt_route, receipt)[1]['schedule']['revision_count'], 2)
         self.assertEqual(self.call(receipt_route, receipt)[0], 200)
         other_clip = {'session_id': 'scene', 'task_id': 'fingerprinted-task'}
         self.assertEqual(self.call('/api/live/content-draft', {**body, **other_clip})[0], 200)
