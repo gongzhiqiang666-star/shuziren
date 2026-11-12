@@ -403,3 +403,5 @@ G07-03 售后整改话术进入下次讲解的本机实播通过。测试夹具�
 G07-04 Chrome 跨场次问答对照通过，空场正确率和耗时未知，试验场正确率 50%、不确定和未复核各 1 条，已登记耗时 0 秒。证据 logs/validation/g07-reply-compare-chrome-01/report.txt。浏览器加载时发现跨场次处理局部变量遮蔽淘宝回复管理器，已修复并通过淘宝状态接口和场次对照回归。
 
 G07-04 Chrome 重复提问跨场次对照通过。空场显示 0 组；试验场同一商品三次相同问题（含空格差异）统计为 1 组、首次后重复 2 次，另一商品的同文问题未合并。证据 logs/validation/g07-repeat-compare-chrome-01/report.txt。统计覆盖已入队答复，真实商家数据和未入队问题的覆盖仍待验。
+
+G07-04 Chrome 未入队提问对照补验通过。试验场增加一条同商品同问题的未入队记录，重复次数从 2 增至 3，单列未入队 1 条，空场保留两个零值。证据 logs/validation/g07-unqueued-compare-chrome-01/report.txt。配置本机 FFmpeg 后控制台 HTTP 回归 49 项全通过，见 logs/http-regression-dfc663f.log。真实商家问答和运营效果仍待验。
