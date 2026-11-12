@@ -377,7 +377,9 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             'subtitle_srt': subtitle,
                             'language': (source['speech_provenance'] or {}).get('language'),
                             'source': {key: source[key] for key in
-                                       ('session_id', 'task_id', 'product_id', 'product_version', 'script_id', 'segment_index')},
+                                       ('session_id', 'task_id', 'product_id', 'product_version', 'script_id',
+                                        'segment_index', 'voice_id', 'sample_start', 'sample_end')},
+                            'speaker_role': source['segment']['type'],
                         }})
                     source['has_saved_draft'] = products().live_content_draft_body(
                         source['session_id'], source['task_id']) is not None

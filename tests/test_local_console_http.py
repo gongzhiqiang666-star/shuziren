@@ -415,6 +415,9 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(result['draft']['cover_text'], '新版茶杯')
         self.assertEqual(result['draft']['narration'], '补充说明。')
         self.assertEqual(result['draft']['subtitle_srt'], '1\n00:00:00,000 --> 00:00:01,500\n补充说明。\n')
+        self.assertEqual(result['draft']['speaker_role'], 'assistant')
+        self.assertEqual((result['draft']['source']['sample_start'], result['draft']['source']['sample_end']),
+                         (24000, 60000))
         self.assertEqual(result['draft']['source']['script_id'], segmented_id)
         self.assertIsNone(result['draft']['language'])
         self.assertIsNone(result['draft']['saved_body'])
