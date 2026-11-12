@@ -770,10 +770,16 @@ class ConsoleHTTPTests(unittest.TestCase):
         summary_url = route + '/summary?' + urlencode({**base, **period})
         expected = {'clicks': None, 'orders': 8, 'refunds': 0, 'closing_stock': 7}
         self.assertEqual(self.call(summary_url), (200, {'summary': expected}))
+        _, other = self.call('/api/products', {'title': '桌布', 'content': '经营数据', 'product_index': 2})
+        other_query = {**base, **period, 'product_id': other['product']['id']}
+        self.assertEqual(self.call(route, {**other_query, 'orders': 4, 'refunds': 1})[0], 200)
         correction = {**base, 'period_start': '2026-11-01', 'period_end': '2026-11-01',
                       'orders': 6, 'refunds': 2, 'stock': 9}
         self.assertEqual(self.call(route, correction)[0], 200)
         self.assertEqual(self.call(summary_url), (200, {'summary': {**expected, 'orders': 9, 'refunds': 2}}))
+        self.assertEqual(self.call(route + '/summary?' + urlencode(other_query)), (200, {'summary': {
+            'clicks': None, 'orders': 4, 'refunds': 1, 'closing_stock': None,
+        }}))
         self.assertEqual(self.call(route, {**base, **period, 'orders': 9})[0], 200)
         self.assertEqual(self.call(summary_url)[0], 400)
 
