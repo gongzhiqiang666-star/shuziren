@@ -2138,8 +2138,11 @@ $('live-compare-form').addEventListener('submit', event => {
       });
       const lineup = result.lineup_baseline?.lineup.map(item => `${item.title}（版本 ${item.version}）`).join(' → ');
       const observed = result.observed_product_order.map(id => savedProducts.find(product => product.id === id)?.title ?? id);
+      const plans = result.preparation_applications.map(plan =>
+        `${label} · 已审核轮播计划 ${plan.revision} · ${plan.items.map(item =>
+          `${item.title}（版本 ${item.product_version}）`).join(' → ')}`);
       return [summary, `${label} · 人工排品基线 ${lineup ?? '未关联'}`,
-        `${label} · 实际口播顺序 ${observed.join(' → ') || '未记录'}`, ...products];
+        ...plans, `${label} · 实际口播顺序 ${observed.join(' → ') || '未记录'}`, ...products];
     });
     const gaps = {audience:'人群', traffic:'流量', promotion:'活动', refund_lag:'退款滞后'};
     lines.push('结论：不确定', '待补数据：' + comparison.missing.map(key => gaps[key] ?? key).join('、'));
