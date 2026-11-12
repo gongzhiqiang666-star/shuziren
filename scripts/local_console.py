@@ -891,7 +891,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         products().revoke_after_sales_task(**value)
                         return self.respond(200, {'revoked': True})
                     if path == "/api/products/after-sales/task":
-                        if set(value) - {'product_version'} != {'product_id', 'source', 'period_start', 'period_end',
+                        if set(value) - {'product_version', 'expected_count'} != {'product_id', 'source', 'period_start', 'period_end',
                                                                'category', 'owner', 'goal'}:
                             raise ProductError('售后改进任务字段无效')
                         data = products()
