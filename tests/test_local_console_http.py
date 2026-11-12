@@ -19,6 +19,22 @@ from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_after_sales_summary_keeps_missing_categories_and_corrects_same_window(self):
+        store = ProductStore(self.directory.name)
+        first = store.save(title='茶杯', content='商品说明', product_index=1)
+        second = store.save(title='桌布', content='商品说明', product_index=2)
+        route = '/api/products/after-sales'
+        report = {'product_id': first['id'], 'source': '售后统计',
+                  'period_start': '2026-11-01', 'period_end': '2026-11-03',
+                  'counts': {'quality': 0, 'fulfillment': 2}}
+        self.assertEqual(self.call(route, report)[0], 200)
+        self.assertEqual(self.call(route, {**report, 'counts': {'quality': True}})[0], 400)
+        status, saved = self.call(route, {**report, 'counts': {'quality': 0, 'fulfillment': 3}})
+        self.assertEqual(status, 200)
+        item, = saved['reports']
+        self.assertEqual(item['counts'], {'quality': 0, 'fulfillment': 3})
+        self.assertEqual(self.call(route + '?product_id=' + second['id']), (200, {'reports': []}))
+
     def test_product_guide_compares_only_verified_current_facts(self):
         store = ProductStore(self.directory.name)
         first = store.save(title='茶杯', content='旧说明', product_index=1, product_facts={

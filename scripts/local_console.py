@@ -450,6 +450,11 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     return self.respond(200, {'baseline': products().live_lineup_baseline()})
                 if path == "/api/live/preparation/package":
                     return self.respond(200, products().build_live_preparation())
+                if path == "/api/products/after-sales":
+                    ids = parse_qs(urlsplit(self.path).query).get('product_id', [])
+                    if len(ids) != 1 or not 1 <= len(ids[0]) <= 64:
+                        raise ProductError('请选择商品')
+                    return self.respond(200, {'reports': products().after_sales(ids[0])})
                 if path == "/api/products/guide":
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                     ids = query.get('product_id', [])
@@ -762,6 +767,12 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         else:
                             data.revoke_live_advice_acknowledgment(value['session_id'], value['advice'], time())
                         return self.respond(200, {'acknowledged': acknowledge})
+                    if path == "/api/products/after-sales":
+                        if set(value) != {'product_id', 'source', 'period_start', 'period_end', 'counts'}:
+                            raise ProductError('售后汇总字段无效')
+                        data = products()
+                        data.save_after_sales(**value)
+                        return self.respond(200, {'reports': data.after_sales(value['product_id'])})
                     if path == "/api/products/settlement-review":
                         fields = ('sales_minor', 'cost_minor', 'fees_minor', 'refund_loss_minor')
                         if set(value) != {'product_id', 'source', 'scope', 'period_start', 'period_end',

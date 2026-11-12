@@ -127,6 +127,10 @@ class ProductStore:
                     source TEXT NOT NULL, period_start TEXT NOT NULL, period_end TEXT NOT NULL,
                     scope TEXT NOT NULL, clicks INTEGER, orders INTEGER, refunds INTEGER, stock INTEGER,
                     PRIMARY KEY(product_id, source, period_start, period_end, scope));
+                CREATE TABLE IF NOT EXISTS product_after_sales (
+                    product_id TEXT NOT NULL REFERENCES products(id), source TEXT NOT NULL,
+                    period_start TEXT NOT NULL, period_end TEXT NOT NULL,
+                    counts TEXT NOT NULL, PRIMARY KEY(product_id, source, period_start, period_end));
                 CREATE TABLE IF NOT EXISTS live_preparation (
                     singleton INTEGER PRIMARY KEY CHECK(singleton=1), draft TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_lineup_baseline (
@@ -810,6 +814,28 @@ class ProductStore:
     def list(self):
         with self.connect() as db:
             return [self.decode(row) for row in db.execute("SELECT * FROM products ORDER BY rowid")]
+
+    def save_after_sales(self, product_id, source, period_start, period_end, counts):
+        product_id = text(product_id, '商品编号', 64)
+        key = self._business_metric_row(product_id, source=source, scope='售后原因',
+                                        period_start=period_start, period_end=period_end)[:4]
+        categories = {'quality', 'size', 'expectation', 'fulfillment', 'other'}
+        if (not isinstance(counts, dict) or not counts or counts.keys() - categories
+                or any(type(count) is not int or not 0 <= count < 2**53 for count in counts.values())):
+            raise ProductError('售后原因须使用已知分类及非负整数数量')
+        self.get(product_id)
+        with self.connect() as db:
+            db.execute("""
+                INSERT INTO product_after_sales VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(product_id, source, period_start, period_end) DO UPDATE SET counts=excluded.counts
+            """, (*key, json.dumps(counts, sort_keys=True)))
+
+    def after_sales(self, product_id):
+        self.get(product_id)
+        with self.connect() as db:
+            rows = db.execute('SELECT * FROM product_after_sales WHERE product_id=? ORDER BY period_end DESC, source',
+                              (product_id,)).fetchall()
+        return [{**dict(row), 'counts': json.loads(row['counts'])} for row in rows]
 
     def compare_product_facts(self, product_ids, fact_names):
         now = datetime.now(timezone.utc)
