@@ -80,6 +80,8 @@ class ConsoleLive:
                            'requested_at': time.time()}
             if camera_device is not None:
                 self.status['requested_camera_device'] = camera_device
+            if rtmp_url is not None:
+                self.status['input_mode'] = 'rtmp'
             self._record_session()
             self.rotation = None
             self.reply_session = None
@@ -657,7 +659,8 @@ class ConsoleLive:
                 raise Conflict('场次已变化，请刷新状态')
             if self.status['status'] not in self.active_states:
                 return self.state()
-            client = self.client if self.status['status'] == 'preparing' else None
+            close_worker = self.status['status'] == 'preparing' or self.status.get('input_mode') == 'rtmp'
+            client = self.client if close_worker else None
             self.cancel.set()
             self.status.update(status='stopping')
         if client is not None:
