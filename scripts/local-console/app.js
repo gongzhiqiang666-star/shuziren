@@ -813,7 +813,7 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
   output.textContent = '正在读取场次报告';
   try {
     const query = new URLSearchParams({session_id:sessionId});
-    const [{session, products, controls, rotation_faults, observed_product_switches, missing}, review] =
+    const [{session, products, controls, rotation_faults, observed_product_switches, queued_replies, missing}, review] =
       await Promise.all([request('/api/live/report?' + query), request('/api/live/review?' + query)]);
     if (($('live-event-scene').value || liveSession.id) !== sessionId) return;
     const formatTime = value => value == null ? '未记录' : new Date(value * 1000).toLocaleString();
@@ -830,6 +830,13 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       ...rotation_faults.map(item => `${formatTime(item.occurred_at)} · 轮播故障 ${item.event_id} · ${item.reason}`),
       ...observed_product_switches.map(item => `${item.completed_at} · 口播商品变化 ${item.previous_product_id} → ${item.product_id} · 任务 ${item.task_id}`),
     ];
+    for (const reply of queued_replies) {
+      const title = savedProducts.find(product => product.id === reply.product_id)?.title ?? reply.product_id;
+      lines.push(
+        `${formatTime(reply.queued_at)} · 问答已入队 · ${title} · 商品版本 ${reply.product_version} · 任务 ${reply.task_id}`,
+        `问：${reply.question}`, `答：${reply.answer}`,
+      );
+    }
     if (session.failure_reason) lines.push('场次失败原因：' + session.failure_reason);
     if (missing.length) lines.push('数据缺口：' + missing.map(key => labels[key] ?? key).join('、'));
     const faultIds = new Set(rotation_faults.map(fault => fault.event_id));
