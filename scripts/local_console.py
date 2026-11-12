@@ -481,12 +481,14 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if len(ids) != 1 or not 1 <= len(ids[0]) <= 64:
                         raise ProductError('请选择商品')
                     return self.respond(200, {'reports': products().after_sales(ids[0])})
-                if path in {"/api/sourcing/trial", "/api/sourcing/decision"}:
+                if path in {"/api/sourcing/trial", "/api/sourcing/decision", "/api/sourcing/decision/history"}:
                     ids = parse_qs(urlsplit(self.path).query).get('candidate_id', [])
                     if len(ids) != 1 or not 1 <= len(ids[0]) <= 64:
                         raise ProductError('请选择采购候选')
                     if path.endswith('/decision'):
                         return self.respond(200, {'decision': products().sourcing_decision(ids[0])})
+                    if path.endswith('/history'):
+                        return self.respond(200, {'decisions': products().sourcing_decision_archive(ids[0])})
                     return self.respond(200, {'trial': products().sourcing_trial(ids[0])})
                 if path == "/api/promotion/compare":
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)

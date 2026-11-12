@@ -165,6 +165,10 @@ class ProductStore:
                     cost_minor INTEGER, verdict TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS sourcing_decisions (
                     candidate_id TEXT PRIMARY KEY REFERENCES sourcing_candidates(id), snapshot TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS sourcing_decision_archive (
+                    candidate_id TEXT NOT NULL REFERENCES sourcing_candidates(id), snapshot TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS sourcing_decision_archive_candidate
+                    ON sourcing_decision_archive(candidate_id);
                 CREATE TABLE IF NOT EXISTS promotion_spend (
                     product_id TEXT NOT NULL REFERENCES products(id), source TEXT NOT NULL,
                     period_start TEXT NOT NULL, period_end TEXT NOT NULL, campaign TEXT NOT NULL,
@@ -1280,6 +1284,10 @@ class ProductStore:
                         'constraints': constraints, 'trial': trial_snapshot,
                         'candidate': {**dict(candidate), 'details': json.loads(candidate['details'])},
                         'recorded_at': datetime.now(timezone.utc).isoformat()}
+            db.execute('''
+                INSERT INTO sourcing_decision_archive (candidate_id, snapshot)
+                SELECT candidate_id, snapshot FROM sourcing_decisions WHERE candidate_id=?
+            ''', (candidate_id,))
             db.execute('INSERT OR REPLACE INTO sourcing_decisions VALUES (?, ?)',
                        (candidate_id, json.dumps(snapshot, ensure_ascii=False)))
         return snapshot
@@ -1288,6 +1296,13 @@ class ProductStore:
         with self.connect() as db:
             row = db.execute('SELECT snapshot FROM sourcing_decisions WHERE candidate_id=?', (candidate_id,)).fetchone()
         return json.loads(row['snapshot']) if row else None
+
+    def sourcing_decision_archive(self, candidate_id):
+        with self.connect() as db:
+            rows = db.execute('''
+                SELECT snapshot FROM sourcing_decision_archive WHERE candidate_id=? ORDER BY rowid DESC
+            ''', (candidate_id,)).fetchall()
+        return [json.loads(row['snapshot']) for row in rows]
 
     def save_promotion_spend(self, product_id, source, period_start, period_end, campaign, asset,
                              spend_minor, attribution=None):
