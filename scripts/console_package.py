@@ -256,6 +256,8 @@ def run_release(root, port, with_media=False, shop_id=None):
         data = root / 'data'
         if shop_id is not None:
             data = shop_data_directory(data, shop_id)
+            if not data.is_relative_to(root):
+                raise ValueError('Shop data directory must be inside the managed installation')
         python = configured_media(data)[1] if with_media else None
         return subprocess.call(console_command(data, port, python), cwd=release, env=console_environment())
 

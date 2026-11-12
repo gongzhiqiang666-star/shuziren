@@ -4,11 +4,12 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 import uuid
 import wave
 from zipfile import ZipFile
 
-from scripts.console_package import MANIFEST, REQUIRED, digest, install
+from scripts.console_package import MANIFEST, REQUIRED, digest, install, run_release
 from scripts.console_data_migration import migrate_data, migrate_v122_products
 from scripts.avatar_store import AvatarStore
 from scripts.local_console import InstanceLock
@@ -18,6 +19,19 @@ from scripts.voice_store import VoiceStore, fingerprint
 
 
 class ConsolePackageTests(unittest.TestCase):
+    def test_managed_release_rejects_shop_directory_outside_installation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root = parent / 'install'
+            outside = parent / 'outside' / 'shops' / 'shop-pilot'
+            with (patch('scripts.console_package.read_active', return_value={'current': 'release'}),
+                  patch('scripts.console_package.check_release', return_value=(root, {})),
+                  patch('scripts.local_console_config.shop_data_directory', return_value=outside),
+                  patch('scripts.console_package.subprocess.call') as launch):
+                with self.assertRaisesRegex(ValueError, 'inside the managed installation'):
+                    run_release(root, 0, shop_id='pilot')
+                launch.assert_not_called()
+
     def test_shop_migration_preserves_prepared_avatar(self):
         try:
             import cv2
