@@ -337,3 +337,6 @@ G10-04 备选 Unity Capture 后端本机打开失败，运行时返回未注册�
 
 
 G10-04 真实本机场次启停补验通过。轮播控制台经 HTTP 指定 OBS Virtual Camera，进入运行后请求名称与实际设备一致，场次正常停止。报告 logs/validation/g10-explicit-camera-live-01/result.json。本轮为单场次启停，口播回采和双店并行输出另验。
+
+
+一期 V06 / 四期 G10-04 显式摄像头口播回采短测通过。指定 OBS Virtual Camera，完成轮播、插播、人工接管及恢复和正常停播。随包 FFmpeg 对 receiver.mkv 的视频与音频双轨解码退出码 0。证据 logs/validation/g10-explicit-camera-capture-01/result.json。双店独立回采、连续帧指标及人工口型画质待验。
