@@ -10,7 +10,7 @@ import wave
 from zipfile import ZipFile
 
 from scripts.console_package import MANIFEST, REQUIRED, digest, install, run_release, switch_release
-from scripts.console_data_migration import migrate_data, migrate_v122_products
+from scripts.console_data_migration import import_v122_products, migrate_data, migrate_v122_products
 from scripts.avatar_store import AvatarStore
 from scripts.local_console import InstanceLock
 from scripts.local_console_config import ConfigStore
@@ -142,6 +142,22 @@ class ConsolePackageTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 migrate_v122_products(root / 'invalid', source)
             self.assertFalse((root / 'invalid/data').exists())
+
+    def test_invalid_legacy_selection_does_not_modify_existing_catalog(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store = ProductStore(root / 'data')
+            existing = store.save(title='Existing', content='Existing', product_index=7)
+            store.select(existing['id'])
+            source = root / 'legacy.json'
+            source.write_text(json.dumps({
+                'product_scripts': [{'product_index': 3, 'title': 'New'}],
+                'current_product_index': 7,
+            }), encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'Legacy current product'):
+                import_v122_products(root / 'data', source)
+            self.assertEqual(store.selected(), existing['id'])
+            self.assertEqual([row['id'] for row in store.list()], [existing['id']])
 
     def test_migration_snapshots_data_and_rejects_existing_target(self):
         with tempfile.TemporaryDirectory() as directory:
