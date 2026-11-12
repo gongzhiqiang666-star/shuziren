@@ -523,7 +523,9 @@ class ConsoleHTTPTests(unittest.TestCase):
             live.return_value.state.return_value['status'] = 'running'
             product = {'id': 'product', 'version': 1}
             store.record_queued_reply('scene', 'a', product, '库存？', '待核对', 100)
-            store.record_queued_reply('scene', 'b', product, '库存？ ', '待核对', 101)
+            store.record_queued_reply('scene', 'b', product, '　库存？\t', '待核对', 101)
+            store.record_queued_reply('scene', 'different-product', {'id': 'other-product', 'version': 1},
+                                     '库存？', '待核对', 102)
             store.record_queued_reply('other', 'c', product, '库存？', '待核对', 102)
             with patch('time.time', return_value=399):
                 advice, = self.call(route)[1]['advice']

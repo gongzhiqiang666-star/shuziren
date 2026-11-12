@@ -657,16 +657,20 @@ class ProductStore:
 
     def recent_repeated_live_questions(self, session_id, since):
         with self.connect() as db:
+            db.create_function('normalize_question', 1, lambda question: ' '.join(question.split()),
+                               deterministic=True)
             rows = db.execute("""
                 WITH recent AS (
-                    SELECT product_id, TRIM(question) AS question, task_id, queued_at,
-                           COUNT(*) OVER (PARTITION BY product_id, TRIM(question)) AS occurrences,
-                           ROW_NUMBER() OVER (PARTITION BY product_id, TRIM(question)
-                                              ORDER BY queued_at DESC, rowid DESC) AS position
+                    SELECT rowid, product_id, normalize_question(question) AS question, task_id, queued_at
                     FROM live_queued_replies WHERE session_id=? AND queued_at>=?
+                ), ranked AS (
+                    SELECT *, COUNT(*) OVER (PARTITION BY product_id, question) AS occurrences,
+                           ROW_NUMBER() OVER (PARTITION BY product_id, question
+                                              ORDER BY queued_at DESC, rowid DESC) AS position
+                    FROM recent
                 )
                 SELECT product_id, question, task_id, occurrences, queued_at AS last_queued_at
-                FROM recent WHERE occurrences >= 2 AND position=1
+                FROM ranked WHERE occurrences >= 2 AND position=1
                 ORDER BY last_queued_at DESC, product_id, question LIMIT 5
             """, (session_id, since)).fetchall()
         return [dict(row) for row in rows]
