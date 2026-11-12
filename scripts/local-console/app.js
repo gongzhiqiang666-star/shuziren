@@ -726,6 +726,7 @@ function renderLiveButtons() {
   $('live-event-scene').disabled = consoleClosed || liveBusy;
   $('live-event-refresh').disabled = consoleClosed || liveBusy;
   $('live-rotation-events').disabled = consoleClosed || liveBusy || !($('live-event-scene').value || liveSession.id);
+  $('live-report').disabled = $('live-rotation-events').disabled;
   $('live-event-product').disabled = $('live-rotation-events').disabled;
   $('live-event-task').disabled = $('live-rotation-events').disabled;
   $('live-enqueue').disabled = $('live-control').disabled || !!liveSession.manual;
@@ -745,7 +746,10 @@ async function loadLive() {
   if (consoleClosed) return;
   const previousSession = liveSession.id;
   liveSession = (await request('/api/live/state')).session;
-  if (previousSession !== liveSession.id && !$('live-event-scene').value) resetRotationEvents();
+  if (previousSession !== liveSession.id && !$('live-event-scene').value) {
+    resetRotationEvents();
+    $('live-report-output').replaceChildren();
+  }
   if (!rotationSelectionEdited) {
     const configured = new Set(liveSession.rotation_retry_products || liveSession.rotation_products || []);
     let selectionChanged = false;
@@ -798,7 +802,41 @@ $('live-rotation-stop').addEventListener('click', () => liveAction(() => request
 })));
 $('live-event-product').addEventListener('change', resetRotationEvents);
 $('live-event-task').addEventListener('input', resetRotationEvents);
-$('live-event-scene').addEventListener('change', () => { resetRotationEvents(); renderLiveButtons(); });
+$('live-event-scene').addEventListener('change', () => {
+  resetRotationEvents();
+  $('live-report-output').replaceChildren();
+  renderLiveButtons();
+});
+$('live-report').addEventListener('click', () => liveAction(async () => {
+  const sessionId = $('live-event-scene').value || liveSession.id;
+  const output = $('live-report-output');
+  output.textContent = '正在读取场次报告';
+  try {
+    const {session, products, controls, missing} = await request('/api/live/report?' + new URLSearchParams({session_id:sessionId}));
+    if (($('live-event-scene').value || liveSession.id) !== sessionId) return;
+    const formatTime = value => value == null ? '未记录' : new Date(value * 1000).toLocaleString();
+    const labels = {product_exposure:'商品曝光', questions_and_answers:'问答', product_switches:'切品',
+      fault_events:'故障', attributed_sales:'成交归因'};
+    const lines = [
+      `场次 ${session.session_id} · ${liveLabels[session.status] ?? session.status} · 输出 ${session.frames} 帧`,
+      `开始 ${formatTime(session.started_at)} · 结束 ${formatTime(session.ended_at)}`,
+      ...products.map(item => {
+        const title = savedProducts.find(product => product.id === item.product_id)?.title ?? item.product_id;
+        return `${title} · 商品版本 ${item.product_version} · 话术 ${item.script_id} · 已播片段 ${item.completed_segments}`;
+      }),
+      ...controls.map(item => `${formatTime(item.occurred_at)} · ${item.manual ? '人工接管' : '恢复自动'} · 记录 ${item.revision}`),
+    ];
+    if (missing.length) lines.push('数据缺口：' + missing.map(key => labels[key] ?? key).join('、'));
+    output.replaceChildren(...lines.map(line => {
+      const paragraph = document.createElement('p');
+      paragraph.textContent = line;
+      return paragraph;
+    }));
+  } catch (error) {
+    output.replaceChildren();
+    throw error;
+  }
+}));
 $('live-event-refresh').addEventListener('click', () => liveAction(async () => {
   const select = $('live-event-scene');
   const selected = select.value;
