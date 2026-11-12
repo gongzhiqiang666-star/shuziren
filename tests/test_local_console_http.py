@@ -840,6 +840,9 @@ class ConsoleHTTPTests(unittest.TestCase):
             'correct': 1, 'incorrect': 1, 'uncertain': 1, 'unreviewed': 1, 'timed': 1, 'seconds': 0,
         })
         self.assertIsNone(comparison['baseline']['reply_review']['seconds'])
+        self.assertEqual(comparison['baseline']['repeated_question_groups'], 0)
+        self.assertEqual(comparison['trial']['repeated_question_groups'], 1)
+        self.assertEqual(comparison['trial']['repeat_question_occurrences'], 3)
         self.assertEqual(comparison['baseline']['products'], [])
         self.assertEqual(comparison['baseline']['observed_product_order'], [])
         self.assertEqual(comparison['trial']['observed_product_order'], ['product'])

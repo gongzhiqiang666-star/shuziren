@@ -2157,7 +2157,9 @@ $('live-compare-form').addEventListener('submit', event => {
       const plans = result.preparation_applications.map(plan =>
         `${label} · 已审核轮播计划 ${plan.revision} · ${plan.items.map(item =>
           `${item.title}（版本 ${item.product_version}）`).join(' → ')}`);
-      return [summary, reviewLine, `${label} · 人工排品基线 ${lineup ?? '未关联'}`,
+      return [summary, reviewLine,
+        `${label} · 已入队答复中的重复问题 ${result.repeated_question_groups} 组（首次之后 ${result.repeat_question_occurrences} 次）`,
+        `${label} · 人工排品基线 ${lineup ?? '未关联'}`,
         ...plans, `${label} · 实际口播顺序 ${observed.join(' → ') || '未记录'}`, ...products];
     });
     const gaps = {audience:'人群', traffic:'流量', promotion:'活动', refund_lag:'退款滞后'};

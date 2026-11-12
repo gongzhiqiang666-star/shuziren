@@ -2,6 +2,7 @@
 import argparse
 import base64
 import binascii
+from collections import Counter
 import json
 import logging
 import os
@@ -68,6 +69,10 @@ class InstanceLock:
         if self.stream is not None:
             self.stream.close()
             self.stream = None
+
+
+def reply_question_key(reply):
+    return reply['product_id'], ' '.join(reply['question'].split())
 
 
 def browser_metrics(values):
@@ -292,6 +297,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         duration = None if started_at is None else session['ended_at'] - started_at
                         completed = sum(item['completed_segments'] for item in report['products'])
                         queued_replies = report['queued_replies']
+                        question_counts = Counter(map(reply_question_key, queued_replies))
                         verdicts = {verdict: sum(item['verdict'] == verdict for item in queued_replies)
                                     for verdict in ('correct', 'incorrect', 'uncertain')}
                         review_times = [item['review_seconds'] for item in queued_replies if item['review_seconds'] is not None]
@@ -303,6 +309,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             if duration and duration > 0 else None,
                             'rotation_faults': len(report['rotation_faults']),
                             'played_replies': sum(item['played_at'] is not None for item in queued_replies),
+                            'repeated_question_groups': sum(count > 1 for count in question_counts.values()),
+                            'repeat_question_occurrences': sum(count - 1 for count in question_counts.values()),
                             'reply_review': {**verdicts, 'unreviewed': len(queued_replies) - sum(verdicts.values()),
                                              'timed': len(review_times), 'seconds': sum(review_times) if review_times else None},
                             'products': report['products'],
@@ -330,10 +338,9 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if path == '/api/live/review':
                         questions = {}
                         for reply in report['queued_replies']:
-                            question = ' '.join(reply['question'].split())
-                            key = (reply['product_id'], question)
+                            key = reply_question_key(reply)
                             group = questions.setdefault(key, {
-                                'product_id': reply['product_id'], 'question': question, 'evidence': [],
+                                'product_id': key[0], 'question': key[1], 'evidence': [],
                             })
                             group['evidence'].append({name: reply[name] for name in
                                                       ('task_id', 'product_version', 'queued_at', 'played_at')})
