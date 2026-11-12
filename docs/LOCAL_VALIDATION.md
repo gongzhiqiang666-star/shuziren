@@ -144,3 +144,5 @@ V09-04 在本机 v122 最小验证目录复查 JSON/YAML 配置，排除随包 P
 Windows 全量回归复跑：源码 d53f7d0，使用 v122 验证解释器并显式配置 SHUZIREN_TEST_RUNTIME_ROOT 和 SHUZIREN_TEST_FFMPEG。unittest discover 执行 284 项，全部通过，无跳过，耗时 125.101 秒。真实平台、连续性和商家试点仍按各关验收。
 
 一期 Windows 媒体与安装夹具补验（860f4a3）：以独立媒体运行目录的 Python、OpenCV 和显式 SHUZIREN_TEST_FFMPEG 复跑 test_console_package（8）、test_voice_store（5）、test_video_audio_tail（1）、test_raw_video_writer（3），17 项全部通过。覆盖安装清单、店铺迁移及形象保留、参考音归一化、视频尾部音轨和原始帧编码。干净 Windows 整机安装与人工听感仍待验。
+
+常驻 TTS Windows 协议补验（ee44675）：显式配置 SHUZIREN_TEST_RUNTIME_ROOT 后，test_tts_worker_protocol 三项通过，覆盖 ZipVoice/OmniVoice 进程就绪和退出、无效请求及转换失败时不发布音频。本次协议测试未加载模型，真实合成和听感按各引擎验收记录跟踪。
