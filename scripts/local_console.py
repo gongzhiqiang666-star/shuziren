@@ -462,6 +462,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if len(ids) != 1 or not 1 <= len(ids[0]) <= 64:
                         raise ProductError('请选择商品')
                     return self.respond(200, {'reports': products().after_sales(ids[0])})
+                if path == "/api/sourcing/candidates":
+                    return self.respond(200, {'candidates': products().sourcing_candidates()})
                 if path == "/api/products/guide":
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                     ids = query.get('product_id', [])
@@ -774,6 +776,12 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         else:
                             data.revoke_live_advice_acknowledgment(value['session_id'], value['advice'], time())
                         return self.respond(200, {'acknowledged': acknowledge})
+                    if path == "/api/sourcing/candidates":
+                        if set(value) != {'name', 'supplier', 'source', 'observed_on', 'details'}:
+                            raise ProductError('采购候选字段无效')
+                        data = products()
+                        candidate_id = data.save_sourcing_candidate(**value)
+                        return self.respond(200, {'id': candidate_id})
                     if path == "/api/live/reply-review":
                         if set(value) != {'session_id', 'task_id', 'verdict', 'review_seconds'} or any(
                                 not isinstance(value[key], str) or not 1 <= len(value[key]) <= 64

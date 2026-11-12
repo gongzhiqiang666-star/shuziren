@@ -19,6 +19,16 @@ from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_sourcing_candidates_preserve_source_and_leave_missing_terms_unknown(self):
+        route = '/api/sourcing/candidates'
+        candidate = {'name': '陶瓷杯', 'supplier': '样品供应商', 'source': '商家报价单',
+                     'observed_on': '2026-11-10', 'details': {'lead_time': '7天'}}
+        self.assertEqual(self.call(route, {**candidate, 'observed_on': '2026-13-10'})[0], 400)
+        self.assertEqual(self.call(route, {**candidate, 'details': {'unknown_field': '未知'}})[0], 400)
+        status, result = self.call(route, candidate)
+        self.assertEqual(status, 200)
+        self.assertEqual(self.call(route), (200, {'candidates': [{'id': result['id'], **candidate}]}))
+
     def test_after_sales_comparison_keeps_unreported_categories_unknown(self):
         store = ProductStore(self.directory.name)
         product = store.save(title='茶杯', content='商品说明', product_index=1)

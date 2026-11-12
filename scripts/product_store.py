@@ -131,6 +131,9 @@ class ProductStore:
                     product_id TEXT NOT NULL REFERENCES products(id), source TEXT NOT NULL,
                     period_start TEXT NOT NULL, period_end TEXT NOT NULL,
                     counts TEXT NOT NULL, PRIMARY KEY(product_id, source, period_start, period_end));
+                CREATE TABLE IF NOT EXISTS sourcing_candidates (
+                    id TEXT PRIMARY KEY, name TEXT NOT NULL, supplier TEXT NOT NULL, source TEXT NOT NULL,
+                    observed_on TEXT NOT NULL, details TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS product_after_sales_tasks (
                     product_id TEXT NOT NULL, source TEXT NOT NULL, period_start TEXT NOT NULL,
                     period_end TEXT NOT NULL, category TEXT NOT NULL, evidence_count INTEGER NOT NULL,
@@ -1013,6 +1016,32 @@ class ProductStore:
                     followup['task'] = task
             reports.append({**dict(row), 'counts': counts, 'followups': followups})
         return reports
+
+    def save_sourcing_candidate(self, name, supplier, source, observed_on, details):
+        name = text(name, '候选商品', 120)
+        supplier = text(supplier, '供应商', 120)
+        source = text(source, '资料来源', 500)
+        if not isinstance(observed_on, str):
+            raise ProductError('请填写资料日期')
+        try:
+            if date.fromisoformat(observed_on).isoformat() != observed_on:
+                raise ValueError
+        except ValueError as error:
+            raise ProductError('资料日期须为 YYYY-MM-DD') from error
+        fields = {'access', 'demand', 'competition', 'terms', 'minimum_order', 'lead_time', 'logistics', 'quality_evidence'}
+        if not isinstance(details, dict) or details.keys() - fields:
+            raise ProductError('采购资料字段无效')
+        details = {key: text(value, '采购资料', 2000) for key, value in details.items()}
+        candidate_id = str(uuid.uuid4())
+        with self.connect() as db:
+            db.execute('INSERT INTO sourcing_candidates VALUES (?, ?, ?, ?, ?, ?)',
+                       (candidate_id, name, supplier, source, observed_on, json.dumps(details, ensure_ascii=False)))
+        return candidate_id
+
+    def sourcing_candidates(self):
+        with self.connect() as db:
+            rows = db.execute('SELECT * FROM sourcing_candidates ORDER BY observed_on DESC, rowid DESC').fetchall()
+        return [{**dict(row), 'details': json.loads(row['details'])} for row in rows]
 
     def compare_product_facts(self, product_ids, fact_names):
         now = datetime.now(timezone.utc)
