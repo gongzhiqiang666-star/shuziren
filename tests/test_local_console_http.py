@@ -67,6 +67,23 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call(route, {**base, **period, 'orders': 9})[0], 200)
         self.assertEqual(self.call(summary_url)[0], 400)
 
+    def test_business_metrics_summary_rejects_incomplete_or_partial_reports(self):
+        route = '/api/products/business-metrics'
+        _, response = self.call('/api/products', {'title': '茶杯', 'content': '经营数据', 'product_index': 1})
+        base = {'product_id': response['product']['id'], 'source': '商家报表', 'scope': '商品日统计'}
+        first_report = {'period_start': '2026-11-01', 'period_end': '2026-11-02'}
+        last_report = {'period_start': '2026-11-04', 'period_end': '2026-11-04'}
+        for period in (first_report, last_report):
+            self.assertEqual(self.call(route, {**base, **period, 'orders': 1})[0], 200)
+        for start, end in [('01', '04'), ('02', '02'), ('01', '01'), ('01', '03'), ('05', '05')]:
+            with self.subTest(start=start, end=end):
+                query = urlencode({**base, 'period_start': '2026-11-' + start,
+                                   'period_end': '2026-11-' + end})
+                status, error = self.call(route + '/summary?' + query)
+                self.assertEqual(status, 400)
+                self.assertIn('覆盖', error['error'])
+        self.assertEqual(self.call(route + '/summary?' + urlencode({**base, **first_report}))[0], 200)
+
     def test_rotation_event_pages_preserve_order_and_scene_isolation(self):
         store = ProductStore(self.directory.name)
         product = store.save(title='茶杯', content='口播验收', product_index=1)
