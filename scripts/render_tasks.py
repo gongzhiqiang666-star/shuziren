@@ -159,6 +159,24 @@ class RenderTasks:
                 raise Conflict('视频文件已变化，请重新生成')
             return path
 
+    def subtitle(self, task_id):
+        with self.lock:
+            self.video_path(task_id)
+            task = self.task
+            audio = self.tts.state()
+            if not audio or audio['id'] != task['tts_task_id'] or audio.get('kind'):
+                raise Conflict('该视频缺少可核对的完整话术来源')
+            script = next((row for row in self.tts.products.scripts(task['product_id'])
+                           if row['id'] == task['script_id']), None)
+            samples = task['result'].get('input_audio_samples')
+            if script is None or type(samples) is not int or samples <= 0:
+                raise Conflict('该视频缺少字幕所需的话术或采样数')
+            seconds, fraction = divmod((samples + 23) // 24, 1000)
+            minutes, seconds = divmod(seconds, 60)
+            hours, minutes = divmod(minutes, 60)
+            caption = '\n'.join(line for line in script['text'].splitlines() if line.strip())
+            return f'1\n00:00:00,000 --> {hours:02}:{minutes:02}:{seconds:02},{fraction:03}\n{caption}\n'
+
     def cancel(self,task_id):
         with self.lock:
             if not self.task or self.task['id']!=task_id:raise ProductError('视频任务不存在')

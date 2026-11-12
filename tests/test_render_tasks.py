@@ -53,10 +53,14 @@ class RenderTests(unittest.TestCase):
         self.tasks._finish(ProcessFixture(),task['id'],work,io.BytesIO())
 
     def test_valid_completion_and_changed_file_rejected(self):
-        task,work,result=self.pending();self.finish(task,work,result)
+        self.audio.value['script_id'] = self.audio.products.add_script(self.product, '陶瓷茶杯。')
+        task,work,result=self.pending()
+        result['input_audio_samples'] = 45056
+        self.finish(task,work,result)
         self.assertEqual(self.tasks.state()['status'],'succeeded')
+        self.assertEqual(self.tasks.subtitle(task['id']), '1\n00:00:00,000 --> 00:00:01,878\n陶瓷茶杯。\n')
         path=self.tasks.video_path(task['id']);path.write_bytes(b'tampered')
-        with self.assertRaises(Conflict):self.tasks.video_path(task['id'])
+        with self.assertRaises(Conflict):self.tasks.subtitle(task['id'])
         self.assertEqual(self.tasks.state()['status'],'failed')
         self.assertNotIn('result',self.tasks.state())
 

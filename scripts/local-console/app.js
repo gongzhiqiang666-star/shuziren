@@ -1450,6 +1450,7 @@ window.addEventListener('pagehide',()=>clearTimeout(avatarVideoTimer));
 renderAvatarVideoButtons();
 
 function clearRenderPreview() {
+  $('render-subtitle').hidden = true;
   $('render-preview').pause();$('render-preview').removeAttribute('src');$('render-preview').load();renderPreviewTask=null;
 }
 function renderVideoButtons() {
@@ -1469,6 +1470,7 @@ async function loadRender() {
   const saved=currentProduct && $('product-title').value===currentProduct.title && $('product-content').value===currentProduct.content && $('product-index').value===String(currentProduct.product_index) && $('product-facts').value===productFactsText(currentProduct);
   const matches=renderState?.status==='succeeded' && saved && renderState.product_id===currentProduct.id && renderState.script_id===currentScriptId && renderState.tts_task_id===ttsState?.id && renderState.tts_task_id===ttsPreviewTask && renderState.avatar_id===$('avatar-list').value;
   if(matches) {
+    $('render-subtitle').hidden = false;
     if(renderPreviewTask!==renderState.id) {$('render-preview').src='/api/render/video?task_id='+encodeURIComponent(renderState.id);$('render-preview').load();renderPreviewTask=renderState.id;}
   } else if(renderPreviewTask) clearRenderPreview();
   renderVideoButtons();
@@ -1501,6 +1503,18 @@ $('render-cancel').addEventListener('click',()=>{
   });
 });
 $('render-refresh').addEventListener('click',()=>renderAction(loadRender));
+$('render-subtitle').addEventListener('click', () => renderAction(async () => {
+  const taskId = renderPreviewTask;
+  if (!taskId) return;
+  const {subtitle_srt} = await request('/api/render/subtitle?task_id=' + encodeURIComponent(taskId));
+  if (taskId !== renderPreviewTask) return;
+  const url = URL.createObjectURL(new Blob([subtitle_srt], {type:'text/plain;charset=utf-8'}));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = '数字人视频字幕.srt';
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}));
 $('render-preview').addEventListener('error',()=>{
   if($('render-preview').getAttribute('src')) {$('render-error').textContent='视频已失效或无法加载，请刷新视频状态。';clearRenderPreview();}
 });
