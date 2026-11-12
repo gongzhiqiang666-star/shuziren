@@ -1,12 +1,20 @@
 from threading import Event, current_thread
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from recovered.taobao_control_capture import TaobaoControlDanmuCapture
 from recovered.taobao_live_control import TaobaoLiveControl, _wait_taobao_login_with_cancel
 
 
 class TaobaoCaptureLifecycleTests(unittest.TestCase):
+    def test_login_wait_stops_at_configured_deadline(self):
+        page = Mock(url='https://login.taobao.com/')
+        with patch('recovered.taobao_live_control.time.monotonic', side_effect=[10, 10, 12]):
+            with self.assertRaises(TimeoutError):
+                _wait_taobao_login_with_cancel(page, target_url='https://liveplatform.taobao.com/list',
+                                               timeout_sec=2, cancel=Event())
+        page.wait_for_timeout.assert_called_once_with(250)
+
     def test_login_wait_stops_when_cancelled_between_polls(self):
         cancel = Event()
         page = Mock(url='https://login.taobao.com/')
