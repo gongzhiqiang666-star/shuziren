@@ -65,9 +65,10 @@ class ResidentAvatar:
         reader = self.rtmp_reader
         images, metadata = [], []
         for _ in indices:
-            if self.rtmp_error is not None:
-                raise self.rtmp_error
-            if self.rtmp_reconnect is None or not self.rtmp_reconnect.is_alive():
+            reconnect = self.rtmp_reconnect
+            if reconnect is None or not reconnect.is_alive():
+                if self.rtmp_error is not None:
+                    raise self.rtmp_error
                 try:
                     batch = reader.processed_frames_queue.get_nowait() if not reader.internal_buffer else ()
                 except queue.Empty:
