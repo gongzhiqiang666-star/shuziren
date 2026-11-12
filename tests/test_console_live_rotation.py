@@ -8,6 +8,17 @@ from scripts.product_store import Conflict
 
 
 class LiveRotationTests(unittest.TestCase):
+    def test_rotation_rejects_expired_product_facts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tts = Mock()
+            tts.products.get.return_value = {'version': 1}
+            live = ConsoleLive(tts, directory)
+            item = {'product_id': 'product', 'product_version': 1, 'script_id': 'script', 'fact_deadline': 100}
+            with patch('scripts.console_live.time.time', return_value=100):
+                with self.assertRaisesRegex(Conflict, '商品事实已到期'):
+                    live._check_rotation_item(item)
+            tts.products.selected_script.assert_not_called()
+
     def test_manual_transition_records_only_changed_revision(self):
         with tempfile.TemporaryDirectory() as directory:
             tts = Mock()

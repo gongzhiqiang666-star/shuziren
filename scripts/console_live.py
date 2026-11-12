@@ -11,7 +11,7 @@ import threading
 import time
 import uuid
 
-from scripts.product_store import Conflict, ProductError
+from scripts.product_store import Conflict, ProductError, product_fact_deadline
 
 
 class ConsoleLive:
@@ -422,6 +422,9 @@ class ConsoleLive:
                 item = {'product_id': product_id, 'product_version': product['version'], 'script_id': script_id}
                 if expected_items is not None and item != expected_items[index]:
                     raise Conflict('商品或话术已变化，请重新核对轮播配置')
+                deadline = product_fact_deadline(product)
+                if deadline is not None:
+                    item['fact_deadline'] = deadline
                 if shift_durations is not None:
                     item['duration_seconds'] = shift_durations[index]
                 if shift_voice_ids is not None and shift_voice_ids[index] is not None:
@@ -451,6 +454,9 @@ class ConsoleLive:
         products = self.tts.products
         if products.get(item['product_id'])['version'] != item['product_version']:
             raise Conflict('轮播商品已修改，请重新设置轮播')
+        deadline = item.get('fact_deadline')
+        if deadline is not None and time.time() >= deadline:
+            raise Conflict('轮播话术引用的商品事实已到期，请核对后重新选用话术')
         if products.selected_script(item['product_id']) != item['script_id']:
             raise Conflict('选用话术已变化，请重新设置轮播')
 
