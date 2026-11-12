@@ -65,6 +65,8 @@ def main():
         parser.error('--device-buffer-frames requires --device-audio-output')
     if args.camera_i420 and args.device_audio_output is None:
         parser.error('--camera-i420 requires --device-audio-output')
+    if args.capture_devices and args.seconds * 25 > 65536:
+        parser.error('--capture-devices supports at most 2621 seconds at 25 fps (16-bit frame counter)')
     if args.speech_interval_seconds is not None and not 0<args.speech_interval_seconds<args.seconds-20:
         parser.error('--speech-interval-seconds requires room for an additional utterance before the final 20 seconds')
     schedule=[(0,None,'这是连续输出开始后新生成的第一条语音。'),
