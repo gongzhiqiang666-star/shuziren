@@ -125,6 +125,9 @@ class RtmpFaceReader(VideoFaceReader):
         return self
 
     def _start_decoder(self):
+        if any(thread is not None and thread.is_alive()
+               for thread in (self.capture_thread, self.preprocess_thread, self.stderr_thread)):
+            raise RuntimeError("上一段 RTMP 采集仍在停止，请稍后重试")
         self.stop_event.clear(); self._reset_pipeline_state()
         self.first_frame.clear()
         self.ffmpeg_process = subprocess.Popen(self._build_ffmpeg_command(self.rtmp_url, self.fps), stdout=subprocess.PIPE,
@@ -199,6 +202,9 @@ class RtmpFaceReader(VideoFaceReader):
                 if pipe is not None:
                     pipe.close()
         self.ffmpeg_process = None
-        self.capture_thread = self.preprocess_thread = self.stderr_thread = None
+        for attribute in ("capture_thread", "preprocess_thread", "stderr_thread"):
+            thread = getattr(self, attribute)
+            if thread is not None and not thread.is_alive():
+                setattr(self, attribute, None)
 
     def rewind(self): return False
