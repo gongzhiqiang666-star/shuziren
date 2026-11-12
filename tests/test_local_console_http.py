@@ -60,6 +60,7 @@ class ConsoleHTTPTests(unittest.TestCase):
                          ('何时发货？', 'cancelled', '场次变化'))
         question, = review['repeated_questions']
         self.assertEqual(question['question'], '什么材质？')
+        self.assertIn('FAQ', question['recommendation'])
         self.assertEqual([item['task_id'] for item in question['evidence']], ['reply', 'second-reply'])
         self.assertIsNone(question['evidence'][1]['played_at'])
         pending, = review['replies_without_playback_record']

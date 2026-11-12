@@ -849,7 +849,8 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
     for (const group of review.repeated_questions) {
       const title = savedProducts.find(product => product.id === group.product_id)?.title ?? group.product_id;
       lines.push(`${title} · 重复问题 ${group.evidence.length} 次：${group.question}`,
-        '对应问答任务：' + group.evidence.map(item => item.task_id).join('、'));
+        '对应问答任务：' + group.evidence.map(item => item.task_id).join('、'),
+        '下场准备建议：' + group.recommendation);
     }
     if (review.replies_without_playback_record.length) {
       lines.push('待核对播放结果的问答');

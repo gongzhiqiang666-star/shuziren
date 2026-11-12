@@ -219,10 +219,13 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             })
                             group['evidence'].append({name: reply[name] for name in
                                                       ('task_id', 'product_version', 'queued_at', 'played_at')})
+                        repeated_questions = [
+                            {**group, 'recommendation': '核对现有话术和 FAQ 是否覆盖该问题，再决定是否补充'}
+                            for group in questions.values() if len(group['evidence']) > 1
+                        ]
                         return self.respond(200, {
                             'session_id': sessions[0], 'missing': report['missing'],
-                            'repeated_questions': [group for group in questions.values()
-                                                   if len(group['evidence']) > 1],
+                            'repeated_questions': repeated_questions,
                             'replies_without_playback_record': [
                                 {name: reply[name] for name in
                                  ('task_id', 'product_id', 'product_version', 'question', 'queued_at')}
