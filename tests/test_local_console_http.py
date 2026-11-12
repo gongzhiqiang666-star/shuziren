@@ -41,7 +41,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         segmented_id = store.add_script(store.get(product['id']), '主讲。{助：补充说明。}')
         store.record_rotation_completion('scene', 'assistant-task', {
             'product_id': product['id'], 'product_version': product['version'] + 1, 'script_id': segmented_id,
-        }, 1)
+        }, 1, sample_start=24000, sample_end=60000)
         assistant = self.call('/api/live/content-source?session_id=scene&task_id=assistant-task')[1]['source']
         self.assertEqual(assistant['segment'], {'type': 'assistant', 'content': '补充说明。'})
         self.assertEqual(assistant['facts_review'], 'version_current')
@@ -51,6 +51,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(result['draft']['cover_text'], '新版茶杯')
         self.assertEqual(result['draft']['narration'], '补充说明。')
+        self.assertEqual(result['draft']['subtitle_srt'], '1\n00:00:00,000 --> 00:00:01,500\n补充说明。\n')
         self.assertEqual(result['draft']['source']['script_id'], segmented_id)
         self.assertIsNone(result['draft']['language'])
         self.assertIsNone(result['draft']['saved_body'])

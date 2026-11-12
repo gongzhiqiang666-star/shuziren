@@ -1121,6 +1121,15 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         saveDraft.hidden = !draft.editable;
         draftButton.hidden = true;
         draftStatus.textContent = draft.editable ? '' : '原商品或话术事实已变化，历史文案仅供核对';
+        if (draft.subtitle_srt) {
+          const subtitleLabel = document.createElement('label');
+          const subtitle = document.createElement('textarea');
+          subtitle.rows = 4;
+          subtitle.readOnly = true;
+          subtitle.value = draft.subtitle_srt;
+          subtitleLabel.append('原口播片段字幕（SRT）', subtitle);
+          details.append(subtitleLabel);
+        }
       } catch (error) {
         draftStatus.textContent = error.message;
       } finally {

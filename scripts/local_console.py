@@ -347,10 +347,21 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                                 return self.respond(200, {'draft': {'saved_body': saved_body, 'editable': False}})
                             raise Conflict('商品事实或片段来源需要重新核对')
                         title = source['product_snapshot']['title']
+                        start, end = source['sample_start'], source['sample_end']
+                        subtitle = None
+                        if start is not None and end is not None and 0 <= start < end:
+                            milliseconds = (end - start + 23) // 24
+                            seconds, fraction = divmod(milliseconds, 1000)
+                            minutes, seconds = divmod(seconds, 60)
+                            hours, minutes = divmod(minutes, 60)
+                            timestamp = f'{hours:02}:{minutes:02}:{seconds:02},{fraction:03}'
+                            caption = '\n'.join(line for line in source['segment']['content'].splitlines() if line.strip())
+                            subtitle = f'1\n00:00:00,000 --> {timestamp}\n{caption}\n'
                         return self.respond(200, {'draft': {
                             'saved_body': saved_body, 'editable': True,
                             'title': f'{title}讲解片段', 'cover_text': title,
                             'narration': source['segment']['content'],
+                            'subtitle_srt': subtitle,
                             'language': (source['speech_provenance'] or {}).get('language'),
                             'source': {key: source[key] for key in
                                        ('session_id', 'task_id', 'product_id', 'product_version', 'script_id', 'segment_index')},
