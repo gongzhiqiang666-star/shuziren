@@ -10,6 +10,19 @@ from recovered.image_rtmp_face_reader import RtmpFaceReader
 
 
 class RtmpFirstFrameTests(unittest.TestCase):
+    def test_cancel_after_decoder_start_releases_capture(self):
+        reader = RtmpFaceReader.__new__(RtmpFaceReader)
+        cancel = threading.Event()
+        reader.capture_lock = threading.Lock()
+        reader.stop_event = threading.Event()
+        reader.first_frame = threading.Event()
+        reader.stop_capture = Mock()
+        reader._probe_video_properties = Mock(return_value=(320, 240, 25))
+        reader._start_decoder = Mock(side_effect=cancel.set)
+        with self.assertRaisesRegex(RuntimeError, '重连已取消'):
+            reader._start_capture('rtmp://127.0.0.1/live/test', cancel)
+        self.assertEqual(reader.stop_capture.call_count, 2)
+
     def test_live_worker_resumes_batches_after_rtmp_eof(self):
         stopped = threading.Event()
         reader = MagicMock()
