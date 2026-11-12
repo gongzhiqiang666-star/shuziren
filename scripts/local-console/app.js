@@ -1661,6 +1661,7 @@ function renderLiveButtons() {
     : $('live-enqueue').disabled;
   $('live-audio').disabled = active || liveBusy;
   $('live-video-path').disabled = consoleClosed || active || liveBusy;
+  $('live-rtmp-url').disabled = consoleClosed || active || liveBusy;
   $('live-video-backend-panel').hidden = !$('live-video-path').value.trim();
   $('live-video-backend').disabled = consoleClosed || active || liveBusy;
   $('live-video-seek').hidden = liveSession.mode !== 'local_video' || liveSession.status !== 'running';
@@ -2452,12 +2453,15 @@ $('live-devices').addEventListener('click', () => liveAction(async () => {
 $('live-start').addEventListener('click', () => liveAction(() => {
   const audio_device = Number($('live-audio').value);
   const video_path = $('live-video-path').value.trim();
+  const rtmp_url = $('live-rtmp-url').value.trim();
+  if (video_path && rtmp_url) throw new Error('请选择一种驱动输入');
   const payload = video_path ? {audio_device, video_path, video_backend:$('live-video-backend').value} : {
     audio_device, rotation_language:$('tts-language').value,
     assistant_voice_id:$('live-assistant-voice').value || null
   };
   const cameraDevice = $('live-camera-device').value.trim();
   if (!video_path && cameraDevice) payload.camera_device = cameraDevice;
+  if (rtmp_url) payload.rtmp_url = rtmp_url;
   return request('/api/live/start', payload);
 }));
 $('live-stop').addEventListener('click', () => liveAction(() => request('/api/live/stop',{session_id:liveSession.id})));
