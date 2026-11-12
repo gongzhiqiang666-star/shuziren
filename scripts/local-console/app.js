@@ -1089,11 +1089,19 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         const params = new URLSearchParams({session_id:sessionId, task_id:event.task_id});
         const {source} = await request('/api/live/content-source?' + params);
         const snapshot = source.product_snapshot;
+        const speech = source.speech_provenance;
+        const speechDetails = [
+          source.voice_id ? `原口播音色 ${source.voice_id}` : '原口播音色未记录',
+          speech?.engine && `语音引擎 ${speech.engine}`,
+          speech?.language && `合成语言 ${speech.language}`,
+          speech?.voice_audio_sha256 && `参考音频 SHA-256 ${speech.voice_audio_sha256}`,
+          speech?.voice_text_sha256 && `参考文本 SHA-256 ${speech.voice_text_sha256}`,
+        ].filter(Boolean);
         const review = {source_missing:'缺少原始证据，复用前需核对', product_changed:'商品版本已更新，复用前需核对',
           facts_changed:'商品事实已变化，复用前需核对', version_current:'商品版本及话术事实仍有效'};
         sourceText.textContent = snapshot
           ? [`商品快照 · ${snapshot.title} · 版本 ${snapshot.version}`, review[source.facts_review], snapshot.content,
-            source.voice_id ? `原口播音色 ${source.voice_id}` : '原口播音色未记录',
+            ...speechDetails,
             '', '按原话术还原的片段', source.segment?.content ?? '片段文本无法还原',
             '', '原话术全文', source.script_text].join('\n')
           : '这条口播记录缺少原商品快照或话术。';
