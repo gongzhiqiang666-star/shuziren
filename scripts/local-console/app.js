@@ -275,7 +275,13 @@ async function promotionSpendAction(save) {
         compare.disabled = true;
         try {
           const {comparison: result} = await request('/api/promotion/compare?' + query);
-          compareStatus.textContent = `基线 ${result.baseline.spend_minor} 分 · 试验 ${result.trial.spend_minor} 分 · 差值 ${result.spend_difference_minor} 分 · 增量效果不确定（待补归因订单、退款和净结果）`;
+          const {baseline, trial, spend_difference_minor} = result;
+          compareStatus.textContent = [
+            `基线 ${baseline.period_start} 至 ${baseline.period_end}，${baseline.spend_minor} 分，归因口径 ${baseline.attribution ?? '未记录'}`,
+            `试验 ${trial.period_start} 至 ${trial.period_end}，${trial.spend_minor} 分，归因口径 ${trial.attribution ?? '未记录'}`,
+            `支出差值 ${spend_difference_minor} 分`,
+            '增量效果不确定（待补归因订单、退款和净结果）',
+          ].join(' · ');
         } catch (error) {
           compareStatus.textContent = error.message;
         } finally {
