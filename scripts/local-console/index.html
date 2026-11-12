@@ -120,6 +120,16 @@
 </form>
 <p id="preparation-status" role="status"></p>
 <p id="preparation-error" role="alert"></p>
+<details>
+<summary>售前商品对照</summary>
+<form id="product-guide-form">
+<p class="hint">对照上方已勾选的商品。每行填写一个需要核对的事实名称，如材质、尺寸或适用限制。</p>
+<label for="product-guide-facts">需要核对的事实</label><textarea id="product-guide-facts" required rows="3" maxlength="1200"></textarea>
+<button type="submit">对照商品</button>
+</form>
+<p id="product-guide-status" role="status"></p>
+<div id="product-guide-results"></div>
+</details>
 <button id="preparation-baseline" class="secondary" type="button">查看人工排品基线</button>
 <button id="preparation-capture-baseline" class="secondary" type="button" disabled>将已保存草稿设为人工基线</button>
 <p id="preparation-baseline-status" role="status"></p>

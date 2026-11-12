@@ -456,6 +456,47 @@ preparationPreview.addEventListener('click', async () => {
 function preparationProductIds() {
   return Array.from($('preparation-products').querySelectorAll('input:checked'), input => input.value);
 }
+$('product-guide-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector('button');
+  if (button.disabled || consoleClosed) return;
+  const status = $('product-guide-status');
+  const results = $('product-guide-results');
+  results.replaceChildren();
+  const ids = preparationProductIds();
+  const names = [...new Set($('product-guide-facts').value.split(/\r?\n/).map(name => name.trim()).filter(Boolean))];
+  if (!ids.length || ids.length > 10 || !names.length || names.length > 12) {
+    status.textContent = '请选择 1 至 10 件商品，并填写 1 至 12 项事实';
+    return;
+  }
+  const query = new URLSearchParams();
+  for (const id of ids) query.append('product_id', id);
+  for (const name of names) query.append('fact', name);
+  button.disabled = true;
+  status.textContent = '正在核对商品';
+  try {
+    const {products} = await request('/api/products/guide?' + query);
+    let unknown = false;
+    for (const product of products) {
+      const title = document.createElement('h4');
+      title.textContent = `${product.title} · 版本 ${product.product_version}`;
+      const facts = document.createElement('ul');
+      for (const name of names) {
+        const fact = product.facts[name];
+        const item = document.createElement('li');
+        item.textContent = fact ? `${name}：${fact.value}（来源：${fact.source}）` : `${name}：待人工核对`;
+        unknown ||= !fact;
+        facts.append(item);
+      }
+      results.append(title, facts);
+    }
+    status.textContent = unknown ? '部分商品事实需人工核对' : '';
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
 function showPreparationProducts(ids) {
   const byId = new Map(savedProducts.map(product => [product.id, product]));
   const ordered = [...ids.map(id => byId.get(id)).filter(Boolean),
