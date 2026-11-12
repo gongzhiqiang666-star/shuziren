@@ -135,6 +135,11 @@ class ProductStore:
                     session_id TEXT NOT NULL, task_id TEXT NOT NULL, body TEXT NOT NULL,
                     PRIMARY KEY(session_id, task_id),
                     FOREIGN KEY(session_id, task_id) REFERENCES live_rotation_events(session_id, task_id));
+                CREATE TABLE IF NOT EXISTS live_content_schedule (
+                    session_id TEXT NOT NULL, task_id TEXT NOT NULL, account TEXT NOT NULL,
+                    audience TEXT NOT NULL, publish_at TEXT NOT NULL, planned_body TEXT NOT NULL,
+                    PRIMARY KEY(session_id, task_id),
+                    FOREIGN KEY(session_id, task_id) REFERENCES live_content_drafts(session_id, task_id));
                 CREATE TABLE IF NOT EXISTS live_advice_acknowledgments (
                     session_id TEXT NOT NULL, advice TEXT NOT NULL, acknowledged_at REAL NOT NULL,
                     PRIMARY KEY(session_id, advice));
@@ -657,6 +662,39 @@ class ProductStore:
             row = db.execute('SELECT body FROM live_content_drafts WHERE session_id=? AND task_id=?',
                              (session_id, task_id)).fetchone()
         return row['body'] if row else None
+
+    def live_content_schedule(self, session_id, task_id):
+        with self.connect() as db:
+            row = db.execute("""
+                SELECT account, audience, publish_at, planned_body=body AS draft_matches
+                FROM live_content_schedule JOIN live_content_drafts USING (session_id, task_id)
+                WHERE session_id=? AND task_id=?
+            """, (session_id, task_id)).fetchone()
+        return {**dict(row), 'draft_matches': bool(row['draft_matches'])} if row else None
+
+    def save_live_content_schedule(self, session_id, task_id, account, audience, publish_at):
+        account = text(account, '发布账号', 120)
+        audience = text(audience, '发布范围', 120)
+        try:
+            scheduled = datetime.fromisoformat(text(publish_at, '发布时间', 64).replace('Z', '+00:00'))
+        except ValueError as error:
+            raise ProductError('发布时间须使用带时区的日期时间') from error
+        if scheduled.utcoffset() is None:
+            raise ProductError('发布时间须使用带时区的日期时间')
+        source = self.live_content_source(session_id, task_id)
+        if source['facts_review'] != 'version_current' or source['segment'] is None:
+            raise Conflict('商品事实或片段来源需要重新核对')
+        with self.connect() as db:
+            result = db.execute("""
+                INSERT INTO live_content_schedule
+                SELECT session_id, task_id, ?, ?, ?, body FROM live_content_drafts
+                WHERE session_id=? AND task_id=?
+                ON CONFLICT(session_id, task_id) DO UPDATE SET
+                    account=excluded.account, audience=excluded.audience,
+                    publish_at=excluded.publish_at, planned_body=excluded.planned_body
+            """, (account, audience, scheduled.astimezone(timezone.utc).isoformat(), session_id, task_id))
+            if not result.rowcount:
+                raise Conflict('请先保存短视频文案')
 
     def save_live_content_draft(self, session_id, task_id, body):
         body = text(body, '短视频文案', 100000)

@@ -334,12 +334,15 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     report['advice_acknowledgments'] = products().live_advice_acknowledgments(sessions[0])
                     report['advice_actions'] = products().live_advice_actions(sessions[0])
                     return self.respond(200, report)
-                if path in {'/api/live/content-source', '/api/live/content-draft'}:
+                if path in {'/api/live/content-source', '/api/live/content-draft', '/api/live/content-schedule'}:
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                     if (set(query) != {'session_id', 'task_id'}
                             or any(len(values) != 1 or not 1 <= len(values[0]) <= 64 for values in query.values())):
                         raise ProductError('需要有效的场次和口播任务编号')
                     source = products().live_content_source(query['session_id'][0], query['task_id'][0])
+                    if path == '/api/live/content-schedule':
+                        return self.respond(200, {'schedule': products().live_content_schedule(
+                            source['session_id'], source['task_id']), 'facts_review': source['facts_review']})
                     if path == '/api/live/content-draft':
                         saved_body = products().live_content_draft_body(source['session_id'], source['task_id'])
                         if source['facts_review'] != 'version_current' or source['segment'] is None:
@@ -716,6 +719,15 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         else:
                             data.revoke_live_advice_acknowledgment(value['session_id'], value['advice'], time())
                         return self.respond(200, {'acknowledged': acknowledge})
+                    if path == "/api/live/content-schedule":
+                        if set(value) != {'session_id', 'task_id', 'account', 'audience', 'publish_at'} or any(
+                                not isinstance(value[key], str) or not 1 <= len(value[key]) <= 64
+                                for key in ('session_id', 'task_id')):
+                            raise ProductError('排期字段无效')
+                        data = products()
+                        data.save_live_content_schedule(**value)
+                        return self.respond(200, {'schedule': data.live_content_schedule(
+                            value['session_id'], value['task_id'])})
                     if path == "/api/live/content-draft":
                         if set(value) != {'session_id', 'task_id', 'body'} or any(
                                 not isinstance(value[key], str) or not 1 <= len(value[key]) <= 64

@@ -56,7 +56,19 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertIsNone(result['draft']['language'])
         self.assertIsNone(result['draft']['saved_body'])
         body = {'session_id': 'scene', 'task_id': 'assistant-task', 'body': '运营修改后的文案'}
+        schedule_route = '/api/live/content-schedule'
+        schedule = {'session_id': 'scene', 'task_id': 'assistant-task', 'account': '店铺账号',
+                    'audience': '公开', 'publish_at': '2027-01-01T09:00:00+08:00'}
+        self.assertEqual(self.call(schedule_route, schedule)[0], 409)
         self.assertEqual(self.call('/api/live/content-draft', body), (200, {'body': body['body']}))
+        self.assertEqual(self.call(schedule_route, {**schedule, 'publish_at': '2027-01-01T09:00'})[0], 400)
+        status, saved_schedule = self.call(schedule_route, schedule)
+        self.assertEqual(status, 200)
+        self.assertEqual(saved_schedule['schedule']['publish_at'], '2027-01-01T01:00:00+00:00')
+        self.assertTrue(saved_schedule['schedule']['draft_matches'])
+        self.assertEqual(self.call('/api/live/content-draft', {**body, 'body': '改稿'})[0], 200)
+        self.assertFalse(self.call(schedule_route + '?session_id=scene&task_id=assistant-task')[1]['schedule']['draft_matches'])
+        self.assertEqual(self.call('/api/live/content-draft', body)[0], 200)
         self.assertEqual(self.call(draft_route + 'assistant-task')[1]['draft']['saved_body'], body['body'])
         self.assertEqual(self.call('/api/live/content-draft', {**body, 'task_id': 'task'})[0], 409)
         current = store.get(product['id'])
@@ -65,6 +77,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call(draft_route + 'assistant-task'),
                          (200, {'draft': {'saved_body': body['body'], 'editable': False}}))
         self.assertEqual(self.call('/api/live/content-draft', body)[0], 409)
+        self.assertEqual(self.call(schedule_route, schedule)[0], 409)
         self.assertEqual((source['sample_start'], source['sample_end']), (960, 1920))
         self.assertEqual(self.call('/api/live/content-source?session_id=other&task_id=task')[0], 400)
 
