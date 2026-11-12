@@ -1,7 +1,11 @@
+from contextlib import closing
 import json
 from pathlib import Path
+import sqlite3
 import tempfile
 import unittest
+import uuid
+import wave
 from zipfile import ZipFile
 
 from scripts.console_package import MANIFEST, REQUIRED, digest, install
@@ -9,6 +13,7 @@ from scripts.console_data_migration import migrate_data, migrate_v122_products
 from scripts.local_console import InstanceLock
 from scripts.local_console_config import ConfigStore
 from scripts.product_store import ProductStore
+from scripts.voice_store import VoiceStore, fingerprint
 
 
 class ConsolePackageTests(unittest.TestCase):
@@ -67,6 +72,22 @@ class ConsolePackageTests(unittest.TestCase):
             products.select(product['id'])
             script = products.add_script(product, '原有话术')
             products.select_script(product['id'], script)
+            voices = VoiceStore(source)
+            voice_id = str(uuid.uuid4())
+            voice_directory = voices.root / voice_id
+            voice_directory.mkdir()
+            audio = voice_directory / 'ref_audio.wav'
+            transcript = voice_directory / 'ref_text.txt'
+            transcript.write_text('迁移测试音色', encoding='utf-8')
+            with wave.open(str(audio), 'wb') as stream:
+                stream.setnchannels(1)
+                stream.setsampwidth(2)
+                stream.setframerate(24000)
+                stream.writeframes(bytes(48000))
+            with closing(sqlite3.connect(voices.path)) as db, db:
+                db.execute('INSERT INTO voices VALUES (?, ?, ?, ?, ?, ?)',
+                           (voice_id, '测试音色', '迁移测试音色', fingerprint(audio), fingerprint(transcript), 1))
+            voices.select(voice_id)
             (source / 'console.log').write_text('excluded', encoding='utf-8')
 
             with InstanceLock(source), self.assertRaises(OSError):
@@ -85,6 +106,10 @@ class ConsolePackageTests(unittest.TestCase):
             self.assertEqual(Path(shop_result['data_directory']), shop)
             self.assertEqual(ProductStore(shop).selected_script(product['id']), script)
             self.assertEqual(ConfigStore(shop).load(), config)
+            migrated_voices = VoiceStore(shop)
+            self.assertEqual(migrated_voices.selected(), voice_id)
+            self.assertEqual(migrated_voices.get(voice_id), voices.get(voice_id))
+            self.assertEqual(migrated_voices.audio_path(voice_id).read_bytes(), audio.read_bytes())
             self.assertEqual(ProductStore(target).selected(), product['id'])
             with self.assertRaises(FileExistsError):
                 migrate_data(source, managed, 'pilot')
