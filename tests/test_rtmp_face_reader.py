@@ -10,6 +10,26 @@ from recovered.image_rtmp_face_reader import RtmpFaceReader
 
 
 class RtmpFirstFrameTests(unittest.TestCase):
+    def test_restart_rejected_while_stopped_preprocessor_is_still_running(self):
+        reader = RtmpFaceReader.__new__(RtmpFaceReader)
+        reader.stop_event = threading.Event()
+        reader.ffmpeg_process = reader.capture_thread = reader.stderr_thread = None
+        worker = Mock()
+        worker.is_alive.return_value = True
+        reader.preprocess_thread = worker
+
+        reader._stop_decoder()
+
+        worker.join.assert_called_once_with(timeout=2)
+        self.assertIs(reader.preprocess_thread, worker)
+        with self.assertRaisesRegex(RuntimeError, '仍在停止'):
+            reader._start_decoder()
+        self.assertTrue(reader.stop_event.is_set())
+
+        worker.is_alive.return_value = False
+        reader._stop_decoder()
+        self.assertIsNone(reader.preprocess_thread)
+
     def test_probe_error_redacts_stream_address(self):
         reader = RtmpFaceReader.__new__(RtmpFaceReader)
         url = 'rtmp://127.0.0.1/live/private-test-key'
