@@ -134,6 +134,8 @@ class ProductStore:
                 CREATE TABLE IF NOT EXISTS live_advice_acknowledgments (
                     session_id TEXT NOT NULL, advice TEXT NOT NULL, acknowledged_at REAL NOT NULL,
                     PRIMARY KEY(session_id, advice));
+                CREATE TABLE IF NOT EXISTS live_advice_actions (
+                    session_id TEXT NOT NULL, advice TEXT NOT NULL, action TEXT NOT NULL, occurred_at REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_improvement_tasks (
                     session_id TEXT NOT NULL, fault_id INTEGER NOT NULL,
                     owner TEXT NOT NULL, goal TEXT NOT NULL,
@@ -492,18 +494,32 @@ class ProductStore:
                   item.get('product_version'), item.get('script_id')))
 
     def acknowledge_live_advice(self, session_id, advice, acknowledged_at):
+        evidence = json.dumps(advice, sort_keys=True, ensure_ascii=False)
         with self.connect() as db:
-            db.execute('''INSERT INTO live_advice_acknowledgments (session_id, advice, acknowledged_at)
+            result = db.execute('''INSERT INTO live_advice_acknowledgments (session_id, advice, acknowledged_at)
                        VALUES (?, ?, ?) ON CONFLICT(session_id, advice) DO UPDATE SET
                        acknowledged_at=excluded.acknowledged_at, revoked_at=NULL
                        WHERE live_advice_acknowledgments.revoked_at IS NOT NULL''',
-                       (session_id, json.dumps(advice, sort_keys=True, ensure_ascii=False), acknowledged_at))
+                       (session_id, evidence, acknowledged_at))
+            if result.rowcount:
+                db.execute('INSERT INTO live_advice_actions VALUES (?, ?, ?, ?)',
+                           (session_id, evidence, 'acknowledge', acknowledged_at))
 
     def revoke_live_advice_acknowledgment(self, session_id, advice, revoked_at):
+        evidence = json.dumps(advice, sort_keys=True, ensure_ascii=False)
         with self.connect() as db:
-            db.execute('''UPDATE live_advice_acknowledgments SET revoked_at=?
+            result = db.execute('''UPDATE live_advice_acknowledgments SET revoked_at=?
                        WHERE session_id=? AND advice=? AND revoked_at IS NULL''',
-                       (revoked_at, session_id, json.dumps(advice, sort_keys=True, ensure_ascii=False)))
+                       (revoked_at, session_id, evidence))
+            if result.rowcount:
+                db.execute('INSERT INTO live_advice_actions VALUES (?, ?, ?, ?)',
+                           (session_id, evidence, 'revoke', revoked_at))
+
+    def live_advice_actions(self, session_id):
+        with self.connect() as db:
+            rows = db.execute('SELECT advice, action, occurred_at FROM live_advice_actions WHERE session_id=? ORDER BY rowid',
+                              (session_id,)).fetchall()
+        return [{**dict(row), 'advice': json.loads(row['advice'])} for row in rows]
 
     def live_advice_acknowledgments(self, session_id):
         with self.connect() as db:

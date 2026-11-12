@@ -322,6 +322,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             } for fault in report['rotation_faults']],
                         })
                     report['advice_acknowledgments'] = products().live_advice_acknowledgments(sessions[0])
+                    report['advice_actions'] = products().live_advice_actions(sessions[0])
                     return self.respond(200, report)
                 if path == '/api/live/rotation/events':
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)

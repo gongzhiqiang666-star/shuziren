@@ -51,6 +51,8 @@ class ConsoleHTTPTests(unittest.TestCase):
             self.assertEqual(self.call(route + '/acknowledge', acknowledge)[0], 200)
             renewed, = self.call('/api/live/report?session_id=scene')[1]['advice_acknowledgments']
             self.assertIsNone(renewed['revoked_at'])
+            actions = self.call('/api/live/report?session_id=scene')[1]['advice_actions']
+            self.assertEqual([item['action'] for item in actions], ['acknowledge', 'revoke', 'acknowledge'])
             live.return_value.state.return_value['rotation_error'] = None
             self.assertEqual(self.call(route + '/acknowledge', acknowledge)[0], 409)
             self.assertEqual(self.call(route)[1]['advice'], [])
