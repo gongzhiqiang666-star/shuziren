@@ -1,6 +1,11 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>数字人工作台</title><link rel="stylesheet" href="/style.css"><script src="/voice-recorder.js" defer></script><script src="/app.js" defer></script></head>
 <body><main><header><span>数字人工作台</span><small>本地控制台</small></header>
+<nav class="workspace-nav" aria-label="工作台模块">
+<a href="#products-panel">商品与话术</a><a href="#preparation-panel">直播准备</a>
+<a href="#live-panel">本机场次</a><a href="#live-review-panel">场次复盘</a>
+<a href="#render-panel">数字人视频</a>
+</nav>
 <section><h1>启动准备</h1><p>先配置本机资源，再检查运行所需文件。</p><div class="status">直播状态：<strong id="live-status">正在读取</strong></div>
 <form id="settings"><label for="runtime-root">运行资源目录</label><input id="runtime-root" placeholder="输入媒体运行目录的绝对路径" autocomplete="off"><p class="hint">可用独立媒体运行目录，或现有 yunchuang_v122 目录。</p>
 <label for="port">控制台端口</label><input id="port" type="number" min="1024" max="65535" required><p class="hint">修改端口后，下次启动生效。</p>
@@ -23,6 +28,7 @@
 <div class="actions"><button id="live-rotation-start" type="button" disabled>开始商品轮播</button><button id="live-rotation-stop" class="secondary" type="button" disabled>停止轮播</button></div>
 <p id="live-rotation-status" role="status"></p>
 <section id="live-advice" hidden><h3>运营建议</h3><ul id="live-advice-list"></ul></section>
+<h3 id="live-review-panel">场次复盘与口播来源</h3>
 <label for="live-event-scene">口播记录场次</label><select id="live-event-scene"><option value="">当前场次</option></select>
 <button id="live-event-refresh" class="secondary" type="button">读取历史场次</button>
 <label for="live-event-product">口播记录商品</label><select id="live-event-product"><option value="">全部商品</option></select>
@@ -135,7 +141,7 @@
 <p id="after-sales-comparison" role="status"></p>
 </details>
 </section>
-<section>
+<section id="preparation-panel">
 <h2>直播准备</h2>
 <details>
 <summary>外部采购候选</summary>
