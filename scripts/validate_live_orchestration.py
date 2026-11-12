@@ -24,6 +24,7 @@ def main():
     parser.add_argument('--tts-model-root', type=Path)
     parser.add_argument('--assistant-voice-data', type=Path, help='Data directory containing a selected co-host reference')
     parser.add_argument('--assistant-voice-id', help='Use this reference instead of the selection in that directory')
+    parser.add_argument('--legacy-assistant-script', action='store_true')
     parser.add_argument('--timed-shifts', action='store_true', help='Exercise timed host shifts after manual takeover')
     parser.add_argument('--shift-count', type=int, default=2, help='Number of timed transitions to verify')
     parser.add_argument('--rotation-language', choices=('zh-CN', 'ms-MY', 'vi-VN'), default='zh-CN')
@@ -43,6 +44,8 @@ def main():
         parser.error('The co-host test fixture uses Chinese scripts')
     if args.assistant_voice_id and not args.assistant_voice_data:
         parser.error('--assistant-voice-id requires --assistant-voice-data')
+    if args.legacy_assistant_script and (not args.assistant_voice_data or not interactions or args.timed_shifts):
+        parser.error('--legacy-assistant-script requires a co-host, interactions and untimed rotation')
     if args.timed_shifts and (not args.assistant_voice_data or not interactions):
         parser.error('--timed-shifts requires a second reference and at least one interaction')
     if args.shift_count < 1:
@@ -69,10 +72,22 @@ def main():
     products.select_script(product_id, first_script)
     existing_indices = {item['product_index'] for item in products.list()}
     second_index = next(index for index in range(1, len(existing_indices) + 2) if index not in existing_indices)
-    second = products.save(title='轮播验收商品', content='本机验收使用', product_index=second_index)
-    if args.assistant_voice_data:
-        second_text += '{停:1}{助:大家好，我是助播。}'
-    second_script = products.add_script(second, second_text)
+    if args.legacy_assistant_script:
+        from scripts.console_data_migration import import_v122_products
+
+        template = directory / 'legacy-assistant-fixture.json'
+        template.write_text(json.dumps({'product_scripts': [{
+            'product_index': second_index, 'title': '轮播验收商品',
+            'scripts': [{'type': 'assistant', 'text': second_text}],
+        }]}), encoding='utf-8')
+        imported, = import_v122_products(directory, template)
+        second = products.get(imported['product_id'])
+        second_script, = imported['script_ids']
+    else:
+        second = products.save(title='轮播验收商品', content='本机验收使用', product_index=second_index)
+        if args.assistant_voice_data:
+            second_text += '{停:1}{助:大家好，我是助播。}'
+        second_script = products.add_script(second, second_text)
     products.select_script(second['id'], second_script)
     products.save_live_preparation(product_ids=[product_id, second['id']])
     preparation_revision = products.build_live_preparation()['revision']
@@ -275,6 +290,13 @@ def main():
                     previous_end = end
                 report['rotation_event_count'] = len(events)
                 report['rotation_event_last_sample'] = previous_end
+                if args.legacy_assistant_script:
+                    for event in events:
+                        source = call(f"/api/live/content-source?session_id={session_id}&task_id={event['task_id']}")['source']
+                        expected_voice = assistant if event['product_id'] == second['id'] else voice
+                        if source['voice_id'] != expected_voice:
+                            raise RuntimeError('Legacy assistant role did not use the assigned reference')
+                    report['legacy_assistant_voice_verified'] = True
             report['starts'].append({'cycle': cycle + 1, 'session': session_id, 'frames': stopped['frames']})
             old_session = session_id
             save()
