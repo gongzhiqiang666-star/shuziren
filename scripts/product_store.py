@@ -138,6 +138,8 @@ class ProductStore:
                     candidate_id TEXT PRIMARY KEY REFERENCES sourcing_candidates(id),
                     sample_evidence TEXT NOT NULL, trial_evidence TEXT NOT NULL,
                     cost_minor INTEGER, verdict TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS sourcing_decisions (
+                    candidate_id TEXT PRIMARY KEY REFERENCES sourcing_candidates(id), snapshot TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS product_after_sales_tasks (
                     product_id TEXT NOT NULL, source TEXT NOT NULL, period_start TEXT NOT NULL,
                     period_end TEXT NOT NULL, category TEXT NOT NULL, evidence_count INTEGER NOT NULL,
@@ -1068,6 +1070,31 @@ class ProductStore:
         with self.connect() as db:
             row = db.execute('SELECT * FROM sourcing_trials WHERE candidate_id=?', (candidate_id,)).fetchone()
         return dict(row) if row else None
+
+    def save_sourcing_decision(self, candidate_id, decision, rationale, constraints):
+        if decision not in ('adopt', 'continue', 'drop'):
+            raise ProductError('采购辅助结论无效')
+        rationale = text(rationale, '结论依据', 2000)
+        constraints = text(constraints, '资金及库存约束', 2000)
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            candidate = db.execute('SELECT id FROM sourcing_candidates WHERE id=?', (candidate_id,)).fetchone()
+            if not candidate:
+                raise ProductError('采购候选不存在')
+            trial = db.execute('SELECT * FROM sourcing_trials WHERE candidate_id=?', (candidate_id,)).fetchone()
+            if decision == 'adopt' and (not trial or trial['verdict'] != 'pass' or trial['cost_minor'] is None):
+                raise Conflict('采用前需要商家核验通过的样品及已知样品成本')
+            snapshot = {'candidate_id': candidate_id, 'decision': decision, 'rationale': rationale,
+                        'constraints': constraints, 'trial': dict(trial) if trial else None,
+                        'recorded_at': datetime.now(timezone.utc).isoformat()}
+            db.execute('INSERT OR REPLACE INTO sourcing_decisions VALUES (?, ?)',
+                       (candidate_id, json.dumps(snapshot, ensure_ascii=False)))
+        return snapshot
+
+    def sourcing_decision(self, candidate_id):
+        with self.connect() as db:
+            row = db.execute('SELECT snapshot FROM sourcing_decisions WHERE candidate_id=?', (candidate_id,)).fetchone()
+        return json.loads(row['snapshot']) if row else None
 
     def compare_product_facts(self, product_ids, fact_names):
         now = datetime.now(timezone.utc)

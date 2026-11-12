@@ -462,10 +462,12 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if len(ids) != 1 or not 1 <= len(ids[0]) <= 64:
                         raise ProductError('请选择商品')
                     return self.respond(200, {'reports': products().after_sales(ids[0])})
-                if path == "/api/sourcing/trial":
+                if path in {"/api/sourcing/trial", "/api/sourcing/decision"}:
                     ids = parse_qs(urlsplit(self.path).query).get('candidate_id', [])
                     if len(ids) != 1 or not 1 <= len(ids[0]) <= 64:
                         raise ProductError('请选择采购候选')
+                    if path.endswith('/decision'):
+                        return self.respond(200, {'decision': products().sourcing_decision(ids[0])})
                     return self.respond(200, {'trial': products().sourcing_trial(ids[0])})
                 if path == "/api/sourcing/candidates":
                     return self.respond(200, {'candidates': products().sourcing_candidates()})
@@ -781,6 +783,11 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         else:
                             data.revoke_live_advice_acknowledgment(value['session_id'], value['advice'], time())
                         return self.respond(200, {'acknowledged': acknowledge})
+                    if path == "/api/sourcing/decision":
+                        if set(value) != {'candidate_id', 'decision', 'rationale', 'constraints'} or (
+                                not isinstance(value['candidate_id'], str) or not 1 <= len(value['candidate_id']) <= 64):
+                            raise ProductError('采购辅助结论字段无效')
+                        return self.respond(200, {'decision': products().save_sourcing_decision(**value)})
                     if path == "/api/sourcing/trial":
                         if set(value) != {'candidate_id', 'sample_evidence', 'trial_evidence', 'cost_minor', 'verdict'} or (
                                 not isinstance(value['candidate_id'], str) or not 1 <= len(value['candidate_id']) <= 64):

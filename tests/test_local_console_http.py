@@ -35,6 +35,17 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call(trial_route, {**trial, 'candidate_id': 'missing'})[0], 400)
         self.assertEqual(self.call(trial_route, trial), (200, {'trial': trial}))
         self.assertEqual(self.call(trial_route + '?candidate_id=' + result['id']), (200, {'trial': trial}))
+        decision_route = '/api/sourcing/decision'
+        decision = {'candidate_id': result['id'], 'decision': 'adopt', 'rationale': '样品与试卖已核对',
+                    'constraints': '仅限已确认库存'}
+        self.assertEqual(self.call(decision_route, decision)[0], 409)
+        passed = {**trial, 'verdict': 'pass', 'trial_evidence': '试卖记录 001'}
+        self.assertEqual(self.call(trial_route, passed)[0], 200)
+        status, recorded = self.call(decision_route, decision)
+        self.assertEqual(status, 200)
+        self.assertEqual(recorded['decision']['trial'], passed)
+        self.assertEqual(self.call(trial_route, trial)[0], 200)
+        self.assertEqual(self.call(decision_route + '?candidate_id=' + result['id']), (200, recorded))
 
     def test_after_sales_comparison_keeps_unreported_categories_unknown(self):
         store = ProductStore(self.directory.name)
