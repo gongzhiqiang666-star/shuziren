@@ -19,6 +19,26 @@ from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_live_report_isolates_sessions_and_keeps_missing_metrics_explicit(self):
+        store = ProductStore(self.directory.name)
+        store.record_live_session('scene', 100, started_at=101, ended_at=110, status='stopped', frames=225)
+        store.record_live_session('other', 200)
+        item = {'product_id': 'product', 'product_version': 2, 'script_id': 'script'}
+        store.record_rotation_completion('scene', 'first', item, 0)
+        store.record_rotation_completion('scene', 'first', item, 0)
+        store.record_rotation_completion('scene', 'second', item, 1)
+        store.record_rotation_completion('other', 'first', item, 0)
+        store.record_live_control('scene', 1, True, 103)
+        status, report = self.call('/api/live/report?session_id=scene')
+        self.assertEqual(status, 200)
+        self.assertEqual(report['session']['frames'], 225)
+        product, = report['products']
+        self.assertEqual(product['completed_segments'], 2)
+        self.assertEqual(product['product_version'], 2)
+        self.assertEqual(report['controls'], [{'revision': 1, 'manual': True, 'occurred_at': 103}])
+        self.assertIn('attributed_sales', report['missing'])
+        self.assertEqual(self.call('/api/live/report?session_id=unknown')[0], 400)
+
     def test_prepared_rotation_rejects_changed_script_before_configuring_live(self):
         store = ProductStore(self.directory.name)
         product = store.save(title='茶杯', content='口播验收', product_index=1)

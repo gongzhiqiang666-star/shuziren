@@ -204,6 +204,11 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if len(sessions) != 1 or not 1 <= len(sessions[0]) <= 64:
                         raise ProductError('场次无效')
                     return self.respond(200, {'events': products().live_control_events(sessions[0])})
+                if path == '/api/live/report':
+                    sessions = parse_qs(urlsplit(self.path).query, keep_blank_values=True).get('session_id', [])
+                    if len(sessions) != 1 or not 1 <= len(sessions[0]) <= 64:
+                        raise ProductError('场次无效')
+                    return self.respond(200, products().live_session_report(sessions[0]))
                 if path == '/api/live/rotation/events':
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                     sessions = query.get('session_id', [])

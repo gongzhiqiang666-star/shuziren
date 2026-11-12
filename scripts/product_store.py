@@ -384,6 +384,29 @@ class ProductStore:
             rows = db.execute('SELECT * FROM live_sessions ORDER BY requested_at DESC, rowid DESC LIMIT 100').fetchall()
         return [dict(row) for row in rows]
 
+    def live_session_report(self, session_id):
+        with self.connect() as db:
+            db.execute('BEGIN')
+            session = db.execute('SELECT * FROM live_sessions WHERE session_id = ?', (session_id,)).fetchone()
+            if session is None:
+                raise ProductError('场次记录不存在')
+            products = db.execute("""
+                SELECT product_id, product_version, script_id, COUNT(*) AS completed_segments,
+                       MIN(completed_at) AS first_completed_at, MAX(completed_at) AS last_completed_at
+                FROM live_rotation_events WHERE session_id = ?
+                GROUP BY product_id, product_version, script_id ORDER BY MIN(rowid)
+            """, (session_id,)).fetchall()
+            controls = db.execute("""
+                SELECT revision, manual, occurred_at FROM live_control_events
+                WHERE session_id = ? ORDER BY revision
+            """, (session_id,)).fetchall()
+        return {
+            'session': dict(session),
+            'products': [dict(row) for row in products],
+            'controls': [{**dict(row), 'manual': bool(row['manual'])} for row in controls],
+            'missing': ['product_exposure', 'questions_and_answers', 'product_switches', 'fault_events', 'attributed_sales'],
+        }
+
     def record_rotation_completion(self, session_id, task_id, item, segment_index, *,
                                    sample_start=None, sample_end=None):
         with self.connect() as db:
