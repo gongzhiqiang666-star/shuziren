@@ -104,6 +104,8 @@ function showProduct(product) {
   $('settlement-review-form').reset();
   $('after-sales-form').reset();
   $('after-sales-import-form').reset();
+  $('after-sales-compare').reset();
+  $('after-sales-comparison').textContent = '';
   $('after-sales-status').textContent = '';
   $('after-sales-reports').replaceChildren();
   $('metrics-status').textContent = '';
@@ -125,6 +127,32 @@ for (const id of Object.values(summaryFields)) {
 const settlementForm = $('settlement-review-form');
 const afterSalesForm = $('after-sales-form');
 const afterSalesImportForm = $('after-sales-import-form');
+const afterSalesCategories = {quality:'质量', size:'尺码', expectation:'预期不符', fulfillment:'履约', other:'其他'};
+const afterSalesCompare = $('after-sales-compare');
+afterSalesCompare.addEventListener('submit', async event => {
+  event.preventDefault();
+  const product = currentProduct;
+  const source = $(summaryFields.source);
+  const button = afterSalesCompare.querySelector('button');
+  if (!product || button.disabled || consoleClosed || !source.reportValidity()) return;
+  const query = new URLSearchParams(new FormData(afterSalesCompare));
+  query.set('product_id', product.id);
+  query.set('source', source.value);
+  const result = $('after-sales-comparison');
+  button.disabled = true;
+  result.textContent = '正在对照售后窗口';
+  try {
+    const {comparison} = await request('/api/products/after-sales/compare?' + query);
+    if (currentProduct !== product) return;
+    const lines = Object.entries(afterSalesCategories).map(([key, label]) =>
+      `${label} ${comparison.baseline.counts[key] ?? '未知'} → ${comparison.trial.counts[key] ?? '未知'}（差值 ${comparison.differences[key] ?? '未知'}）`);
+    result.textContent = [...lines, '效果结论：不确定'].join(' · ');
+  } catch (error) {
+    if (currentProduct === product) result.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
 async function afterSalesAction(action) {
   const product = currentProduct;
   if (!product || consoleClosed) return;
@@ -132,7 +160,7 @@ async function afterSalesAction(action) {
   if (buttons.some(button => button.disabled)) return;
   const status = $('after-sales-status');
   const route = '/api/products/after-sales';
-  const categories = {quality:'质量', size:'尺码', expectation:'预期不符', fulfillment:'履约', other:'其他'};
+  const categories = afterSalesCategories;
   buttons.forEach(button => { button.disabled = true; });
   status.textContent = '';
   try {

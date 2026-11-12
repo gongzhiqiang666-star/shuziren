@@ -110,6 +110,15 @@
 <button type="submit">导入售后汇总</button>
 </form>
 <p id="after-sales-status" role="status"></p><ul id="after-sales-reports"></ul>
+<form id="after-sales-compare">
+<p class="hint">使用上方的报表来源，对照两个已有售后汇总的区间。</p>
+<label>基线开始<input name="baseline_start" type="date" required></label>
+<label>基线结束<input name="baseline_end" type="date" required></label>
+<label>试验开始<input name="trial_start" type="date" required></label>
+<label>试验结束<input name="trial_end" type="date" required></label>
+<button type="submit">对照售后窗口</button>
+</form>
+<p id="after-sales-comparison" role="status"></p>
 </details>
 </section>
 <section>
