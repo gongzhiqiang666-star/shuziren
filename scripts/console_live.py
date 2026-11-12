@@ -53,6 +53,7 @@ class ConsoleLive:
                     state['shift_waiting_for_boundary'] = {
                         key: item[key] for key in ('product_id', 'product_version', 'script_id', 'duration_seconds')
                     }
+                    state['shift_waiting_for_boundary']['shift_started_at_monotonic'] = started
             return state
 
     def stall_snapshot(self):

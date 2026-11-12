@@ -110,6 +110,7 @@ class LiveRotationTests(unittest.TestCase):
             with patch('scripts.console_live.time.monotonic', return_value=103):
                 self.assertEqual(live.state()['shift_waiting_for_boundary'], {
                     'product_id': 'first', 'product_version': 1, 'script_id': 'script', 'duration_seconds': 3,
+                    'shift_started_at_monotonic': 100,
                 })
                 live.session.control_state.return_value = {'manual': True}
                 self.assertNotIn('shift_waiting_for_boundary', live.state())
@@ -125,6 +126,10 @@ class LiveRotationTests(unittest.TestCase):
                 self.assertEqual(live.state()['shift_index'], 1 - index)
                 self.assertEqual(rotation['items'][rotation['index']].get('shift_voice_id'),
                                  'next-host' if index == 0 else None)
+            with patch('scripts.console_live.time.monotonic', return_value=now + 3):
+                waiting = live.state()['shift_waiting_for_boundary']
+                self.assertEqual(waiting['product_id'], 'first')
+                self.assertEqual(waiting['shift_started_at_monotonic'], now)
 
     def test_segment_completion_keeps_product_until_last_segment(self):
         with tempfile.TemporaryDirectory() as directory:
