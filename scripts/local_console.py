@@ -99,6 +99,10 @@ def live_advice(session):
         advice.append({'code': 'automatic_queue_full',
                        'evidence': f"普通口播队列已满，待播 {session['pending']} 条",
                        'recommendation': '等待队列释放后再添加口播'})
+    if session.get('shift_waiting_for_boundary'):
+        advice.append({'code': 'shift_waiting_for_boundary', 'evidence': '当前班次已到设定时长，尚未切品',
+                       'recommendation': '等待当前商品讲解结束后切换，若持续未切换请检查轮播状态',
+                       'context': session['shift_waiting_for_boundary']})
     for item in advice:
         if item['code'] == 'rotation_error' and session.get('rotation_fault'):
             item['context'] = session['rotation_fault']

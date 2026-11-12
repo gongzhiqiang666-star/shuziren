@@ -38,6 +38,15 @@ class ConsoleLive:
                 state['frames'] = self.session.frames_written
                 state['camera_frames'] = self.session.sink.camera.frames
                 state.update(self.session.control_state())
+            rotation = self.rotation
+            if rotation and len(rotation['items']) > 1 and not state.get('manual'):
+                item = rotation['items'][rotation['index']]
+                started = rotation.get('shift_started_at')
+                duration = item.get('duration_seconds')
+                if started is not None and duration is not None and time.monotonic() >= started + duration:
+                    state['shift_waiting_for_boundary'] = {
+                        key: item[key] for key in ('product_id', 'product_version', 'script_id')
+                    }
             return state
 
     def stall_snapshot(self):
