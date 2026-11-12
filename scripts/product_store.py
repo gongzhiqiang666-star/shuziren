@@ -136,6 +136,8 @@ class ProductStore:
             columns = {row[1] for row in db.execute('PRAGMA table_info(scripts)')}
             if 'parent_script_id' not in columns:
                 db.execute('ALTER TABLE scripts ADD COLUMN parent_script_id TEXT REFERENCES scripts(id)')
+            if 'failure_reason' not in {row[1] for row in db.execute('PRAGMA table_info(live_sessions)')}:
+                db.execute('ALTER TABLE live_sessions ADD COLUMN failure_reason TEXT')
             event_columns = {row[1] for row in db.execute('PRAGMA table_info(live_rotation_events)')}
             for column in ('sample_start', 'sample_end'):
                 if column not in event_columns:
@@ -347,17 +349,17 @@ class ProductStore:
         return {**summary, 'closing_stock': rows[-1]['stock']}
 
     def record_live_session(self, session_id, requested_at, *, started_at=None, ended_at=None,
-                            status='preparing', frames=0):
+                            status='preparing', frames=0, failure_reason=None):
         with self.connect() as db:
             db.execute("""
                 INSERT INTO live_sessions
-                    (session_id, requested_at, started_at, ended_at, status, frames)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (session_id, requested_at, started_at, ended_at, status, frames, failure_reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_id) DO UPDATE SET
                     started_at = excluded.started_at, ended_at = excluded.ended_at,
-                    status = excluded.status, frames = excluded.frames
+                    status = excluded.status, frames = excluded.frames, failure_reason = excluded.failure_reason
                 WHERE live_sessions.ended_at IS NULL
-            """, (session_id, requested_at, started_at, ended_at, status, frames))
+            """, (session_id, requested_at, started_at, ended_at, status, frames, failure_reason))
 
     def record_live_control(self, session_id, revision, manual, occurred_at):
         with self.connect() as db:

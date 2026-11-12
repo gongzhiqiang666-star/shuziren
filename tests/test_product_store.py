@@ -75,7 +75,7 @@ class ProductStoreTests(unittest.TestCase):
         reopened.record_live_session('scene', 100)
         with reopened.connect() as db:
             row = db.execute('SELECT * FROM live_sessions WHERE session_id=?', ('scene',)).fetchone()
-        self.assertEqual(tuple(row), ('scene', 100, 102, 110, 'stopped', 200))
+        self.assertEqual(tuple(row), ('scene', 100, 102, 110, 'stopped', 200, None))
 
     def test_rotation_completion_is_durable_and_deduplicated(self):
         product = self.product()

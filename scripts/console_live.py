@@ -327,6 +327,7 @@ class ConsoleLive:
             self.tts.products.record_live_session(
                 state['id'], state['requested_at'], started_at=state.get('started_at'),
                 ended_at=state.get('ended_at'), status=state['status'], frames=state['frames'],
+                failure_reason=state.get('error') if state['status'] == 'failed' else None,
             )
         except sqlite3.Error:
             logging.exception('记录场次生命周期失败')

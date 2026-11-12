@@ -21,7 +21,8 @@ from scripts.product_store import ProductStore
 class ConsoleHTTPTests(unittest.TestCase):
     def test_live_report_isolates_sessions_and_keeps_missing_metrics_explicit(self):
         store = ProductStore(self.directory.name)
-        store.record_live_session('scene', 100, started_at=101, ended_at=110, status='stopped', frames=225)
+        store.record_live_session('scene', 100, started_at=101, ended_at=110, status='failed', frames=225,
+                                  failure_reason='输出设备断开')
         store.record_live_session('other', 200)
         item = {'product_id': 'product', 'product_version': 2, 'script_id': 'script'}
         store.record_rotation_completion('scene', 'first', item, 0)
@@ -32,6 +33,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         status, report = self.call('/api/live/report?session_id=scene')
         self.assertEqual(status, 200)
         self.assertEqual(report['session']['frames'], 225)
+        self.assertEqual(report['session']['failure_reason'], '输出设备断开')
         product, = report['products']
         self.assertEqual(product['completed_segments'], 2)
         self.assertEqual(product['product_version'], 2)

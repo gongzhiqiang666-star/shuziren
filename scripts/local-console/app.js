@@ -826,6 +826,7 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       }),
       ...controls.map(item => `${formatTime(item.occurred_at)} · ${item.manual ? '人工接管' : '恢复自动'} · 记录 ${item.revision}`),
     ];
+    if (session.failure_reason) lines.push('场次失败原因：' + session.failure_reason);
     if (missing.length) lines.push('数据缺口：' + missing.map(key => labels[key] ?? key).join('、'));
     output.replaceChildren(...lines.map(line => {
       const paragraph = document.createElement('p');
