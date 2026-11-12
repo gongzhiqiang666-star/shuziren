@@ -227,6 +227,7 @@ def main():
                 capture.process.wait(timeout=args.capture_seconds + 10)
                 capture.wait()
                 report['capture'] = str(capture.path)
+                report['capture_buffer_drop_reported'] = capture.reported_buffer_drop()
             call('/api/live/stop', {'session_id': session_id})
             stopped = live(lambda state: state['id'] == session_id and state['status'] == 'stopped')
             if cycle == 0 and interactions:
