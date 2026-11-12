@@ -242,6 +242,8 @@ class ProductStore:
                 db.execute('ALTER TABLE sourcing_trials ADD COLUMN metrics TEXT')
             if 'revoked' not in {row[1] for row in db.execute('PRAGMA table_info(product_after_sales_tasks)')}:
                 db.execute('ALTER TABLE product_after_sales_tasks ADD COLUMN revoked INTEGER NOT NULL DEFAULT 0')
+            if 'product_version' not in {row[1] for row in db.execute('PRAGMA table_info(product_after_sales_tasks)')}:
+                db.execute('ALTER TABLE product_after_sales_tasks ADD COLUMN product_version INTEGER')
             if 'withdrawn' not in {row[1] for row in db.execute('PRAGMA table_info(live_content_drafts)')}:
                 db.execute('ALTER TABLE live_content_drafts ADD COLUMN withdrawn INTEGER NOT NULL DEFAULT 0')
             if 'revision_count' not in {row[1] for row in db.execute('PRAGMA table_info(live_content_drafts)')}:
@@ -1083,7 +1085,7 @@ class ProductStore:
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             report = db.execute("""
-                SELECT counts FROM product_after_sales
+                SELECT counts, products.version FROM product_after_sales JOIN products ON products.id=product_id
                 WHERE product_id=? AND source=? AND period_start=? AND period_end=?
             """, key).fetchone()
             count = json.loads(report['counts']).get(category, 0) if report else 0
@@ -1091,11 +1093,12 @@ class ProductStore:
                 raise Conflict('当前报表没有该售后原因的记录')
             db.execute("""
                 INSERT INTO product_after_sales_tasks
-                    (product_id, source, period_start, period_end, category, evidence_count, owner, goal)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (product_id, source, period_start, period_end, category, evidence_count, owner, goal, product_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(product_id, source, period_start, period_end, category) DO UPDATE SET
-                    evidence_count=excluded.evidence_count, owner=excluded.owner, goal=excluded.goal, revoked=0
-            """, (*key, category, count, owner, goal))
+                    evidence_count=excluded.evidence_count, owner=excluded.owner, goal=excluded.goal,
+                    product_version=excluded.product_version, revoked=0
+            """, (*key, category, count, owner, goal, report['version']))
 
     def revoke_after_sales_task(self, product_id, source, period_start, period_end, category):
         with self.connect() as db:
@@ -1112,9 +1115,10 @@ class ProductStore:
         placeholders = ', '.join('?' for _ in product_ids)
         with self.connect() as db:
             rows = db.execute(f"""
-                SELECT task.*, report.counts AS current_counts
+                SELECT task.*, report.counts AS current_counts, products.version AS current_version
                 FROM product_after_sales_tasks task LEFT JOIN product_after_sales report
                 USING (product_id, source, period_start, period_end)
+                LEFT JOIN products ON products.id=task.product_id
                 WHERE task.product_id IN ({placeholders})
                 ORDER BY task.product_id, task.period_end DESC, task.source, task.category
             """, product_ids).fetchall()
@@ -1122,8 +1126,10 @@ class ProductStore:
         for row in rows:
             task = dict(row)
             current_counts = json.loads(task.pop('current_counts') or '{}')
+            current_version = task.pop('current_version')
             task['revoked'] = bool(task['revoked'])
-            if not current_only or (not task['revoked'] and current_counts.get(task['category']) == task['evidence_count']):
+            if not current_only or (not task['revoked'] and task['product_version'] == current_version
+                                    and current_counts.get(task['category']) == task['evidence_count']):
                 tasks.append(task)
         return tasks
 

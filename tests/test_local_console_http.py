@@ -225,7 +225,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call(route + '/task', {**task, 'category': 'quality'})[0], 409)
         status, tasks = self.call(route + '/task', task)
         self.assertEqual(status, 200)
-        self.assertEqual(tasks['tasks'], [{**task, 'evidence_count': 4, 'revoked': False}])
+        self.assertEqual(tasks['tasks'], [{**task, 'evidence_count': 4, 'revoked': False,
+                                          'product_version': first['version']}])
         store.save_live_preparation(product_ids=[first['id']])
         package_route = '/api/live/preparation/package'
         self.assertEqual(self.call(package_route)[1]['after_sales_tasks'], tasks['tasks'])
@@ -234,6 +235,11 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(store.after_sales_tasks([first['id']]), tasks['tasks'])
         self.assertEqual(self.call(route + '/task', task)[0], 200)
         self.assertEqual(self.call(package_route)[1]['after_sales_tasks'][0]['evidence_count'], 5)
+        updated = store.save(title=first['title'], content='更新后的发货信息', product_index=first['product_index'],
+                             product_id=first['id'], version=first['version'])
+        self.assertEqual(self.call(package_route)[1]['after_sales_tasks'], [])
+        self.assertEqual(store.after_sales_tasks([first['id']])[0]['product_version'], first['version'])
+        self.assertEqual(self.call(route + '/task', task)[1]['tasks'][0]['product_version'], updated['version'])
         identity = {key: value for key, value in task.items() if key not in {'owner', 'goal'}}
         self.assertEqual(self.call(route + '/task/revoke', identity), (200, {'revoked': True}))
         self.assertEqual(self.call(package_route)[1]['after_sales_tasks'], [])
