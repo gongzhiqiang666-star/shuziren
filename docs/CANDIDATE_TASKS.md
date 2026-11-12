@@ -317,3 +317,7 @@ X08-02 内存步幅回归：同一组 12 张灰阶图分别用连续数组与隔
 X08-02 Windows NVENC 意外退出后重开通过。提交 12 帧后终止 FFmpeg，下一次提交报错且半成品清理；同一路径新建编码器并提交 50 帧，正常关闭后 FFmpeg 双轨完整解码通过。证据 logs/validation/x08-nvenc-crash-reopen-01/result.json。此轮使用合成帧和静音，真实人物时序、设备并发和长稳门槛保持待验。
 
 X08-02 合成帧诊断现与连续场次采用相同的预热采样和提交提前量算法，并记录早到、迟到及超过 5 ms 的比例。本机 100 帧诊断中对象准备 p95 为 0.427 ms，提交 p95 为 10.736 ms，迟到超过 5 ms 占 29%，主要耗时仍在音视频封装及管道路径。证据 logs/validation/x08-timing-aligned/run-62f0edf0c31b4ecd8756c4d4bd40b791/result.json。该结果是合成帧诊断，真实人物和接收端验收仍待测。
+
+X08-02 720p 合成帧以 25 fps 定时提交并测量 AVIO 写回调。去掉前 10 帧后，封装总耗时 p50/p95 为 7.465/11.932 ms，其中管道写入为 2.336/5.147 ms，写回调之外为 5.080/7.126 ms。证据 logs/validation/x08-pipe-timing-paced-01/result.json。写回调之外包括原始帧编码、封装及 Python/FFmpeg 调用开销。
+
+X08-02 AVIO 32/256 KiB 交叉短测各两轮，均输出 100 帧并完整解码双轨。256 KiB 提交 p95 为 9.35–9.51 ms，32 KiB 为 11.24–11.37 ms。各轮排除前 10 帧后，迟到超过 5 ms 的帧数分别为 2–3 和 3–9。证据 logs/validation/x08-avio-buffer-ab-01/result.json。保留现有默认值，真实人物与接收端延迟对照后再决策。
