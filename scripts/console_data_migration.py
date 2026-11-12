@@ -89,24 +89,19 @@ def new_managed_data(root, shop_id=None):
         with tempfile.TemporaryDirectory(prefix='.migration-', dir=root) as temporary:
             snapshot = Path(temporary) / 'data'
             snapshot.mkdir()
-            yield snapshot
+            yield snapshot, target
             target.parent.mkdir(parents=True, exist_ok=True)
             snapshot.rename(target)
 
 
 def migrate_data(source, root, shop_id=None):
     from scripts.local_console import InstanceLock
-    from scripts.local_console_config import shop_data_directory
-
     source = source.resolve(strict=True)
     root = root.resolve()
-    target = root / 'data'
-    if shop_id is not None:
-        target = shop_data_directory(target, shop_id)
     if not source.is_dir() or source.is_relative_to(root) or root.is_relative_to(source):
         raise ValueError('Source and managed installation must be separate directories')
     with InstanceLock(source):
-        with new_managed_data(root, shop_id) as snapshot:
+        with new_managed_data(root, shop_id) as (snapshot, target):
             paths = ('console.json', 'products.sqlite3', 'voices/voices.sqlite3', 'avatars/avatars.sqlite3')
             present = [name for name in paths if (source / name).exists() or (source / name).is_symlink()]
             if not present:
@@ -127,12 +122,7 @@ def migrate_data(source, root, shop_id=None):
 
 
 def migrate_v122_assets(root, runtime, voices, avatars, products=None, shop_id=None):
-    from scripts.local_console_config import shop_data_directory
-
     root = root.resolve()
-    target = root / 'data'
-    if shop_id is not None:
-        target = shop_data_directory(target, shop_id)
     runtime = runtime.resolve(strict=True)
     if not voices and not avatars:
         raise ValueError('Select at least one legacy voice or avatar directory')
@@ -140,7 +130,7 @@ def migrate_v122_assets(root, runtime, voices, avatars, products=None, shop_id=N
         raise ValueError('Independent media runtime is incomplete')
     ffmpeg = runtime_file(runtime, '_internal/env/ffmpeg/bin/ffmpeg.exe')
     imported = {'voices': [], 'avatars': []}
-    with new_managed_data(root, shop_id) as snapshot:
+    with new_managed_data(root, shop_id) as (snapshot, target):
         for kind, sources in (('voices', voices), ('avatars', avatars)):
             if not sources:
                 continue
@@ -215,12 +205,7 @@ def import_v122_products(snapshot, source):
 
 
 def migrate_v122_products(root, source, shop_id=None):
-    from scripts.local_console_config import shop_data_directory
-
     root = root.resolve()
-    target = root / 'data'
-    if shop_id is not None:
-        target = shop_data_directory(target, shop_id)
-    with new_managed_data(root, shop_id) as snapshot:
+    with new_managed_data(root, shop_id) as (snapshot, target):
         imported = import_v122_products(snapshot, source)
     return {'status': 'ok', 'data_directory': str(target), 'products': imported}
