@@ -357,6 +357,12 @@ class ConsoleHTTPTests(unittest.TestCase):
             })
         recommendations = self.call('/api/products/selection-evidence')[1]['products']
         self.assertEqual([item['recommendation']['role'] for item in recommendations[-2:]], ['trial', 'hold'])
+        store.save(title='低库存商品', content='商品说明', product_index=7, product_facts={
+            '库存': {'status': 'verified', 'source': '盘点', 'value': 2},
+            '低库存阈值': {'status': 'verified', 'source': '商家确认', 'value': 2},
+        })
+        low_stock = self.call('/api/products/selection-evidence')[1]['products'][-1]
+        self.assertIn('已核对库存 2', low_stock['stock_review'])
 
     def test_product_selection_evidence_preserves_zero_and_missing_conditions(self):
         store = ProductStore(self.directory.name)

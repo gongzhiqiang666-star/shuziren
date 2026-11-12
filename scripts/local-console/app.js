@@ -922,6 +922,11 @@ $('selection-evidence-form').addEventListener('submit', async event => {
       const roles = {hold:'暂缓', trial:'试播', support:'辅助', primary:'主推'};
       suggestion.textContent = `建议${roles[product.recommendation.role]} · ${product.recommendation.reason}`;
       block.append(suggestion);
+      if (product.stock_review) {
+        const stockReview = document.createElement('p');
+        stockReview.textContent = product.stock_review;
+        block.append(stockReview);
+      }
       if (product.recommendation.role !== 'hold') {
         const add = document.createElement('button');
         add.type = 'button';

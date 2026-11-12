@@ -1454,7 +1454,7 @@ class ProductStore:
         return {'role': role, 'reason': reason}
 
     def product_selection_evidence(self):
-        fields = ('适播性', '目标人群', '售价', '成本', '库存', '发货条件', '排品角色')
+        fields = ('适播性', '目标人群', '售价', '成本', '库存', '低库存阈值', '发货条件', '排品角色')
         now = datetime.now(timezone.utc)
         result = []
         for product in self.list():
@@ -1466,6 +1466,10 @@ class ProductStore:
                 'verified_fact_count': len(facts),
                 'recommendation': self.lineup_recommendation(facts),
             })
+            stock = facts.get('库存', {}).get('value')
+            threshold = facts.get('低库存阈值', {}).get('value')
+            if type(stock) is int and type(threshold) is int and 0 < stock <= threshold:
+                result[-1]['stock_review'] = f'已核对库存 {stock}，达到商家设置的低库存提醒阈值 {threshold}'
         return result
 
     def get(self, product_id):
