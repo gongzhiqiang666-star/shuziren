@@ -17,6 +17,7 @@ class ResidentTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.root=Path(self.temp.name)
         provider=object.__new__(ResidentAvatar);self.provider=provider
+        provider.rtmp_reader = None
         provider.internal=self.root;provider.sessions=[object()];provider.frame_offset=0;provider.sample_offset=0;provider.timed_mode=None;provider.wenet_loads=0;provider.session='session';provider.prepared=False;provider.prepare_result=None
         synth=object.__new__(VideoSynthesizer);provider.synth=synth
         synth._closed=False;synth.executor=None;synth.batch_size=4;synth.total_frames=7;synth.current_frame_position=0;synth.is_forward=True;synth.wenet_model=None
