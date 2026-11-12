@@ -32,7 +32,8 @@ def product_prompt_info(snapshot, *, now=None):
     extra = snapshot.get("extra") or {}
     if "product_facts" not in extra:
         return {"title": snapshot["title"], "content": snapshot["content"]}
-    verified = {name: fact["value"] for name, fact in verified_product_facts(snapshot, now=now).items()}
+    verified = {name: fact["value"] for name, fact in verified_product_facts(snapshot, now=now).items()
+                if name != '低库存阈值'}
     return {"title": snapshot["title"], "content": json.dumps(verified, ensure_ascii=False)}
 
 
@@ -355,16 +356,17 @@ class ProductStore:
         for product_id in preparation['draft']['product_ids']:
             product = self.get(product_id)
             facts = verified_product_facts(product, now=now)
+            customer_facts = {name: fact for name, fact in facts.items() if name != '低库存阈值'}
             items.append({
                 'product_id': product_id, 'product_version': product['version'], 'title': product['title'],
                 'script_id': self.selected_script(product_id),
                 'recommendation': self.lineup_recommendation(facts),
                 'stock_review': self.low_stock_review(facts),
                 'selling_points': [{'name': name, 'value': fact['value'], 'source': fact['source']}
-                                   for name, fact in facts.items()],
+                                   for name, fact in customer_facts.items()],
                 'faq': [{'question': f"{name}是什么？", 'answer': fact['value'], 'source': fact['source']}
-                        for name, fact in facts.items()],
-                'missing': [] if facts else ['补充并核对商品事实'],
+                        for name, fact in customer_facts.items()],
+                'missing': [] if customer_facts else ['补充并核对商品事实'],
                 'assets': ['核对商品展示图或实拍视频'],
             })
         selected_versions = {item['product_id']: item['product_version'] for item in items}

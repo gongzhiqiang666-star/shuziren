@@ -366,6 +366,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         store.save_live_preparation(product_ids=[low_stock['product_id']])
         prepared, = self.call('/api/live/preparation/package')[1]['items']
         self.assertEqual(prepared['stock_review'], low_stock['stock_review'])
+        self.assertNotIn('低库存阈值', [item['name'] for item in prepared['selling_points']])
+        self.assertNotIn('低库存阈值是什么？', [item['question'] for item in prepared['faq']])
 
     def test_product_selection_evidence_preserves_zero_and_missing_conditions(self):
         store = ProductStore(self.directory.name)
