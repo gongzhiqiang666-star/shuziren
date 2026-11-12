@@ -277,6 +277,24 @@ $('selection-evidence-form').addEventListener('submit', async event => {
       const roles = {hold:'暂缓', trial:'试播', support:'辅助', primary:'主推'};
       suggestion.textContent = `建议${roles[product.recommendation.role]} · ${product.recommendation.reason}`;
       block.append(suggestion);
+      if (product.recommendation.role !== 'hold') {
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.className = 'secondary';
+        add.textContent = '加入直播准备草稿';
+        add.addEventListener('click', () => {
+          const current = savedProducts.find(item => item.id === product.product_id);
+          const checkbox = Array.from($('preparation-products').querySelectorAll('input'))
+            .find(input => input.value === product.product_id);
+          if (current?.version !== product.product_version || !checkbox || preparationSave.disabled) {
+            status.textContent = '商品列表或准备草稿已变化，请重新读取后再加入';
+            return;
+          }
+          checkbox.checked = true;
+          status.textContent = `${product.title} 已勾选，请核对并保存准备草稿`;
+        });
+        block.append(add);
+      }
       if (scope) {
         const metrics = document.createElement('p');
         const counts = product.business_metrics;
