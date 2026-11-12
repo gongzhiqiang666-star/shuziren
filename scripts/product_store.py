@@ -192,6 +192,8 @@ class ProductStore:
                     revision TEXT PRIMARY KEY, review TEXT NOT NULL);
             ''')
             db.execute('BEGIN IMMEDIATE')
+            if 'metrics' not in {row[1] for row in db.execute('PRAGMA table_info(sourcing_trials)')}:
+                db.execute('ALTER TABLE sourcing_trials ADD COLUMN metrics TEXT')
             if 'revoked' not in {row[1] for row in db.execute('PRAGMA table_info(product_after_sales_tasks)')}:
                 db.execute('ALTER TABLE product_after_sales_tasks ADD COLUMN revoked INTEGER NOT NULL DEFAULT 0')
             if 'withdrawn' not in {row[1] for row in db.execute('PRAGMA table_info(live_content_drafts)')}:
@@ -1049,27 +1051,46 @@ class ProductStore:
             rows = db.execute('SELECT * FROM sourcing_candidates ORDER BY observed_on DESC, rowid DESC').fetchall()
         return [{**dict(row), 'details': json.loads(row['details'])} for row in rows]
 
-    def save_sourcing_trial(self, candidate_id, sample_evidence, trial_evidence, cost_minor, verdict):
+    def save_sourcing_trial(self, candidate_id, sample_evidence, trial_evidence, cost_minor, verdict, metrics=None):
         sample_evidence = text(sample_evidence, '样品核验依据', 2000)
         trial_evidence = text(trial_evidence, '试卖记录或待办', 2000)
         if cost_minor is not None and (type(cost_minor) is not int or not 0 <= cost_minor < 2**53):
             raise ProductError('样品成本须为非负整数分或未知')
         if verdict not in ('pending', 'pass', 'fail'):
             raise ProductError('样品核验结果无效')
+        if metrics is not None:
+            if (not isinstance(metrics, dict) or metrics.keys() - {'orders', 'refunds', 'fulfilled_on_time'}
+                    or any(type(count) is not int or not 0 <= count < 2**53 for count in metrics.values())):
+                raise ProductError('试卖指标须为非负整数或留空')
+            if 'orders' in metrics and any(metrics.get(key, 0) > metrics['orders']
+                                          for key in ('refunds', 'fulfilled_on_time')):
+                raise ProductError('同批试卖的退款或按时履约数量不能超过订单数量')
         with self.connect() as db:
             result = db.execute("""
-                INSERT INTO sourcing_trials
-                SELECT id, ?, ?, ?, ? FROM sourcing_candidates WHERE id=?
+                INSERT INTO sourcing_trials (candidate_id, sample_evidence, trial_evidence, cost_minor, verdict, metrics)
+                SELECT id, ?, ?, ?, ?, ? FROM sourcing_candidates WHERE id=?
                 ON CONFLICT(candidate_id) DO UPDATE SET sample_evidence=excluded.sample_evidence,
-                    trial_evidence=excluded.trial_evidence, cost_minor=excluded.cost_minor, verdict=excluded.verdict
-            """, (sample_evidence, trial_evidence, cost_minor, verdict, candidate_id))
+                    trial_evidence=excluded.trial_evidence, cost_minor=excluded.cost_minor, verdict=excluded.verdict,
+                    metrics=excluded.metrics
+            """, (sample_evidence, trial_evidence, cost_minor, verdict, json.dumps(metrics) if metrics is not None else None,
+                  candidate_id))
             if not result.rowcount:
                 raise ProductError('采购候选不存在')
 
     def sourcing_trial(self, candidate_id):
         with self.connect() as db:
             row = db.execute('SELECT * FROM sourcing_trials WHERE candidate_id=?', (candidate_id,)).fetchone()
-        return dict(row) if row else None
+        return self._decode_sourcing_trial(row)
+
+    @staticmethod
+    def _decode_sourcing_trial(row):
+        if row is None:
+            return None
+        trial = dict(row)
+        metrics = trial.pop('metrics')
+        if metrics is not None:
+            trial['metrics'] = json.loads(metrics)
+        return trial
 
     def save_sourcing_decision(self, candidate_id, decision, rationale, constraints):
         if decision not in ('adopt', 'continue', 'drop'):
@@ -1085,7 +1106,7 @@ class ProductStore:
             if decision == 'adopt' and (not trial or trial['verdict'] != 'pass' or trial['cost_minor'] is None):
                 raise Conflict('采用前需要商家核验通过的样品及已知样品成本')
             snapshot = {'candidate_id': candidate_id, 'decision': decision, 'rationale': rationale,
-                        'constraints': constraints, 'trial': dict(trial) if trial else None,
+                        'constraints': constraints, 'trial': self._decode_sourcing_trial(trial),
                         'recorded_at': datetime.now(timezone.utc).isoformat()}
             db.execute('INSERT OR REPLACE INTO sourcing_decisions VALUES (?, ?)',
                        (candidate_id, json.dumps(snapshot, ensure_ascii=False)))
