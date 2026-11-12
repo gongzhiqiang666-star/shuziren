@@ -1585,6 +1585,9 @@ async function loadLive() {
     const details = [item.evidence];
     if (context?.occurred_at != null) details.push(new Date(context.occurred_at * 1000).toLocaleString());
     if (context?.next_frame != null) details.push(`待输出帧 ${context.next_frame}`);
+    if (item.code === 'silent_speech' && context?.first_frame != null) {
+      details.push(`静音起始帧 ${context.first_frame}`);
+    }
     if (context?.task_id) details.push(`问答任务 ${context.task_id}`);
     if (context?.fact_expired_at != null) {
       details.push('商品事实到期 ' + new Date(context.fact_expired_at * 1000).toLocaleString());
