@@ -19,6 +19,24 @@ from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_preparation_preserves_manual_lineup_order_through_handoff(self):
+        store = ProductStore(self.directory.name)
+        first = store.save(title='茶杯', content='口播验收', product_index=1)
+        second = store.save(title='桌布', content='口播验收', product_index=2)
+        order = [second['id'], first['id']]
+        route = '/api/live/preparation'
+        self.assertEqual(self.call(route, {'product_ids': order})[0], 200)
+        self.assertEqual(self.call(route)[1]['draft']['product_ids'], order)
+        status, package = self.call(route + '/package')
+        self.assertEqual(status, 200)
+        self.assertEqual([item['product_id'] for item in package['items']], order)
+        self.assertEqual(self.call(route + '/review', {
+            'revision': package['revision'], 'review': '已确认排品顺序',
+        })[0], 200)
+        status, rotation = self.call(route + '/rotation', {'revision': package['revision']})
+        self.assertEqual(status, 200)
+        self.assertEqual([item['product_id'] for item in rotation['items']], order)
+
     def test_product_selection_requires_verified_primary_role_and_commercial_facts(self):
         store = ProductStore(self.directory.name)
         values = {'适播性': '适播', '目标人群': '家庭', '库存': 20, '发货条件': '48小时内',
