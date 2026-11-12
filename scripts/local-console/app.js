@@ -846,6 +846,11 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
         lines.push(`轮播故障 ${finding.evidence.event_id} · 复测建议：${finding.recommendation}`);
       }
     }
+    for (const group of review.repeated_questions) {
+      const title = savedProducts.find(product => product.id === group.product_id)?.title ?? group.product_id;
+      lines.push(`${title} · 重复问题 ${group.evidence.length} 次：${group.question}`,
+        '对应问答任务：' + group.evidence.map(item => item.task_id).join('、'));
+    }
     output.replaceChildren(...lines.map(line => {
       const paragraph = document.createElement('p');
       paragraph.textContent = line;

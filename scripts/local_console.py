@@ -210,8 +210,19 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         raise ProductError('场次无效')
                     report = products().live_session_report(sessions[0])
                     if path == '/api/live/review':
+                        questions = {}
+                        for reply in report['queued_replies']:
+                            question = ' '.join(reply['question'].split())
+                            key = (reply['product_id'], question)
+                            group = questions.setdefault(key, {
+                                'product_id': reply['product_id'], 'question': question, 'evidence': [],
+                            })
+                            group['evidence'].append({name: reply[name] for name in
+                                                      ('task_id', 'product_version', 'queued_at', 'played_at')})
                         return self.respond(200, {
                             'session_id': sessions[0], 'missing': report['missing'],
+                            'repeated_questions': [group for group in questions.values()
+                                                   if len(group['evidence']) > 1],
                             'findings': [{
                                 'evidence': {'event_id': fault['event_id'], 'occurred_at': fault['occurred_at']},
                                 'fact': fault['reason'],
