@@ -291,10 +291,10 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         started_at = session['started_at']
                         duration = None if started_at is None else session['ended_at'] - started_at
                         completed = sum(item['completed_segments'] for item in report['products'])
-                        replies = report['queued_replies']
-                        verdicts = {verdict: sum(item['verdict'] == verdict for item in replies)
+                        queued_replies = report['queued_replies']
+                        verdicts = {verdict: sum(item['verdict'] == verdict for item in queued_replies)
                                     for verdict in ('correct', 'incorrect', 'uncertain')}
-                        review_times = [item['review_seconds'] for item in replies if item['review_seconds'] is not None]
+                        review_times = [item['review_seconds'] for item in queued_replies if item['review_seconds'] is not None]
                         comparison[role] = {
                             'session': session,
                             'duration_seconds': duration if duration and duration > 0 else None,
@@ -302,8 +302,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             'completed_segments_per_minute': completed * 60 / duration
                             if duration and duration > 0 else None,
                             'rotation_faults': len(report['rotation_faults']),
-                            'played_replies': sum(item['played_at'] is not None for item in replies),
-                            'reply_review': {**verdicts, 'unreviewed': len(replies) - sum(verdicts.values()),
+                            'played_replies': sum(item['played_at'] is not None for item in queued_replies),
+                            'reply_review': {**verdicts, 'unreviewed': len(queued_replies) - sum(verdicts.values()),
                                              'timed': len(review_times), 'seconds': sum(review_times) if review_times else None},
                             'products': report['products'],
                             'lineup_baseline': report['lineup_baseline'],
