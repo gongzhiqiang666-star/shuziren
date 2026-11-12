@@ -857,6 +857,10 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
         lines.push(`${formatTime(reply.queued_at)} · ${reply.question} · 任务 ${reply.task_id}`);
       }
     }
+    for (const reply of review.unqueued_replies) {
+      const status = reply.status === 'cancelled' ? '回复取消' : '回复失败';
+      lines.push(`${formatTime(reply.occurred_at)} · ${status} · 记录 ${reply.event_id} · ${reply.question} · ${reply.reason}`);
+    }
     output.replaceChildren(...lines.map(line => {
       const paragraph = document.createElement('p');
       paragraph.textContent = line;

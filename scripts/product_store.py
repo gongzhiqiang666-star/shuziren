@@ -135,6 +135,9 @@ class ProductStore:
                     session_id TEXT NOT NULL, task_id TEXT NOT NULL, product_id TEXT NOT NULL,
                     product_version INTEGER NOT NULL, question TEXT NOT NULL, answer TEXT NOT NULL,
                     queued_at REAL NOT NULL, PRIMARY KEY(session_id, task_id));
+                CREATE TABLE IF NOT EXISTS live_unqueued_replies (
+                    session_id TEXT NOT NULL, product_id TEXT NOT NULL, product_version INTEGER NOT NULL,
+                    question TEXT NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL, occurred_at REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_preparation_review (
                     revision TEXT PRIMARY KEY, review TEXT NOT NULL);
             ''')
@@ -418,6 +421,10 @@ class ProductStore:
                 SELECT task_id, product_id, product_version, question, answer, queued_at, played_at
                 FROM live_queued_replies WHERE session_id = ? ORDER BY rowid
             """, (session_id,)).fetchall()
+            unqueued = db.execute("""
+                SELECT rowid AS event_id, product_id, product_version, question, status, reason, occurred_at
+                FROM live_unqueued_replies WHERE session_id=? ORDER BY rowid
+            """, (session_id,)).fetchall()
             switches = db.execute("""
                 WITH sequence AS (
                     SELECT rowid AS cursor, task_id, product_id, completed_at,
@@ -432,10 +439,16 @@ class ProductStore:
             'controls': [{**dict(row), 'manual': bool(row['manual'])} for row in controls],
             'rotation_faults': [dict(row) for row in faults],
             'queued_replies': [dict(row) for row in replies],
+            'unqueued_replies': [dict(row) for row in unqueued],
             'observed_product_switches': [dict(row) for row in switches],
             'missing': ['product_exposure', 'questions_and_answers', 'platform_product_switches',
                         'fault_events', 'attributed_sales'],
         }
+
+    def record_unqueued_reply(self, session_id, product, question, status, reason, occurred_at):
+        with self.connect() as db:
+            db.execute('INSERT INTO live_unqueued_replies VALUES (?, ?, ?, ?, ?, ?, ?)',
+                       (session_id, product['id'], product['version'], question, status, reason, occurred_at))
 
     def record_queued_reply(self, session_id, task_id, product, question, answer, queued_at):
         with self.connect() as db:

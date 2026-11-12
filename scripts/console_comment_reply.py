@@ -81,6 +81,13 @@ class ConsoleCommentReply:
         def wait():
             self.closed.wait(.1)
 
+        def record_unsent(status, reason):
+            try:
+                live.tts.products.record_unqueued_reply(session_id, product, comment['content'],
+                                                        status, reason, time.time())
+            except sqlite3.Error:
+                logging.exception('记录未入队问答失败')
+
         try:
             validate()
             text = generate_reply(product, comment['content'], settings, language=language)
@@ -115,9 +122,11 @@ class ConsoleCommentReply:
                 self.replied.append(comment['id'])
                 self.job.update(status='queued', text=text, task_id=task['id'])
         except Conflict as error:
+            record_unsent('cancelled', str(error))
             with self.lock:
                 self.job.update(status='cancelled', error=str(error))
         except Exception:
+            record_unsent('failed', '评论回复失败，请检查LLM和语音服务')
             with self.lock:
                 self.job.update(status='failed', error='评论回复失败，请检查LLM和语音服务')
         finally:

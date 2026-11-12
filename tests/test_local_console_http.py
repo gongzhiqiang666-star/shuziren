@@ -37,6 +37,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         store.record_queued_reply('other', 'reply', {'id': 'product', 'version': 2}, '其他问题', '其他回答', 107)
         store.record_reply_playback('scene', 'reply', 108)
         store.record_reply_playback('scene', 'reply', 109)
+        store.record_unqueued_reply('scene', {'id': 'product', 'version': 2}, '何时发货？',
+                                   'cancelled', '场次变化', 110)
         status, report = self.call('/api/live/report?session_id=scene')
         self.assertEqual(status, 200)
         self.assertEqual(report['session']['frames'], 225)
@@ -53,6 +55,9 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(finding['evidence'], {'event_id': 1, 'occurred_at': 104})
         self.assertEqual(finding['fact'], '语音合成超时')
         self.assertIn('questions_and_answers', review['missing'])
+        unqueued, = review['unqueued_replies']
+        self.assertEqual((unqueued['question'], unqueued['status'], unqueued['reason']),
+                         ('何时发货？', 'cancelled', '场次变化'))
         question, = review['repeated_questions']
         self.assertEqual(question['question'], '什么材质？')
         self.assertEqual([item['task_id'] for item in question['evidence']], ['reply', 'second-reply'])

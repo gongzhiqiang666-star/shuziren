@@ -228,6 +228,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                                  ('task_id', 'product_id', 'product_version', 'question', 'queued_at')}
                                 for reply in report['queued_replies'] if reply['played_at'] is None
                             ],
+                            'unqueued_replies': report['unqueued_replies'],
                             'findings': [{
                                 'evidence': {'event_id': fault['event_id'], 'occurred_at': fault['occurred_at']},
                                 'fact': fault['reason'],
