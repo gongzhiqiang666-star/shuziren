@@ -785,3 +785,5 @@ V09 / G08-04 候选 b8ce9e7 通过 299 项 Windows 回归后构建并隔离安�
 V09 / A01-05 候选 b8ce9e7 从本机隔离安装目录实播 RTMP 通过。用 SRS 输入完成轮播、插播、接管恢复和停播，共提交 935 帧，回采双轨完整解码与场次报告追溯通过。证据 logs/validation/n05-installed-rtmp-b8ce9e7/result.json。使用安装目录验收脚本启动，干净 Windows 整机和发行版长稳待验。
 
 V09 候选 b8ce9e7 正式 deploy --with-media 及 run --with-media 入口补验通过。临时安装根加载独立媒体运行目录，设备接口枚举到 CABLE Input，采购候选接口响应，确认退出请求后启动器退出码 0。此轮正式启动器未开播，安装目录实播另见 n05-installed-rtmp-b8ce9e7。
+
+V09-04 候选 b8ce9e7 安装目录打包回归 8 项通过，含旧商品与话术迁移、形象迁移保留及锁。复查本机 v179 包中排除 Python 环境的 JSON 未发现含 product_scripts 或 face_hand_live 的真实导出模板，真实样本待验。
