@@ -224,12 +224,14 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
         def log_message(self, fmt, *args):
             logging.info("HTTP %s", fmt % args)
 
-        def respond(self, status, body, content_type="application/json; charset=utf-8"):
+        def respond(self, status, body, content_type="application/json; charset=utf-8", *, attachment=None):
             content = json.dumps(body, ensure_ascii=False).encode("utf-8") if isinstance(body, dict) else body
             try:
                 self.send_response(status)
                 self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(len(content)))
+                if attachment:
+                    self.send_header("Content-Disposition", f'attachment; filename="{attachment}"')
                 self.send_header("Cache-Control", "no-store")
                 self.send_header("X-Content-Type-Options", "nosniff")
                 self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'")
@@ -445,7 +447,9 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if len(ids)!=1: raise ProductError('请选择有效视频任务')
                     manager=render_manager if render_manager is not None else renders()
                     if path == '/api/render/subtitle':
-                        return self.respond(200, {'subtitle_srt': manager.subtitle(ids[0])})
+                        subtitle = manager.subtitle(ids[0]).encode('utf-8')
+                        return self.respond(200, subtitle, 'application/x-subrip; charset=utf-8',
+                                            attachment='avatar-subtitles.srt')
                     from scripts.media_http import serve_file
                     return serve_file(self,manager.video_path(ids[0]),'video/mp4')
                 if path == '/api/tts/audio':

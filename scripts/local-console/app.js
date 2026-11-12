@@ -1511,9 +1511,14 @@ $('render-subtitle').addEventListener('click', async () => {
   button.disabled = true;
   $('render-error').textContent = '';
   try {
-    const {subtitle_srt} = await request('/api/render/subtitle?task_id=' + encodeURIComponent(taskId));
+    const response = await fetch('/api/render/subtitle?task_id=' + encodeURIComponent(taskId));
+    if (!response.ok) {
+      const {error} = await response.json();
+      throw new Error(error || '成片字幕下载失败');
+    }
+    const subtitle = await response.blob();
     if (taskId !== renderPreviewTask || consoleClosed) return;
-    const url = URL.createObjectURL(new Blob([subtitle_srt], {type:'text/plain;charset=utf-8'}));
+    const url = URL.createObjectURL(subtitle);
     const link = document.createElement('a');
     link.href = url;
     link.download = '数字人视频字幕.srt';
