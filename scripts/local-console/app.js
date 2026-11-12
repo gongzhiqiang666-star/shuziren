@@ -1089,8 +1089,10 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         const params = new URLSearchParams({session_id:sessionId, task_id:event.task_id});
         const {source} = await request('/api/live/content-source?' + params);
         const snapshot = source.product_snapshot;
+        const review = {source_missing:'缺少原始证据，复用前需核对', product_changed:'商品版本已更新，复用前需核对',
+          facts_changed:'商品事实已变化，复用前需核对', version_current:'商品版本及话术事实仍有效'};
         sourceText.textContent = snapshot
-          ? [`商品快照 · ${snapshot.title} · 版本 ${snapshot.version}`, snapshot.content,
+          ? [`商品快照 · ${snapshot.title} · 版本 ${snapshot.version}`, review[source.facts_review], snapshot.content,
             '', '按原话术还原的片段', source.segment?.content ?? '片段文本无法还原',
             '', '原话术全文', source.script_text].join('\n')
           : '这条口播记录缺少原商品快照或话术。';

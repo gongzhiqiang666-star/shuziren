@@ -605,10 +605,12 @@ class ProductStore:
             row = db.execute("""
                 SELECT event.session_id, event.task_id, event.product_id, event.product_version,
                        event.script_id, event.segment_index, event.completed_at,
-                       event.sample_start, event.sample_end, script.snapshot, script.text AS script_text
+                       event.sample_start, event.sample_end, script.snapshot, script.text AS script_text,
+                       script.created_at AS script_created_at, product.version AS current_product_version
                 FROM live_rotation_events event
                 LEFT JOIN scripts script ON script.id=event.script_id AND script.product_id=event.product_id
                                         AND script.product_version=event.product_version
+                LEFT JOIN products product ON product.id=event.product_id
                 WHERE event.session_id=? AND event.task_id=?
             """, (session_id, task_id)).fetchone()
         if row is None:
@@ -616,6 +618,15 @@ class ProductStore:
         source = dict(row)
         snapshot = source.pop('snapshot')
         source['product_snapshot'] = json.loads(snapshot) if snapshot else None
+        created_at = source.pop('script_created_at')
+        if not snapshot or not created_at:
+            source['facts_review'] = 'source_missing'
+        elif source['current_product_version'] != source['product_version']:
+            source['facts_review'] = 'product_changed'
+        elif not script_facts_current(source['product_snapshot'], created_at):
+            source['facts_review'] = 'facts_changed'
+        else:
+            source['facts_review'] = 'version_current'
         source['segment'] = None
         if source['script_text'] is not None:
             from recovered.slice_content import slice_content
