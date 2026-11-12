@@ -82,6 +82,10 @@ class ConsolePackageTests(unittest.TestCase):
             host, assistant = store.scripts(identifier)
             self.assertEqual(playback_segments(host)[0]['type'], 'host')
             self.assertEqual(playback_segments(assistant)[0]['type'], 'assistant')
+            new_script = store.add_script(store.get(identifier), '独立新稿')
+            scripts = {row['id']: row for row in store.scripts(identifier)}
+            self.assertEqual(playback_segments(scripts[assistant['id']])[0]['type'], 'assistant')
+            self.assertEqual(playback_segments(scripts[new_script])[0]['type'], 'host')
             products[1]['product_index'] = 3
             source.write_text(json.dumps({**payload, 'enable_multi_product': True, 'current_product_index': 1}),
                               encoding='utf-8')
