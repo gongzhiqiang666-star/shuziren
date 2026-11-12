@@ -1423,7 +1423,7 @@ class ProductStore:
             items.append({
                 'product_id': product_id, 'product_version': product['version'], 'title': product['title'],
                 'facts': {name: {'value': facts[name]['value'], 'source': facts[name]['source']}
-                          if name in facts else None for name in fact_names},
+                          if name in facts and name != '低库存阈值' else None for name in fact_names},
             })
         return items
 
