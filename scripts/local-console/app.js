@@ -1967,7 +1967,8 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
         const timed = queued_replies.filter(reply => reply.review_seconds != null);
         const rate = correct + incorrect ? `${(100 * correct / (correct + incorrect)).toFixed(1)}%` : '未知';
         const seconds = timed.reduce((total, reply) => total + reply.review_seconds, 0);
-        reviewSummary.textContent = `答复复核 ${correct + incorrect + uncertain}/${queued_replies.length} 条 · 正确率 ${rate}（已判定 ${correct + incorrect} 条）· 不确定 ${uncertain} 条 · 已记录用时 ${timed.length ? seconds + ' 秒' : '未知'}（${timed.length} 条）`;
+        const reviewed = correct + incorrect + uncertain;
+        reviewSummary.textContent = `答复复核 ${reviewed}/${queued_replies.length} 条 · 正确率 ${rate}（正确 ${correct} 条，错误 ${incorrect} 条）· 不确定 ${uncertain} 条 · 未复核 ${queued_replies.length - reviewed} 条 · 已记录用时 ${timed.length ? seconds + ' 秒' : '未知'}（${timed.length} 条）`;
       };
       updateSummary();
       output.append(reviewSummary);
