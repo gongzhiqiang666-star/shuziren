@@ -1059,9 +1059,10 @@ class ProductStore:
         if verdict not in ('pending', 'pass', 'fail'):
             raise ProductError('样品核验结果无效')
         if metrics is not None:
-            if (not isinstance(metrics, dict) or metrics.keys() - {'orders', 'refunds', 'fulfilled_on_time'}
-                    or any(type(count) is not int or not 0 <= count < 2**53 for count in metrics.values())):
-                raise ProductError('试卖指标须为非负整数或留空')
+            if (not isinstance(metrics, dict) or metrics.keys() - {'orders', 'refunds', 'fulfilled_on_time', 'gross_profit_minor'}
+                    or any(type(amount) is not int or abs(amount) >= 2**53
+                           or (key != 'gross_profit_minor' and amount < 0) for key, amount in metrics.items())):
+                raise ProductError('试卖数量须为非负整数，毛利须为整数分，均可留空')
             if 'orders' in metrics and any(metrics.get(key, 0) > metrics['orders']
                                           for key in ('refunds', 'fulfilled_on_time')):
                 raise ProductError('同批试卖的退款或按时履约数量不能超过订单数量')

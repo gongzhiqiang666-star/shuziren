@@ -40,8 +40,9 @@ class ConsoleHTTPTests(unittest.TestCase):
                     'constraints': '仅限已确认库存'}
         self.assertEqual(self.call(decision_route, decision)[0], 409)
         passed = {**trial, 'verdict': 'pass', 'trial_evidence': '试卖记录 001',
-                  'metrics': {'orders': 5, 'refunds': 0, 'fulfilled_on_time': 4}}
+                  'metrics': {'orders': 5, 'refunds': 0, 'fulfilled_on_time': 4, 'gross_profit_minor': -100}}
         self.assertEqual(self.call(trial_route, {**passed, 'metrics': {'orders': 2, 'refunds': 3}})[0], 400)
+        self.assertEqual(self.call(trial_route, {**passed, 'metrics': {'gross_profit_minor': True}})[0], 400)
         self.assertEqual(self.call(trial_route, passed)[0], 200)
         status, recorded = self.call(decision_route, decision)
         self.assertEqual(status, 200)

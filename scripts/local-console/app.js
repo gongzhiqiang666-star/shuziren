@@ -519,7 +519,8 @@ async function sourcingAction(save) {
     buttons.forEach(button => { button.disabled = false; });
   }
 }
-const sourcingTrialMetrics = {orders:'同批试卖订单', refunds:'同批退款订单', fulfilled_on_time:'按时履约订单'};
+const sourcingTrialMetrics = {orders:'同批试卖订单', refunds:'同批退款订单', fulfilled_on_time:'按时履约订单',
+  gross_profit_minor:'同批试卖毛利（人民币分）'};
 function sourcingTrialEditor(candidate) {
   const route = '/api/sourcing/trial';
   const panel = document.createElement('details');
@@ -547,7 +548,7 @@ function sourcingTrialEditor(candidate) {
   for (const [key, caption] of Object.entries(sourcingTrialMetrics)) {
     const input = document.createElement('input');
     input.type = 'number';
-    input.min = '0';
+    input.min = key === 'gross_profit_minor' ? String(-Number.MAX_SAFE_INTEGER) : '0';
     input.max = String(Number.MAX_SAFE_INTEGER);
     input.step = '1';
     metrics[key] = input;
