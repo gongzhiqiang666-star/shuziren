@@ -106,3 +106,5 @@ G09-03 通过本机 Chrome 投放方案测试。用测试账单保存 500 分预
 源码基线 da692ec。使用本机 Python 和实际 FFmpeg 运行 unittest discover，281 项中 279 项通过，2 项因未设置运行目录跳过。设置 SHUZIREN_TEST_RUNTIME_ROOT 后单独运行语音工作进程协议组，3 项通过，覆盖前述两项跳过。
 
 V00 / X15-01 Windows 恢复验证补跑：指定原运行目录并将随包 FFmpeg 加入本次进程 PATH。修正 ZipVoice 校验替身缺失 no_grad 后，通过该生命周期检查。全量校验仍退出 1，停在 RtmpFaceReader._get_video_properties 签名差异，原二进制参数数为 2，重建额外带可选 cancel。待核对取消参数的调用方与原契约。日志位于 logs/validation/recovery-current-retry.log。
+
+V00 / X15-01 复测通过。RTMP 取流和淘宝登录等待保留原二进制入口参数，将重建的取消和超时控制移入内部入口。RTMP 5 项回归通过。原运行目录及随包 FFmpeg 环境下，恢复校验退出 0，128/128 映射与导入、调用签名、核心方法及协议夹具通过。真实平台及业务差分仍按各关单独验收。

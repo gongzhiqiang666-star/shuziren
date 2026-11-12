@@ -203,7 +203,11 @@ def _pick_latest_unpublished_live(lives):
     return max(candidates, default=("", -1, None), key=lambda row: (row[0], row[1]))[2]
 
 
-def _wait_taobao_login(page, *, target_url, timeout_sec=600, cancel=None):
+def _wait_taobao_login(page, *, target_url):
+    return _wait_taobao_login_with_cancel(page, target_url=target_url, timeout_sec=600, cancel=None)
+
+
+def _wait_taobao_login_with_cancel(page, *, target_url, timeout_sec, cancel):
     if page is None:
         raise RuntimeError("Taobao page is unavailable")
     target_host = urlsplit(target_url).hostname
@@ -481,7 +485,7 @@ class TaobaoLiveControl:
         target = "https://liveplatform.taobao.com/restful/index/live/list"
         login_query = urlencode({"bizName": "taobao", "sub": "true", "redirectURL": target})
         self._page.goto("https://login.taobao.com/havanaone/login/login.htm?" + login_query)
-        _wait_taobao_login(self._page, target_url=target, timeout_sec=login_timeout_sec, cancel=cancel)
+        _wait_taobao_login_with_cancel(self._page, target_url=target, timeout_sec=login_timeout_sec, cancel=cancel)
         self._save_storage_state()
 
     def _save_storage_state(self):

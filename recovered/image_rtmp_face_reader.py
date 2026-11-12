@@ -35,7 +35,10 @@ class RtmpFaceReader(VideoFaceReader):
     @staticmethod
     def _make_even(value, minimum=2): return max(minimum, int(value) // 2 * 2)
 
-    def _get_video_properties(self, rtmp_url, cancel=None):
+    def _get_video_properties(self, rtmp_url):
+        return self._probe_video_properties(rtmp_url, None)
+
+    def _probe_video_properties(self, rtmp_url, cancel):
         command = [shutil.which("ffprobe") or "ffprobe", "-v", "error", "-select_streams", "v:0",
                    "-show_entries", "stream=width,height,avg_frame_rate", "-of", "json", rtmp_url]
         if cancel is None:
@@ -93,7 +96,7 @@ class RtmpFaceReader(VideoFaceReader):
     def _start_capture(self, rtmp_url, cancel=None):
         self.stop_capture()
         url = str(rtmp_url)
-        properties = self._get_video_properties(url, cancel)
+        properties = self._probe_video_properties(url, cancel)
         with self.capture_lock:
             if cancel is not None and cancel.is_set():
                 raise RuntimeError("RTMP 重连已取消")
