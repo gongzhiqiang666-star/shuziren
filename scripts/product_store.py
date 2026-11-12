@@ -445,7 +445,8 @@ class ProductStore:
                 if len(rows) > 1000:
                     raise ProductError('每次最多导入 1000 行经营数据')
         except csv.Error as error:
-            raise ProductError(f'CSV 格式无效：{error}') from None
+            line = max(1, reader.line_num)
+            raise ProductError(f'CSV 第 {line} 行附近格式无效：{error}') from None
         if not rows:
             raise ProductError('CSV 中没有经营数据行')
         self._write_business_metrics(rows)
