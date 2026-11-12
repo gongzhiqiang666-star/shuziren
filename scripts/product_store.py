@@ -207,6 +207,10 @@ class ProductStore:
                     session_id TEXT NOT NULL, task_id TEXT NOT NULL, account TEXT NOT NULL, publication_id TEXT NOT NULL,
                     PRIMARY KEY(session_id, task_id), UNIQUE(account, publication_id),
                     FOREIGN KEY(session_id, task_id) REFERENCES live_content_schedule(session_id, task_id));
+                CREATE TABLE IF NOT EXISTS live_content_receipt_times (
+                    session_id TEXT NOT NULL, task_id TEXT NOT NULL, recorded_at REAL NOT NULL,
+                    PRIMARY KEY(session_id, task_id),
+                    FOREIGN KEY(session_id, task_id) REFERENCES live_content_receipts(session_id, task_id));
                 CREATE TABLE IF NOT EXISTS live_advice_acknowledgments (
                     session_id TEXT NOT NULL, advice TEXT NOT NULL, acknowledged_at REAL NOT NULL,
                     PRIMARY KEY(session_id, advice));
@@ -634,8 +638,9 @@ class ProductStore:
             """, (session_id,)).fetchall()
             publications = db.execute("""
                 SELECT receipt.task_id, receipt.account, receipt.publication_id,
-                       schedule.audience, schedule.publish_at
+                       schedule.audience, schedule.publish_at, timing.recorded_at
                 FROM live_content_receipts receipt JOIN live_content_schedule schedule USING (session_id, task_id)
+                LEFT JOIN live_content_receipt_times timing USING (session_id, task_id)
                 WHERE receipt.session_id=? ORDER BY schedule.publish_at, receipt.task_id
             """, (session_id,)).fetchall()
             content_summary = self.live_content_summary(session_id, connection=db)
@@ -982,6 +987,8 @@ class ProductStore:
                                 (session_id, task_id, row['account'], publication_id))
             if not result.rowcount:
                 raise Conflict('该账号的作品编号已关联其他排期')
+            db.execute('INSERT INTO live_content_receipt_times VALUES (?, ?, ?)',
+                       (session_id, task_id, datetime.now(timezone.utc).timestamp()))
 
     def save_live_content_draft(self, session_id, task_id, body, production_seconds=_UNCHANGED,
                                 baseline_seconds=_UNCHANGED):

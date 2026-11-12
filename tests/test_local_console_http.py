@@ -628,6 +628,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call('/api/live/content-draft', body)[0], 200)
         self.assertEqual(self.call(receipt_route, {**receipt, 'task_id': 'task'})[0], 409)
         self.assertEqual(self.call(receipt_route, receipt)[1]['schedule']['publication_id'], 'platform-001')
+        original_recorded_at = self.call('/api/live/report?session_id=scene')[1]['content_publications'][0]['recorded_at']
+        self.assertGreater(original_recorded_at, 0)
         self.assertEqual(self.call('/api/live/content-draft', body)[0], 200)
         self.assertEqual(self.call(receipt_route, receipt)[1]['schedule']['revision_count'], 2)
         self.assertEqual(self.call(receipt_route, receipt)[0], 200)
@@ -683,6 +685,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(publications[0], {
             'task_id': 'assistant-task', 'account': '店铺账号', 'publication_id': 'platform-001',
             'audience': '公开', 'publish_at': '2027-01-01T01:00:00+00:00',
+            'recorded_at': original_recorded_at,
         })
         self.assertEqual((source['sample_start'], source['sample_end']), (960, 1920))
         self.assertEqual(self.call('/api/live/content-source?session_id=other&task_id=task')[0], 400)
