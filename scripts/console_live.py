@@ -51,7 +51,7 @@ class ConsoleLive:
                 duration = item.get('duration_seconds')
                 if started is not None and duration is not None and time.monotonic() >= started + duration:
                     state['shift_waiting_for_boundary'] = {
-                        key: item[key] for key in ('product_id', 'product_version', 'script_id')
+                        key: item[key] for key in ('product_id', 'product_version', 'script_id', 'duration_seconds')
                     }
             return state
 

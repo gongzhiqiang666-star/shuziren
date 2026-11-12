@@ -108,7 +108,9 @@ class LiveRotationTests(unittest.TestCase):
             now = 100
             live._tick_rotation_shift(rotation, now)
             with patch('scripts.console_live.time.monotonic', return_value=103):
-                self.assertEqual(live.state()['shift_waiting_for_boundary']['product_id'], 'first')
+                self.assertEqual(live.state()['shift_waiting_for_boundary'], {
+                    'product_id': 'first', 'product_version': 1, 'script_id': 'script', 'duration_seconds': 3,
+                })
                 live.session.control_state.return_value = {'manual': True}
                 self.assertNotIn('shift_waiting_for_boundary', live.state())
                 live.session.control_state.return_value = {}

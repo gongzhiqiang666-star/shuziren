@@ -104,9 +104,11 @@ def live_advice(session, repeated_questions=()):
                        'recommendation': '核对当前话术生成的语音及本机音频输出',
                        'context': session['silent_speech']})
     if session.get('shift_waiting_for_boundary'):
-        advice.append({'code': 'shift_waiting_for_boundary', 'evidence': '当前班次已到设定时长，尚未切品',
+        shift = session['shift_waiting_for_boundary']
+        advice.append({'code': 'shift_waiting_for_boundary',
+                       'evidence': f"当前班次已到设定时长（{shift['duration_seconds']:g} 秒），尚未切品",
                        'recommendation': '等待当前商品讲解结束后切换，若持续未切换请检查轮播状态',
-                       'context': session['shift_waiting_for_boundary']})
+                       'context': shift})
     if session.get('rotation_stock_evidence'):
         stock = session['rotation_stock_evidence']
         advice.append({'code': 'rotation_stock_zero', 'evidence': f"轮播商品版本的已核对库存为 0，来源 {stock['source']}",
