@@ -309,7 +309,11 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         raise ProductError('场次无效')
                     if path == '/api/live/improvements':
                         return self.respond(200, {'tasks': products().live_improvements(sessions[0])})
+                    current = live_manager.state() if path == '/api/live/report' and live_manager is not None else {}
                     report = products().live_session_report(sessions[0])
+                    if (current.get('id') == sessions[0] and current.get('status') == 'running'
+                            and report['session']['status'] == 'running'):
+                        report['session']['frames'] = max(report['session']['frames'], current['frames'])
                     if path == '/api/live/review':
                         questions = {}
                         for reply in report['queued_replies']:
