@@ -239,7 +239,9 @@ class ConsoleHTTPTests(unittest.TestCase):
                              product_id=first['id'], version=first['version'])
         self.assertEqual(self.call(package_route)[1]['after_sales_tasks'], [])
         self.assertEqual(store.after_sales_tasks([first['id']])[0]['product_version'], first['version'])
-        self.assertEqual(self.call(route + '/task', task)[1]['tasks'][0]['product_version'], updated['version'])
+        self.assertEqual(self.call(route + '/task', {**task, 'product_version': first['version']})[0], 409)
+        self.assertEqual(self.call(route + '/task', {**task, 'product_version': updated['version']})[1]
+                         ['tasks'][0]['product_version'], updated['version'])
         identity = {key: value for key, value in task.items() if key not in {'owner', 'goal'}}
         self.assertEqual(self.call(route + '/task/revoke', identity), (200, {'revoked': True}))
         self.assertEqual(self.call(package_route)[1]['after_sales_tasks'], [])

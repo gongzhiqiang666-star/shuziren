@@ -457,7 +457,7 @@ async function afterSalesAction(action) {
           save.disabled = true;
           try {
             await request(route + '/task', {
-              ...identity, owner:owner.value, goal:goal.value,
+              ...identity, owner:owner.value, goal:goal.value, product_version:product.version,
             });
             revoke.hidden = false;
             feedback.textContent = '已保存，将纳入该商品的直播准备包';

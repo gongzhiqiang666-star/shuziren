@@ -1074,7 +1074,8 @@ class ProductStore:
         self._write_after_sales(product_id, rows)
         return len(rows)
 
-    def save_after_sales_task(self, product_id, source, period_start, period_end, category, owner, goal):
+    def save_after_sales_task(self, product_id, source, period_start, period_end, category, owner, goal,
+                              product_version=None):
         if not isinstance(product_id, str) or not 1 <= len(product_id) <= 64:
             raise ProductError('商品编号无效')
         owner = text(owner, '负责人', 120)
@@ -1091,6 +1092,8 @@ class ProductStore:
             count = json.loads(report['counts']).get(category, 0) if report else 0
             if not count:
                 raise Conflict('当前报表没有该售后原因的记录')
+            if product_version is not None and (type(product_version) is not int or product_version != report['version']):
+                raise Conflict('商品资料已更新，请重新读取后核对任务')
             db.execute("""
                 INSERT INTO product_after_sales_tasks
                     (product_id, source, period_start, period_end, category, evidence_count, owner, goal, product_version)
