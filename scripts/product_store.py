@@ -168,7 +168,7 @@ class ProductStore:
             raise ProductError('请选择非空 CSV 报表')
         self.get(product_id)
         required = {'source', 'period_start', 'period_end', 'scope'}
-        counts = ('clicks', 'orders', 'refunds', 'stock')
+        counts = {'clicks': '点击', 'orders': '订单', 'refunds': '退款', 'stock': '库存'}
         rows, keys = [], set()
         try:
             reader = csv.DictReader(io.StringIO(content.removeprefix('\ufeff'), newline=''), strict=True)
@@ -179,10 +179,10 @@ class ProductStore:
                 try:
                     if None in values or any(value is None for value in values.values()):
                         raise ValueError('列数与表头不一致')
-                    for name in counts:
+                    for name, label in counts.items():
                         value = values.get(name, '').strip()
                         if value and (len(value) > 19 or not value.isascii() or not value.isdigit()):
-                            raise ValueError('指标须为非负整数或留空')
+                            raise ValueError(f'{label}须为非负整数或留空')
                         values[name] = int(value) if value else None
                     row = self._business_metric_row(product_id, **values)
                     if row[:5] in keys:
