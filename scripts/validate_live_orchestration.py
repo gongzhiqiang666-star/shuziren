@@ -49,7 +49,10 @@ def main():
     directory.mkdir(parents=True, exist_ok=False)
     fixture = args.fixture_directory
     for source, target in [('avatars', 'avatars'), ('voices', 'voices'), ('engine-cache', 'live-avatar-cache')]:
-        shutil.copytree(fixture / source, directory / target)
+        source_path = fixture / source
+        if source == 'engine-cache' and not source_path.is_dir():
+            source_path = fixture / target
+        shutil.copytree(source_path, directory / target)
     shutil.copy2(fixture / 'products.sqlite3', directory / 'products.sqlite3')
     products = ProductStore(directory)
     product_id = products.selected()
@@ -61,11 +64,16 @@ def main():
     }[args.rotation_language]
     first_script = products.add_script(product, first_text)
     products.select_script(product_id, first_script)
-    second = products.save(title='轮播验收商品', content='本机验收使用', product_index=999)
+    existing_indices = {item['product_index'] for item in products.list()}
+    second_index = next(index for index in range(1, len(existing_indices) + 2) if index not in existing_indices)
+    second = products.save(title='轮播验收商品', content='本机验收使用', product_index=second_index)
     if args.assistant_voice_data:
         second_text += '{停:1}{助:大家好，我是助播。}'
     second_script = products.add_script(second, second_text)
     products.select_script(second['id'], second_script)
+    products.save_live_preparation(product_ids=[product_id, second['id']])
+    preparation_revision = products.build_live_preparation()['revision']
+    products.save_live_preparation_review(preparation_revision, '本机轮播验收')
     voices = VoiceStore(directory)
     voice = voices.selected()
     assistant = None
@@ -128,7 +136,11 @@ def main():
         return task['id']
 
     def rotate(session_id, *, exercise_pause=False):
-        call('/api/live/rotation', {'session_id': session_id, 'product_ids': [product_id, second['id']]})
+        prepared = call('/api/live/preparation/rotation', {'revision': preparation_revision})
+        items = [{key: item[key] for key in ('product_id', 'product_version', 'script_id')}
+                 for item in prepared['items']]
+        call('/api/live/rotation', {'session_id': session_id, 'product_ids': [product_id, second['id']],
+                                    'preparation': {'revision': prepared['revision'], 'items': items}})
         sequence = [product_id, second['id']]
         for count, product in enumerate(sequence, 1):
             state = live(lambda value: value.get('rotation_completed', 0) >= count)
