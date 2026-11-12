@@ -431,6 +431,11 @@ async function afterSalesAction(action) {
         if (followup.task && followup.task.evidence_count !== followup.count) {
           feedback.textContent = '报表数量已更正，请核对目标后重新保存';
         }
+        if (followup.task && followup.task.product_version !== product.version) {
+          feedback.textContent = followup.task.product_version == null
+            ? '原任务未记录商品版本，请按当前资料核对后重新保存'
+            : '商品资料已更新，请按当前版本核对后重新保存';
+        }
         if (followup.task?.revoked) feedback.textContent = '已撤销，可重新保存以纳入准备包';
         form.append(ownerLabel, goalLabel, save, revoke, feedback);
         revoke.addEventListener('click', async () => {
