@@ -2036,10 +2036,13 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
     function showPublicationReceipt(schedule) {
       receiptForm.hidden = !schedule;
       receiptId.value = schedule?.publication_id ?? '';
-      receiptId.readOnly = Boolean(schedule?.publication_id);
+      const recorded = Boolean(schedule?.publication_id);
+      const blocked = schedule?.withdrawn ? '文案已停止复用，不能登记新的发布结果'
+        : schedule && !schedule.draft_matches ? '文案已修改，重新保存排期后可登记发布结果' : '';
+      receiptId.readOnly = recorded || Boolean(blocked);
       receiptSave.hidden = receiptId.readOnly;
-      receiptStatus.textContent = receiptId.readOnly ? '平台作品编号已人工登记' : '';
-      if (receiptId.readOnly) scheduleSave.disabled = true;
+      receiptStatus.textContent = recorded ? '平台作品编号已人工登记' : blocked;
+      if (recorded) scheduleSave.disabled = true;
     }
     receiptForm.addEventListener('submit', async event => {
       event.preventDefault();
