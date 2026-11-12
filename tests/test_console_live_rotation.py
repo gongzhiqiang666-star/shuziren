@@ -8,6 +8,21 @@ from scripts.product_store import Conflict
 
 
 class LiveRotationTests(unittest.TestCase):
+    def test_expired_queued_rotation_does_not_wait_for_completion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tts = Mock()
+            live = ConsoleLive(tts, directory)
+            live.status = {'id': 'scene', 'status': 'running'}
+            live.session = Mock()
+            live.session.control_state.return_value = {'manual': True}
+            item = {'product_id': 'product', 'product_version': 1, 'script_id': 'script', 'fact_deadline': 100}
+            live.rotation = {'items': [item], 'index': 0, 'task_id': 'queued'}
+            with patch('scripts.console_live.time.time', return_value=100), self.assertLogs(level='ERROR'):
+                live._rotate('scene', Mock(wait=Mock(side_effect=[False, True])))
+            live.session.discard_pending.assert_called_once_with('queued')
+            self.assertIsNone(live.rotation)
+            self.assertEqual(live.status['rotation_fault']['fact_expired_at'], 100)
+
     def test_rotation_rejects_expired_product_facts(self):
         with tempfile.TemporaryDirectory() as directory:
             tts = Mock()

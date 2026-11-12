@@ -473,9 +473,15 @@ class ConsoleLive:
                 self._record_completed()
                 rotation = self.rotation
                 control = self.session.control_state()
-                if pending is None and (not rotation or rotation['task_id'] or control['manual'] or self.reply_session or self.session.queue_full()):
-                    continue
                 try:
+                    if rotation and rotation['task_id']:
+                        deadline = rotation['items'][rotation['index']].get('fact_deadline')
+                        if deadline is not None and time.time() >= deadline:
+                            self.session.discard_pending(rotation['task_id'])
+                            raise Conflict('轮播话术引用的商品事实已到期，请核对后重新选用话术')
+                    if pending is None and (not rotation or rotation['task_id'] or control['manual']
+                                            or self.reply_session or self.session.queue_full()):
+                        continue
                     state = self.tts.state()
                     if pending:
                         task_id, origin, revision = pending
