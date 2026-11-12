@@ -398,11 +398,20 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(second['recommendation']['role'], 'hold')
         self.assertIsNone(second['conditions']['库存'])
         self.assertEqual(second['recommendation']['reason'], '需核对可售库存')
+        store.save_live_preparation(product_ids=[second['product_id']])
+        preparation = '/api/live/preparation'
         with patch('scripts.product_store.datetime', wraps=datetime) as clock:
             clock.now.return_value = datetime(2019, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
             before = self.call(route)[1]['products'][1]
+            revision = self.call(preparation + '/package')[1]['revision']
+            self.assertEqual(self.call(preparation + '/review', {'revision': revision, 'review': '已核对库存'})[0], 200)
+            self.assertEqual(self.call(preparation + '/rotation', {'revision': revision})[0], 200)
             clock.now.return_value = datetime(2020, 1, 1, tzinfo=timezone.utc)
             at_expiry = self.call(route)[1]['products'][1]
+            self.assertEqual(self.call(preparation + '/rotation', {'revision': revision})[0], 409)
+            updated_package = self.call(preparation + '/package')[1]
+            self.assertIsNone(updated_package['review'])
+            self.assertEqual(updated_package['items'][0]['recommendation'], at_expiry['recommendation'])
         self.assertEqual(before['recommendation']['role'], 'trial')
         self.assertEqual(at_expiry['recommendation']['role'], 'hold')
         self.assertEqual(before['product_version'], at_expiry['product_version'])
