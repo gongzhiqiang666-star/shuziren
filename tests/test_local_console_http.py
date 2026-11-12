@@ -81,6 +81,17 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(second.call('/api/products')[1]['products'], [])
         self.assertEqual(second.call('/api/products', {**payload, 'title': '桌布'})[0], 200)
         self.assertEqual([item['title'] for item in first.call('/api/products')[1]['products']], ['茶杯'])
+        sourcing = '/api/sourcing/candidates'
+        status, candidate = first.call(sourcing, {
+            'name': '茶杯样品', 'supplier': '本店供应商', 'source': '本店报价',
+            'observed_on': '2026-11-10', 'details': {'lead_time': '7天'},
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(second.call(sourcing), (200, {'candidates': []}))
+        decision = {'candidate_id': candidate['id'], 'decision': 'continue',
+                    'rationale': '等待样品', 'constraints': '仅本店试样'}
+        self.assertEqual(second.call('/api/sourcing/decision', decision)[0], 400)
+        self.assertEqual(first.call('/api/sourcing/decision', decision)[0], 200)
 
     def test_promotion_spend_preserves_missing_attribution_and_corrects_bill(self):
         store = ProductStore(self.directory.name)
