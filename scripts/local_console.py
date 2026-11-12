@@ -210,6 +210,27 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if len(sessions) != 1 or not 1 <= len(sessions[0]) <= 64:
                         raise ProductError('场次无效')
                     return self.respond(200, {'events': products().live_control_events(sessions[0])})
+                if path == '/api/live/compare':
+                    query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                    if (set(query) != {'baseline', 'trial'}
+                            or any(len(values) != 1 or not 1 <= len(values[0]) <= 64 for values in query.values())
+                            or query['baseline'] == query['trial']):
+                        raise ProductError('请选择两个不同场次')
+                    data = products()
+                    comparison = {}
+                    for role in ('baseline', 'trial'):
+                        report = data.live_session_report(query[role][0])
+                        session = report['session']
+                        if session['ended_at'] is None:
+                            raise ProductError('请选择已结束的场次')
+                        comparison[role] = {
+                            'session': session,
+                            'completed_segments': sum(item['completed_segments'] for item in report['products']),
+                            'rotation_faults': len(report['rotation_faults']),
+                            'played_replies': sum(item['played_at'] is not None for item in report['queued_replies']),
+                        }
+                    return self.respond(200, {**comparison, 'conclusion': 'uncertain',
+                                              'missing': ['audience', 'traffic', 'promotion', 'refund_lag']})
                 if path in {'/api/live/report', '/api/live/review', '/api/live/improvements'}:
                     sessions = parse_qs(urlsplit(self.path).query, keep_blank_values=True).get('session_id', [])
                     if len(sessions) != 1 or not 1 <= len(sessions[0]) <= 64:

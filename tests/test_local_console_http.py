@@ -19,6 +19,24 @@ from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_live_comparison_requires_distinct_ended_sessions(self):
+        store = ProductStore(self.directory.name)
+        store.record_live_session('baseline', 1, started_at=2, ended_at=3, status='stopped')
+        store.record_live_session('trial', 4, started_at=5, status='running')
+        route = '/api/live/compare?baseline=baseline&trial='
+        self.assertEqual(self.call(route + 'baseline')[0], 400)
+        self.assertEqual(self.call(route + 'trial')[0], 400)
+        store.record_live_session('trial', 4, started_at=5, ended_at=6, status='stopped')
+        store.record_rotation_completion('trial', 'segment', {
+            'product_id': 'product', 'product_version': 1, 'script_id': 'script',
+        }, 0)
+        status, comparison = self.call(route + 'trial')
+        self.assertEqual(status, 200)
+        self.assertEqual(comparison['baseline']['completed_segments'], 0)
+        self.assertEqual(comparison['trial']['completed_segments'], 1)
+        self.assertEqual(comparison['conclusion'], 'uncertain')
+        self.assertIn('refund_lag', comparison['missing'])
+
     def test_live_report_isolates_sessions_and_keeps_missing_metrics_explicit(self):
         store = ProductStore(self.directory.name)
         store.record_live_session('scene', 100, started_at=101, ended_at=110, status='failed', frames=225,
