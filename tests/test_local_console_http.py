@@ -34,6 +34,15 @@ class ConsoleHTTPTests(unittest.TestCase):
         item, = saved['reports']
         self.assertEqual(item['counts'], {'quality': 0, 'fulfillment': 3})
         self.assertEqual(self.call(route + '?product_id=' + second['id']), (200, {'reports': []}))
+        csv = 'source,period_start,period_end,quality,fulfillment\n售后统计,2026-11-01,2026-11-03,0,4\n'
+        upload = {'product_id': first['id'], 'csv': csv + '无效,2026-11-01,2026-11-03,,-1\n'}
+        status, error = self.call(route + '/import', upload)
+        self.assertEqual(status, 400)
+        self.assertIn('第 3 行', error['error'])
+        self.assertEqual(self.call(route + '?product_id=' + first['id']), (200, saved))
+        status, imported = self.call(route + '/import', {**upload, 'csv': csv})
+        self.assertEqual((status, imported['imported']), (200, 1))
+        self.assertEqual(imported['reports'][0]['counts'], {'quality': 0, 'fulfillment': 4})
 
     def test_product_guide_compares_only_verified_current_facts(self):
         store = ProductStore(self.directory.name)

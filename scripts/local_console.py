@@ -767,6 +767,12 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         else:
                             data.revoke_live_advice_acknowledgment(value['session_id'], value['advice'], time())
                         return self.respond(200, {'acknowledged': acknowledge})
+                    if path == "/api/products/after-sales/import":
+                        if set(value) != {'product_id', 'csv'}:
+                            raise ProductError('售后导入字段无效')
+                        data = products()
+                        count = data.import_after_sales(value['product_id'], value['csv'])
+                        return self.respond(200, {'imported': count, 'reports': data.after_sales(value['product_id'])})
                     if path == "/api/products/after-sales":
                         if set(value) != {'product_id', 'source', 'period_start', 'period_end', 'counts'}:
                             raise ProductError('售后汇总字段无效')

@@ -815,7 +815,7 @@ class ProductStore:
         with self.connect() as db:
             return [self.decode(row) for row in db.execute("SELECT * FROM products ORDER BY rowid")]
 
-    def save_after_sales(self, product_id, source, period_start, period_end, counts):
+    def _after_sales_row(self, product_id, source, period_start, period_end, counts):
         product_id = text(product_id, '商品编号', 64)
         key = self._business_metric_row(product_id, source=source, scope='售后原因',
                                         period_start=period_start, period_end=period_end)[:4]
@@ -823,12 +823,57 @@ class ProductStore:
         if (not isinstance(counts, dict) or not counts or counts.keys() - categories
                 or any(type(count) is not int or not 0 <= count < 2**53 for count in counts.values())):
             raise ProductError('售后原因须使用已知分类及非负整数数量')
+        return (*key, json.dumps(counts, sort_keys=True))
+
+    def save_after_sales(self, product_id, source, period_start, period_end, counts):
+        row = self._after_sales_row(product_id, source, period_start, period_end, counts)
+        self._write_after_sales(product_id, [row])
+
+    def _write_after_sales(self, product_id, rows):
         self.get(product_id)
         with self.connect() as db:
-            db.execute("""
+            db.executemany("""
                 INSERT INTO product_after_sales VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(product_id, source, period_start, period_end) DO UPDATE SET counts=excluded.counts
-            """, (*key, json.dumps(counts, sort_keys=True)))
+            """, rows)
+
+    def import_after_sales(self, product_id, content):
+        if not isinstance(content, str) or not content.strip():
+            raise ProductError('售后 CSV 为空')
+        required = {'source', 'period_start', 'period_end'}
+        categories = {'quality', 'size', 'expectation', 'fulfillment', 'other'}
+        reader = csv.DictReader(io.StringIO(content.lstrip('\ufeff')), strict=True)
+        rows = []
+        keys = set()
+        try:
+            names = reader.fieldnames or []
+            if (len(names) != len(set(names)) or not required <= set(names)
+                    or set(names) - required - categories or not categories.intersection(names)):
+                raise ProductError('售后 CSV 表头无效')
+            for item in reader:
+                try:
+                    if None in item or None in item.values():
+                        raise ProductError('列数与表头不一致')
+                    counts = {}
+                    for name in categories.intersection(names):
+                        raw = item[name].strip()
+                        if raw:
+                            if len(raw) > 16 or not raw.isascii() or not raw.isdecimal():
+                                raise ProductError(f'{name} 必须是非负整数')
+                            counts[name] = int(raw)
+                    row = self._after_sales_row(product_id, counts=counts, **{name: item[name] for name in required})
+                    if row[:4] in keys:
+                        raise ProductError('报表中有重复来源和日期区间')
+                    keys.add(row[:4])
+                    rows.append(row)
+                except ProductError as error:
+                    raise ProductError(f'售后 CSV 第 {reader.line_num} 行：{error}') from error
+        except csv.Error as error:
+            raise ProductError(f'售后 CSV 第 {reader.line_num} 行格式无效') from error
+        if not rows:
+            raise ProductError('售后 CSV 没有数据行')
+        self._write_after_sales(product_id, rows)
+        return len(rows)
 
     def after_sales(self, product_id):
         self.get(product_id)
