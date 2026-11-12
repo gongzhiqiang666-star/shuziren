@@ -2184,6 +2184,28 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
           ].join(' · ') : '原商品或话术事实已变化，历史文案仅供核对';
         if (draft.saved_body != null) await loadSchedule();
         if (draft.withdrawn) scheduleSave.disabled = true;
+        if (draft.editable) {
+          const reuse = document.createElement('button');
+          reuse.type = 'button';
+          reuse.textContent = '将原口播载入话术编辑器';
+          reuse.addEventListener('click', () => {
+            if (consoleClosed) return;
+            if (currentProduct?.id !== draft.source.product_id ||
+                currentProduct.version !== draft.source.product_version) {
+              draftStatus.textContent = '请先在商品与话术中打开对应版本的商品';
+              return;
+            }
+            const editor = $('script-text');
+            if (editor.value.trim()) {
+              draftStatus.textContent = '请先处理话术编辑器中尚未保存的内容';
+              return;
+            }
+            editor.value = draft.narration;
+            parentScriptId = draft.source.script_id;
+            editor.focus();
+          });
+          draftLabel.before(reuse);
+        }
         if (draft.subtitle_srt) {
           const subtitleLabel = document.createElement('label');
           const subtitle = document.createElement('textarea');
