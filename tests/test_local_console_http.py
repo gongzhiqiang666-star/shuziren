@@ -405,6 +405,11 @@ class ConsoleHTTPTests(unittest.TestCase):
         store.record_rotation_completion('scene', 'assistant-task', {
             'product_id': product['id'], 'product_version': product['version'] + 1, 'script_id': segmented_id,
         }, 1, sample_start=24000, sample_end=60000)
+        store.record_rotation_completion('scene', 'fingerprinted-task', {
+            'product_id': product['id'], 'product_version': product['version'] + 1, 'script_id': segmented_id,
+        }, 1, sample_start=24000, sample_end=60000, speech_provenance={
+            'generated_audio_sha256': 'a' * 64, 'played_pcm_sha256': 'b' * 64,
+        })
         assistant = self.call('/api/live/content-source?session_id=scene&task_id=assistant-task')[1]['source']
         self.assertEqual(assistant['segment'], {'type': 'assistant', 'content': '补充说明。'})
         self.assertEqual(assistant['facts_review'], 'version_current')
@@ -420,6 +425,9 @@ class ConsoleHTTPTests(unittest.TestCase):
                          (24000, 60000))
         self.assertEqual(result['draft']['source']['script_id'], segmented_id)
         self.assertIsNone(result['draft']['language'])
+        self.assertIsNone(result['draft']['speech_provenance'])
+        fingerprints = self.call(draft_route + 'fingerprinted-task')[1]['draft']['speech_provenance']
+        self.assertEqual(fingerprints, {'generated_audio_sha256': 'a' * 64, 'played_pcm_sha256': 'b' * 64})
         self.assertIsNone(result['draft']['saved_body'])
         body = {'session_id': 'scene', 'task_id': 'assistant-task', 'body': '运营修改后的文案'}
         schedule_route = '/api/live/content-schedule'
