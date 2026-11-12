@@ -66,6 +66,7 @@ class RtmpFaceReader(VideoFaceReader):
                 finally:
                     if probe.poll() is None:
                         probe.kill()
+                        probe.communicate()
         if result.returncode: raise RuntimeError(result.stderr.strip())
         streams = json.loads(result.stdout).get("streams")
         if not streams:
