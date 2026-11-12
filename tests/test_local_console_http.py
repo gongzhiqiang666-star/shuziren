@@ -1172,6 +1172,9 @@ class ConsoleHTTPTests(unittest.TestCase):
             ({'audio_device': 14, 'video_backend': 'tensorrt'}, '请选择本地驱动视频'),
             ({'audio_device': 14, 'video_path': 'unused.mp4', 'video_backend': 'other'}, '本地视频推理后端无效'),
             ({'audio_device': 14, 'video_path': 'unused.mp4', 'assistant_voice_id': 'voice'}, '本地视频模式的开播字段无效'),
+            ({'audio_device': 14, 'camera_device': '  '}, '虚拟摄像头设备名称无效'),
+            ({'audio_device': 14, 'video_path': 'unused.mp4', 'camera_device': 'OBS Virtual Camera'},
+             '本地视频模式的开播字段无效'),
         ]
         for payload, message in cases:
             with self.subTest(payload=payload):
@@ -1179,6 +1182,15 @@ class ConsoleHTTPTests(unittest.TestCase):
                 self.assertEqual(status, 400)
                 self.assertEqual(result['error'], message)
         self.assertEqual(self.call('/api/live/state')[1]['session']['status'], 'idle')
+        with (patch('scripts.local_console.ConsoleLive') as live,
+              patch('scripts.local_console.preflight', return_value={'runtime_root': self.directory.name}),
+              patch('scripts.tts_tasks.TTSTasks')):
+            live.return_value.start.return_value = {'id': 'scene'}
+            self.assertEqual(self.call('/api/live/start', {
+                'audio_device': 14, 'camera_device': ' OBS Virtual Camera ',
+            })[0], 202)
+            live.return_value.start.assert_called_once_with(
+                14, language='zh-CN', assistant_voice_id=None, camera_device='OBS Virtual Camera')
 
     def test_avatar_preparation_requires_config_and_valid_fields(self):
         self.assertEqual(self.call('/api/avatar-preparation/state')[1],{'task':None})
