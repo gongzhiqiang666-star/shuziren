@@ -774,6 +774,13 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         else:
                             data.revoke_live_advice_acknowledgment(value['session_id'], value['advice'], time())
                         return self.respond(200, {'acknowledged': acknowledge})
+                    if path == "/api/live/reply-review":
+                        if set(value) != {'session_id', 'task_id', 'verdict', 'review_seconds'} or any(
+                                not isinstance(value[key], str) or not 1 <= len(value[key]) <= 64
+                                for key in ('session_id', 'task_id')):
+                            raise ProductError('答复复核字段无效')
+                        products().review_live_reply(**value)
+                        return self.respond(200, {'saved': True})
                     if path == "/api/products/after-sales/task/revoke":
                         if set(value) != {'product_id', 'source', 'period_start', 'period_end', 'category'} or any(
                                 not isinstance(item, str) for item in value.values()):

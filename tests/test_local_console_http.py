@@ -409,7 +409,13 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(report['queued_replies'], [{
             'task_id': 'reply', 'product_id': 'product', 'product_version': 2,
             'question': '什么材质？', 'answer': '陶瓷', 'queued_at': 106, 'played_at': 108,
+            'verdict': None, 'review_seconds': None,
         }])
+        review_payload = {'session_id': 'scene', 'task_id': 'reply', 'verdict': 'correct', 'review_seconds': 0}
+        self.assertEqual(self.call('/api/live/reply-review', {**review_payload, 'task_id': 'missing'})[0], 400)
+        self.assertEqual(self.call('/api/live/reply-review', review_payload), (200, {'saved': True}))
+        reviewed = self.call('/api/live/report?session_id=scene')[1]['queued_replies'][0]
+        self.assertEqual((reviewed['verdict'], reviewed['review_seconds']), ('correct', 0))
         self.assertEqual(report['session']['failure_reason'], '输出设备断开')
         self.assertEqual(report['rotation_faults'], [
             {'event_id': 1, 'occurred_at': 104, 'reason': '语音合成超时', **item},

@@ -172,6 +172,10 @@ class ProductStore:
                     queued_at REAL NOT NULL, PRIMARY KEY(session_id, task_id));
                 CREATE INDEX IF NOT EXISTS live_queued_replies_session_time
                     ON live_queued_replies(session_id, queued_at);
+                CREATE TABLE IF NOT EXISTS live_reply_reviews (
+                    session_id TEXT NOT NULL, task_id TEXT NOT NULL, verdict TEXT NOT NULL,
+                    review_seconds INTEGER, PRIMARY KEY(session_id, task_id),
+                    FOREIGN KEY(session_id, task_id) REFERENCES live_queued_replies(session_id, task_id));
                 CREATE TABLE IF NOT EXISTS live_unqueued_replies (
                     session_id TEXT NOT NULL, product_id TEXT NOT NULL, product_version INTEGER NOT NULL,
                     question TEXT NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL, occurred_at REAL NOT NULL);
@@ -514,8 +518,10 @@ class ProductStore:
                 WHERE session_id = ? ORDER BY rowid
             """, (session_id,)).fetchall()
             replies = db.execute("""
-                SELECT task_id, product_id, product_version, question, answer, queued_at, played_at
-                FROM live_queued_replies WHERE session_id = ? ORDER BY rowid
+                SELECT task_id, product_id, product_version, question, answer, queued_at, played_at,
+                       verdict, review_seconds
+                FROM live_queued_replies LEFT JOIN live_reply_reviews USING (session_id, task_id)
+                WHERE session_id = ? ORDER BY live_queued_replies.rowid
             """, (session_id,)).fetchall()
             unqueued = db.execute("""
                 SELECT rowid AS event_id, product_id, product_version, question, status, reason, occurred_at
@@ -558,6 +564,21 @@ class ProductStore:
         with self.connect() as db:
             db.execute('UPDATE live_queued_replies SET played_at=? WHERE session_id=? AND task_id=? AND played_at IS NULL',
                        (played_at, session_id, task_id))
+
+    def review_live_reply(self, session_id, task_id, verdict, review_seconds):
+        if verdict not in ('correct', 'incorrect', 'uncertain'):
+            raise ProductError('请选择答复复核结果')
+        if review_seconds is not None and (type(review_seconds) is not int or not 0 <= review_seconds <= 86400):
+            raise ProductError('复核用时须为 0 至 86400 秒的整数或未知')
+        with self.connect() as db:
+            result = db.execute("""
+                INSERT INTO live_reply_reviews
+                SELECT session_id, task_id, ?, ? FROM live_queued_replies WHERE session_id=? AND task_id=?
+                ON CONFLICT(session_id, task_id) DO UPDATE SET
+                    verdict=excluded.verdict, review_seconds=excluded.review_seconds
+            """, (verdict, review_seconds, session_id, task_id))
+            if not result.rowcount:
+                raise ProductError('该场次没有对应的问答任务')
 
     def recent_repeated_live_questions(self, session_id, since):
         with self.connect() as db:
