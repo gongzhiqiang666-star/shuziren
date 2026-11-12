@@ -1436,7 +1436,12 @@ class ProductStore:
             elif suitability == '不适播':
                 role, reason = 'hold', '已核对为不适播'
             elif type(stock) is not int or stock < 0 or '发货条件' not in facts:
-                role, reason = 'hold', '需核对可售库存和发货条件'
+                missing = []
+                if type(stock) is not int or stock < 0:
+                    missing.append('可售库存')
+                if '发货条件' not in facts:
+                    missing.append('发货条件')
+                role, reason = 'hold', '需核对' + '和'.join(missing)
             elif suitability == '适播' and '目标人群' in facts:
                 if facts.get('排品角色', {}).get('value') == '主推' and {'售价', '成本'} <= facts.keys():
                     role, reason = 'primary', '商家已核对主推角色，适播、人群、库存、发货、售价与成本依据齐备'

@@ -380,7 +380,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertIsNone(second['business_metrics'])
         self.assertEqual(second['recommendation']['role'], 'hold')
         self.assertIsNone(second['conditions']['库存'])
-        self.assertEqual(second['recommendation']['reason'], '需核对可售库存和发货条件')
+        self.assertEqual(second['recommendation']['reason'], '需核对可售库存')
         self.assertIn('覆盖', second['business_metrics_gap'])
         self.assertNotIn('refund_review', first)
         store.save_business_metrics(product['id'], **window, orders=5, refunds=6)
