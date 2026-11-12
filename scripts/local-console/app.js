@@ -885,6 +885,7 @@ function sourcingDecisionEditor(candidate) {
         Object.keys(sourcingTrialMetrics).some(key => original?.metrics?.[key] !== trial?.metrics?.[key])
       );
       currentEvidence.textContent = trial ? [
+        `样品核验状态：${{pending:'待核验', pass:'商家核验通过', fail:'商家核验未通过'}[trial.verdict] ?? '未知'}`,
         `当前样品依据：${trial.sample_evidence}`,
         `当前试卖依据：${trial.trial_evidence}`,
         `样品成本：${trial.cost_minor == null ? '未知' : trial.cost_minor + ' 分'}`,
