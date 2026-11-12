@@ -201,6 +201,7 @@ def audit_received_voice(path,completed,expected,origin_ns=None):
         measurements=[voice[field] for voice in voices if voice.get(field) is not None and voice[field]>=0]
         latency[kind]={'count':len(measurements),'p95_ms':float(np.percentile(measurements,95)) if measurements else None}
     return {'voices':voices,'received_video_frames':len(video),'received_audio_samples':len(received),
+        'first_received_frame_index': video[0][0], 'last_received_frame_index': video[-1][0],
         'received_video_span_seconds':video[-1][1]-video[0][1],
         'missing_frames':sum(max(0,step-1) for step in steps),'repeated_frames':sum(step==0 for step in steps),
         'reordered_frames':sum(step<0 for step in steps),'frame_continuity_passed':bool(steps) and all(step==1 for step in steps),

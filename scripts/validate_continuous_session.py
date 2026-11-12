@@ -269,6 +269,7 @@ def main():
             if capture:
                 capture.wait()
                 report['receiver']=audit_received_voice(capture.path,completed,expected,capture.timestamp_origin())
+                report['receiver']['submitted_frame_range'] = [0, session.frames_written - 1]
                 report['receiver_sync_tested']=True
                 report['checks'].update(receiver_voice_sync=report['receiver']['voice_sync_passed'],
                     receiver_speech_continuity=report['receiver']['speech_frame_continuity_passed'])
