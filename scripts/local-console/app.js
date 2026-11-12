@@ -437,6 +437,39 @@ const preparationRoute = '/api/live/preparation';
 const sourcingForm = $('sourcing-form');
 const sourcingFields = {access:'获取条件', demand:'需求', competition:'竞争', terms:'采购条件',
   minimum_order:'起订量', lead_time:'交期', logistics:'物流', quality_evidence:'质量证据'};
+let sourcingCandidates = [];
+const sourcingComparison = $('sourcing-comparison');
+$('sourcing-compare').addEventListener('click', () => {
+  const selected = new Set(Array.from($('sourcing-candidates').querySelectorAll('input:checked'), item => item.value));
+  const candidates = sourcingCandidates.filter(item => selected.has(item.id));
+  if (candidates.length < 2 || candidates.length > 5) {
+    sourcingComparison.textContent = '请选择 2 至 5 条候选记录';
+    return;
+  }
+  const table = document.createElement('table');
+  const head = table.createTHead().insertRow();
+  for (const label of ['对照项', ...candidates.map(item => `${item.name} · ${item.supplier}`)]) {
+    const cell = document.createElement('th');
+    cell.scope = 'col';
+    cell.textContent = label;
+    head.append(cell);
+  }
+  const body = table.createTBody();
+  const fields = {source:'资料来源', observed_on:'资料日期', ...sourcingFields};
+  for (const [key, label] of Object.entries(fields)) {
+    const row = body.insertRow();
+    const heading = document.createElement('th');
+    heading.scope = 'row';
+    heading.textContent = label;
+    row.append(heading);
+    for (const candidate of candidates) {
+      row.insertCell().textContent = candidate[key] ?? candidate.details[key] ?? '未知';
+    }
+  }
+  const note = document.createElement('p');
+  note.textContent = '质量证据为登记资料，样品和实际交付待核对。';
+  sourcingComparison.replaceChildren(table, note);
+});
 for (const [key, name] of Object.entries(sourcingFields)) {
   const label = document.createElement('label');
   const input = document.createElement('input');
@@ -460,10 +493,16 @@ async function sourcingAction(save) {
       sourcingForm.reset();
     }
     const {candidates} = await request(route);
+    sourcingCandidates = candidates;
+    sourcingComparison.replaceChildren();
     $('sourcing-candidates').replaceChildren(...candidates.map(candidate => {
       const row = document.createElement('li');
-      const title = document.createElement('strong');
-      title.textContent = `${candidate.name} · ${candidate.supplier} · ${candidate.source} · ${candidate.observed_on}`;
+      const title = document.createElement('label');
+      const select = document.createElement('input');
+      select.type = 'checkbox';
+      select.value = candidate.id;
+      select.addEventListener('change', () => sourcingComparison.replaceChildren());
+      title.append(select, ` ${candidate.name} · ${candidate.supplier} · ${candidate.source} · ${candidate.observed_on}`);
       const facts = document.createElement('ul');
       for (const [key, label] of Object.entries(sourcingFields)) {
         const fact = document.createElement('li');
