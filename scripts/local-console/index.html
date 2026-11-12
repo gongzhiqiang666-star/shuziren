@@ -82,6 +82,19 @@
 </section>
 <section>
 <h2>直播准备</h2>
+<details>
+<summary>查看选品依据</summary>
+<form id="selection-evidence-form">
+<p class="hint">可直接查看商品条件。填写以下四项可同时对照经营数据。</p>
+<label for="selection-source">报表来源</label><input id="selection-source" name="source" maxlength="120">
+<label for="selection-scope">统计口径</label><input id="selection-scope" name="scope" maxlength="500">
+<label for="selection-start">开始日期</label><input id="selection-start" name="period_start" type="date">
+<label for="selection-end">结束日期</label><input id="selection-end" name="period_end" type="date">
+<button type="submit">查询选品依据</button>
+</form>
+<p id="selection-evidence-status" role="status"></p>
+<div id="selection-evidence-results"></div>
+</details>
 <form id="preparation-form">
 <fieldset><legend>本场商品</legend><div id="preparation-products"></div></fieldset>
 <label for="preparation-goal">场次目标</label><textarea id="preparation-goal" maxlength="2000" rows="2"></textarea>

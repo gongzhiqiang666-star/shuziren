@@ -242,6 +242,55 @@ async function showScripts() {
   }));
 }
 const preparationRoute = '/api/live/preparation';
+$('selection-evidence-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('button');
+  if (button.disabled || consoleClosed) return;
+  const status = $('selection-evidence-status');
+  const output = $('selection-evidence-results');
+  output.replaceChildren();
+  const params = new URLSearchParams();
+  for (const [key, value] of new FormData(form)) {
+    if (value.trim()) params.set(key, value.trim());
+  }
+  if (params.size !== 0 && params.size !== 4) {
+    status.textContent = '对照经营数据时，请填齐来源、口径和日期区间';
+    return;
+  }
+  button.disabled = true;
+  status.textContent = '正在查询选品依据';
+  try {
+    const {products, business_metrics_scope: scope} = await request('/api/products/selection-evidence?' + params);
+    output.replaceChildren(...products.map(product => {
+      const block = document.createElement('section');
+      const title = document.createElement('h4');
+      title.textContent = `${product.title} · 版本 ${product.product_version}`;
+      const facts = document.createElement('ul');
+      for (const [name, fact] of Object.entries(product.conditions)) {
+        const item = document.createElement('li');
+        item.textContent = fact ? `${name}：${fact.value}（来源：${fact.source}）` : `${name}：未知`;
+        facts.append(item);
+      }
+      block.append(title, facts);
+      if (scope) {
+        const metrics = document.createElement('p');
+        const counts = product.business_metrics;
+        metrics.textContent = counts
+          ? `点击 ${counts.clicks ?? '未知'} · 订单 ${counts.orders ?? '未知'} · 退款 ${counts.refunds ?? '未知'} · 期末库存 ${counts.closing_stock ?? '未知'}`
+          : product.business_metrics_gap;
+        block.append(metrics);
+      }
+      return block;
+    }));
+    status.textContent = products.length ? (scope
+      ? `${scope.source} · ${scope.scope} · ${scope.period_start} 至 ${scope.period_end}` : '') : '暂无商品';
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
 const preparationFields = ['goal', 'audience', 'promotion', 'stock', 'shipping', 'constraints'];
 const preparationForm = $('preparation-form');
 const preparationSave = preparationForm.querySelector('button[type="submit"]');
