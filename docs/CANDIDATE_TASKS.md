@@ -293,3 +293,5 @@ X08-02 原速无 B 帧成片音频对照：48 kHz 解码音轨与输入的波形
 X08-02 现有 ContinuousAVSink 已禁用 B 帧。随包 FFmpeg 复跑 720×1280 合成帧的 NUT→NVENC/AAC→MPEG-TS 链路，100 次定时提交 p95 为 10.67 ms，呈现迟到 p95 为 11.54 ms，输出双轨完整解码。证据 logs/validation/x08-nvenc-sink-01。合成帧计时不代表真实人物并发或 30 分钟门槛。
 
 X08-02 真实人物与常驻 IndexTTS 并发编码短测通过。现有 ContinuousAVSink 完成 20 秒场次中的两条语音，空闲→口播→空闲共用同一输出，源 PCM 一致、统一音视频时钟和成片完整性检查通过。引擎缓存已预置，首提交 42.638 秒。证据 logs/validation/x08-nvenc-avatar-01/run-b6438fa4b971413caa1393172d7882e7/result.json。实体设备、平台及 30 分钟并发待验。
+
+X08-02 对真实人物短测 live.ts 独立复验：随包 FFmpeg 双轨完整解码，ffprobe 解出 500 帧，首末视频 PTS 为 0.042667 和 20.002667 秒，499 个相邻间隔均为 40 ms。此处验证封装帧时钟，真实接收端和持续提交时序仍按相应门槛验证。
