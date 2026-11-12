@@ -77,6 +77,14 @@ def browser_metrics(values):
 
 
 def live_advice(session):
+    underrun = session.get('device_underrun')
+    if session['status'] == 'failed' and underrun is not None:
+        return [{
+            'code': 'device_underrun',
+            'evidence': '本机音视频设备队列欠载，场次输出已停止',
+            'recommendation': '检查音频输出设备和本机推理负载，再重新启动场次',
+            'context': {'occurred_at': session.get('ended_at'), 'next_frame': underrun.get('next_frame')},
+        }]
     if session['status'] != 'running':
         return []
     advice = [
