@@ -31,6 +31,28 @@ class ConsoleHTTPTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             shop_data_directory(self.directory.name, '../first')
 
+    def test_shop_console_instances_isolate_write_tokens_and_catalogs(self):
+        clients = []
+        for shop_id in ('first', 'second'):
+            config = ConfigStore(shop_data_directory(self.directory.name, shop_id))
+            server = create_server(config, port=0)
+            self.addCleanup(server.server_close)
+            worker = threading.Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            self.addCleanup(worker.join, 5)
+            self.addCleanup(server.shutdown)
+            client = ConsoleHTTPTests()
+            client.base = f'http://127.0.0.1:{server.server_port}'
+            client.token = client.call('/api/session')[1]['token']
+            clients.append(client)
+        first, second = clients
+        payload = {'title': '茶杯', 'content': '仅本店', 'product_index': 1}
+        self.assertEqual(first.call('/api/products', payload)[0], 200)
+        self.assertEqual(second.call('/api/products', payload, **{'X-Console-Token': first.token})[0], 403)
+        self.assertEqual(second.call('/api/products')[1]['products'], [])
+        self.assertEqual(second.call('/api/products', {**payload, 'title': '桌布'})[0], 200)
+        self.assertEqual([item['title'] for item in first.call('/api/products')[1]['products']], ['茶杯'])
+
     def test_promotion_spend_preserves_missing_attribution_and_corrects_bill(self):
         store = ProductStore(self.directory.name)
         product = store.save(title='茶杯', content='商品说明', product_index=1)
