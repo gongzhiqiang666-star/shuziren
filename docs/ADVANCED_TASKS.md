@@ -195,3 +195,5 @@ A01-05 实机故障注入 a01-rtmp-decoder-recovery-01：本机 SRS 持续发布
 A01-05 后台重连实机对照通过。保持 SRS 推流并终止测试场次 FFmpeg 解码进程，媒体进程记录中断和重新连接。同一场次完成轮播、接管恢复及停播，提交 939 帧，双轨完整解码和报告追溯通过。证据 logs/validation/a01-rtmp-decoder-recovery-02/result.json。发布端停推再推、逐帧连续性和长稳仍待验。
 
 A01-05 发布端停推再推实机通过。停掉本机 H.264 发布进程，待控制台记录开始重连再启动新发布进程。同一场次确认重新连接并完成轮播、插播、接管恢复和停播，共提交 934 帧，回采双轨解码及报告追溯通过。证据 logs/validation/a01-rtmp-publisher-recovery-01/result.json。接收端逐帧连续性和长稳仍待验。
+
+A01-05 停推复测回采时间轴补验：a01-rtmp-publisher-recovery-01 的 receiver.mkv 解码 875 张视频帧，PTS 全部严格递增，最大相邻间隔 42 ms，无超过 80 ms 的间隔。本轮无画面源编号，断流期间备用画面与恢复后源内容的逐帧比对仍待验。
