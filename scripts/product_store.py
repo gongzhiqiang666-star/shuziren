@@ -632,6 +632,13 @@ class ProductStore:
                 )
                 SELECT * FROM sequence WHERE previous_product_id <> product_id ORDER BY cursor
             """, (session_id,)).fetchall()
+            publications = db.execute("""
+                SELECT receipt.task_id, receipt.account, receipt.publication_id,
+                       schedule.audience, schedule.publish_at
+                FROM live_content_receipts receipt JOIN live_content_schedule schedule USING (session_id, task_id)
+                WHERE receipt.session_id=? ORDER BY schedule.publish_at, receipt.task_id
+            """, (session_id,)).fetchall()
+            content_summary = self.live_content_summary(session_id, connection=db)
         return {
             'session': dict(session),
             'lineup_baseline': json.loads(trial['snapshot']) if trial else None,
@@ -641,6 +648,8 @@ class ProductStore:
             'queued_replies': [dict(row) for row in replies],
             'unqueued_replies': [dict(row) for row in unqueued],
             'observed_product_switches': [dict(row) for row in switches],
+            'content_publications': [dict(row) for row in publications],
+            'content_summary': content_summary,
             'missing': ['product_exposure', 'questions_and_answers', 'platform_product_switches',
                         'fault_events', 'attributed_sales'],
         }
@@ -879,8 +888,8 @@ class ProductStore:
                              (session_id, task_id)).fetchone()
         return dict(row) if row else {'production_seconds': None, 'baseline_seconds': None}
 
-    def live_content_summary(self, session_id):
-        with self.connect() as db:
+    def live_content_summary(self, session_id, *, connection=None):
+        with self.connect() if connection is None else nullcontext(connection) as db:
             row = db.execute("""
                 SELECT COUNT(*) AS drafts, COUNT(revision_count) AS tracked_drafts,
                        COUNT(CASE WHEN revision_count > 0 THEN 1 END) AS revised_drafts,

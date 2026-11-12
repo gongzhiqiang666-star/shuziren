@@ -346,7 +346,6 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     report['advice_acknowledgments'] = products().live_advice_acknowledgments(sessions[0])
                     report['advice_actions'] = products().live_advice_actions(sessions[0])
                     report['preparation_applications'] = products().live_preparation_applications(sessions[0])
-                    report['content_summary'] = products().live_content_summary(sessions[0])
                     return self.respond(200, report)
                 if path in {'/api/live/content-source', '/api/live/content-draft', '/api/live/content-schedule'}:
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)

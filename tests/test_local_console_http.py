@@ -678,6 +678,12 @@ class ConsoleHTTPTests(unittest.TestCase):
             'paired_drafts': 1, 'average_seconds_saved': 23,
         })
         self.assertEqual(self.call(receipt_route, {**receipt, 'publication_id': 'platform-002'})[0], 409)
+        publications = self.call('/api/live/report?session_id=scene')[1]['content_publications']
+        self.assertEqual([item['publication_id'] for item in publications], ['platform-001', 'platform-003'])
+        self.assertEqual(publications[0], {
+            'task_id': 'assistant-task', 'account': '店铺账号', 'publication_id': 'platform-001',
+            'audience': '公开', 'publish_at': '2027-01-01T01:00:00+00:00',
+        })
         self.assertEqual((source['sample_start'], source['sample_end']), (960, 1920))
         self.assertEqual(self.call('/api/live/content-source?session_id=other&task_id=task')[0], 400)
 

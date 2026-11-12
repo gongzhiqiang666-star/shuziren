@@ -1842,7 +1842,8 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
   try {
     const query = new URLSearchParams({session_id:sessionId});
     const [{session, products, controls, rotation_faults, observed_product_switches, queued_replies, lineup_baseline,
-      advice_acknowledgments, advice_actions, missing, preparation_applications, content_summary}, review, improvements] =
+      advice_acknowledgments, advice_actions, missing, preparation_applications, content_summary,
+      content_publications}, review, improvements] =
       await Promise.all([request('/api/live/report?' + query), request('/api/live/review?' + query),
         request('/api/live/improvements?' + query)]);
     if (($('live-event-scene').value || liveSession.id) !== sessionId) return;
@@ -1880,6 +1881,9 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       if (content_summary.paired_drafts) {
         lines.push(`人工基线减去复用耗时，平均 ${content_summary.average_seconds_saved.toFixed(1)} 秒（${content_summary.paired_drafts} 条）`);
       }
+    }
+    for (const publication of content_publications) {
+      lines.push(`已登记作品 ${publication.publication_id} · 账号 ${publication.account} · 任务 ${publication.task_id}`);
     }
     for (const application of preparation_applications) {
       lines.push(`已载入准备包 ${application.revision}`);
