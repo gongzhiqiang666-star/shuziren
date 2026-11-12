@@ -19,6 +19,33 @@ from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_prepared_rotation_rejects_changed_script_before_configuring_live(self):
+        store = ProductStore(self.directory.name)
+        product = store.save(title='茶杯', content='口播验收', product_index=1)
+        product_id = product['id']
+        first = store.add_script(product, '第一版话术')
+        replacement = store.add_script(product, '第二版话术')
+        store.select_script(product_id, first)
+        store.save_live_preparation(product_ids=[product_id])
+        revision = store.build_live_preparation()['revision']
+        store.save_live_preparation_review(revision, '已核对')
+        items = [{'product_id': product_id, 'product_version': product['version'], 'script_id': first}]
+        request = {'session_id': 'scene', 'product_ids': [product_id],
+                   'preparation': {'revision': revision, 'items': items}}
+        with (patch('scripts.local_console.ConsoleLive') as live,
+              patch('scripts.local_console.preflight', return_value={'runtime_root': self.directory.name}),
+              patch('scripts.tts_tasks.TTSTasks')):
+            live.return_value.start.return_value = {'id': 'scene'}
+            live.return_value.configure_rotation.return_value = {'id': 'scene'}
+            self.assertEqual(self.call('/api/live/start', {'audio_device': 1})[0], 202)
+            store.select_script(product_id, replacement)
+            self.assertEqual(self.call('/api/live/rotation', request)[0], 409)
+            live.return_value.configure_rotation.assert_not_called()
+            store.select_script(product_id, first)
+            self.assertEqual(self.call('/api/live/rotation', request)[0], 200)
+            live.return_value.configure_rotation.assert_called_once_with(
+                'scene', [product_id], shift_durations=None, shift_voice_ids=None, expected_items=items)
+
     def test_live_preparation_package_uses_only_current_sourced_facts(self):
         route = '/api/live/preparation'
         self.assertEqual(self.call(route + '/package')[0], 400)
