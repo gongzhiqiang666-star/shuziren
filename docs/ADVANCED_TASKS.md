@@ -155,3 +155,5 @@ A01-05 的 30 分钟连续性与动态口型画质保留为待验。平台能力
 A01-02/A01-03 现有实播留样复验：ZipVoice、OmniVoice 马来语及越南语的本机虚拟设备录像均经 FFmpeg 音视频双轨完整解码，原运行报告均为 passed。留样目录为 logs/validation/a01-zipvoice-live-01、a01-omnivoice-live-ms-01、a01-omnivoice-live-vi-01。本轮未重新合成。母语发音、真实在线服务和真实平台仍待独立验收。
 
 A01-02/A01-03 原实播留样逐包时间戳复核：ZipVoice 的 868 个视频包中仅首两包 PTS 相同，均为 40 毫秒；两份 OmniVoice 留样各 1,750 个视频包，PTS 无重复或倒退。待用一期已验证的毫秒时间基重新采集 ZipVoice，并独立检查画面连续性。
+
+A01-02 ZipVoice 毫秒时间基实机复测通过。双商品轮播、接管、插播、恢复、停播均通过，提交 921 帧，核对 4 条轮播事件。35 秒留样含 843 个视频包，非递增 PTS 为 0。报告位于 logs/validation/a01-zipvoice-live-ms-timebase-01/result.json。源帧连续性和人工听感待验。
