@@ -149,6 +149,8 @@ class ProductStore:
                     revision TEXT PRIMARY KEY, review TEXT NOT NULL);
             ''')
             db.execute('BEGIN IMMEDIATE')
+            if 'revoked_at' not in {row[1] for row in db.execute('PRAGMA table_info(live_advice_acknowledgments)')}:
+                db.execute('ALTER TABLE live_advice_acknowledgments ADD COLUMN revoked_at REAL')
             fault_columns = {row[1] for row in db.execute('PRAGMA table_info(live_rotation_faults)')}
             for column, kind in (('product_id', 'TEXT'), ('product_version', 'INTEGER'), ('script_id', 'TEXT')):
                 if column not in fault_columns:
@@ -491,16 +493,25 @@ class ProductStore:
 
     def acknowledge_live_advice(self, session_id, advice, acknowledged_at):
         with self.connect() as db:
-            db.execute('INSERT OR IGNORE INTO live_advice_acknowledgments VALUES (?, ?, ?)',
+            db.execute('''INSERT INTO live_advice_acknowledgments (session_id, advice, acknowledged_at)
+                       VALUES (?, ?, ?) ON CONFLICT(session_id, advice) DO UPDATE SET
+                       acknowledged_at=excluded.acknowledged_at, revoked_at=NULL
+                       WHERE live_advice_acknowledgments.revoked_at IS NOT NULL''',
                        (session_id, json.dumps(advice, sort_keys=True, ensure_ascii=False), acknowledged_at))
+
+    def revoke_live_advice_acknowledgment(self, session_id, advice, revoked_at):
+        with self.connect() as db:
+            db.execute('''UPDATE live_advice_acknowledgments SET revoked_at=?
+                       WHERE session_id=? AND advice=? AND revoked_at IS NULL''',
+                       (revoked_at, session_id, json.dumps(advice, sort_keys=True, ensure_ascii=False)))
 
     def live_advice_acknowledgments(self, session_id):
         with self.connect() as db:
             rows = db.execute("""
-                SELECT advice, acknowledged_at FROM live_advice_acknowledgments
+                SELECT advice, acknowledged_at, revoked_at FROM live_advice_acknowledgments
                 WHERE session_id=? ORDER BY rowid
             """, (session_id,)).fetchall()
-        return [{'advice': json.loads(row['advice']), 'acknowledged_at': row['acknowledged_at']} for row in rows]
+        return [{**dict(row), 'advice': json.loads(row['advice'])} for row in rows]
 
     def save_live_improvement(self, session_id, fault_id, owner, goal, adopted=False):
         owner = text(owner, '负责人', 120)

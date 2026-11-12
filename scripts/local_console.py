@@ -650,15 +650,20 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if path == '/api/tts/cancel':
                         if set(value)!={'task_id'} or not isinstance(value['task_id'],str): raise ProductError('TTS取消字段无效')
                         return self.respond(200,{'task':tts().cancel(value['task_id'])})
-                    if path == "/api/live/advice/acknowledge":
+                    if path in {"/api/live/advice/acknowledge", "/api/live/advice/revoke"}:
                         if set(value) != {'session_id', 'advice'} or not isinstance(value['session_id'], str):
                             raise ProductError('运营提醒确认字段无效')
                         session = live_manager.state() if live_manager else {'status': 'idle'}
                         if session.get('id') != value['session_id'] or value['advice'] not in live_advice(session):
                             raise Conflict('运营提醒已变化，请刷新后核对')
                         from time import time
-                        products().acknowledge_live_advice(value['session_id'], value['advice'], time())
-                        return self.respond(200, {'acknowledged': True})
+                        data = products()
+                        acknowledge = path.endswith('/acknowledge')
+                        if acknowledge:
+                            data.acknowledge_live_advice(value['session_id'], value['advice'], time())
+                        else:
+                            data.revoke_live_advice_acknowledgment(value['session_id'], value['advice'], time())
+                        return self.respond(200, {'acknowledged': acknowledge})
                     if path == "/api/live/improvements":
                         required = {'session_id', 'fault_id', 'owner', 'goal'}
                         if set(value) - {'adopted'} != required or not isinstance(value['session_id'], str):
