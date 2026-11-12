@@ -11,9 +11,12 @@ class ResidentRtmpTests(unittest.TestCase):
 
     def test_reconnect_preserves_partial_batch(self):
         self.reader.read_ahead.side_effect = [(['before'], [[]]), (['after'], [[]])]
-        frames, metadata = self.engine._load_live_frames([0, 1])
+        with self.assertLogs(level='WARNING') as logs:
+            frames, metadata = self.engine._load_live_frames([0, 1])
         self.assertEqual(frames, ['before', 'after'])
         self.assertEqual(metadata, [{'is_no_face': True}] * 2)
+        self.assertIn('当前批次 1/2 帧', logs.output[0])
+        self.assertIn('补齐 1 帧', logs.output[1])
         self.reader.reconnect.assert_called_once()
 
     def test_reconnect_rejects_resolution_change(self):
@@ -25,8 +28,11 @@ class ResidentRtmpTests(unittest.TestCase):
 
     def test_reconnect_fails_when_frames_still_missing(self):
         self.reader.read_ahead.return_value = ([], [])
-        with self.assertRaisesRegex(RuntimeError, '未收到足够画面'):
-            self.engine._load_live_frames([0])
+        with self.assertLogs(level='WARNING') as logs:
+            with self.assertRaisesRegex(RuntimeError, '未收到足够画面'):
+                self.engine._load_live_frames([0])
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn('开始重连', logs.output[0])
         self.reader.reconnect.assert_called_once()
 
     def test_close_releases_model_even_when_rtmp_cleanup_fails(self):
