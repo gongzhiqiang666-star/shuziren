@@ -142,6 +142,11 @@ class ConsoleLive:
             def presented(row):
                 recent_submissions.append({key: row[key] for key in (
                     'frame_index', 'task_id', 'presented_ns', 'receive_ns', 'pcm_read_ns', 'submit_ns', 'sink_timing')})
+                silent_frames = row['silent_speech_frames']
+                if silent_frames == 125:
+                    self.status['silent_speech'] = {'first_frame': row['frame_index'] - 124}
+                elif not silent_frames:
+                    self.status.pop('silent_speech', None)
                 if self.cancel.is_set():
                     session.stop_event.set()
 

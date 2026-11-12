@@ -99,6 +99,10 @@ def live_advice(session, repeated_questions=()):
         advice.append({'code': 'automatic_queue_full',
                        'evidence': f"普通口播队列已满，待播 {session['pending']} 条",
                        'recommendation': '等待队列释放后再添加口播'})
+    if session.get('silent_speech'):
+        advice.append({'code': 'silent_speech', 'evidence': '口播输出连续至少 5 秒为零音频',
+                       'recommendation': '核对当前话术生成的语音及本机音频输出',
+                       'context': session['silent_speech']})
     if session.get('shift_waiting_for_boundary'):
         advice.append({'code': 'shift_waiting_for_boundary', 'evidence': '当前班次已到设定时长，尚未切品',
                        'recommendation': '等待当前商品讲解结束后切换，若持续未切换请检查轮播状态',
