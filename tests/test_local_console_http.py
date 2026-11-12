@@ -260,6 +260,12 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(result['review']['basis'], 'estimate')
         self.assertEqual(result['review']['refunds'], 1)
         self.assertIsNone(result['review']['fulfillment_after_sales'])
+        self.assertIsNone(result['review']['on_time_fulfillment_rate'])
+        for due, on_time, expected in [(4, 3, .75), (4, 0, 0), (0, 0, None), (4, None, None)]:
+            status, measured = self.call(route, {**payload, 'fulfillment_due': due, 'fulfilled_on_time': on_time})
+            self.assertEqual(status, 200)
+            self.assertEqual(measured['review']['on_time_fulfillment_rate'], expected)
+        self.assertEqual(self.call(route, {**payload, 'fulfillment_due': 2, 'fulfilled_on_time': 3})[0], 400)
         store.save_after_sales(product['id'], window['source'], window['period_start'],
                                window['period_end'], {'fulfillment': 0})
         status, result = self.call(route, {**payload, 'basis': 'settled', 'fees_minor': None})

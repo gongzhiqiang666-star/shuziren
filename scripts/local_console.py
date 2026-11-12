@@ -888,14 +888,22 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         return self.respond(200, {'reports': data.after_sales(value['product_id'])})
                     if path == "/api/products/settlement-review":
                         fields = ('sales_minor', 'cost_minor', 'fees_minor', 'refund_loss_minor')
-                        if set(value) != {'product_id', 'source', 'scope', 'period_start', 'period_end',
-                                         'currency', 'basis', *fields}:
+                        required = {'product_id', 'source', 'scope', 'period_start', 'period_end',
+                                    'currency', 'basis', *fields}
+                        if not required <= value.keys() <= required | {'fulfillment_due', 'fulfilled_on_time'}:
                             raise ProductError('退款复盘字段无效')
                         if value['basis'] not in ('estimate', 'settled') or value['currency'] != 'CNY':
                             raise ProductError('请选择估算或已结算，并使用人民币分录入金额')
                         if any(amount is not None and (type(amount) is not int or not 0 <= amount < 2**53)
                                for amount in (value[field] for field in fields)):
                             raise ProductError('金额须为非负整数分或未知')
+                        due = value.get('fulfillment_due')
+                        on_time = value.get('fulfilled_on_time')
+                        if any(count is not None and (type(count) is not int or not 0 <= count < 2**53)
+                               for count in (due, on_time)):
+                            raise ProductError('履约数量须为非负整数或未知')
+                        if due is not None and on_time is not None and on_time > due:
+                            raise ProductError('准时履约数不能超过到期应履约数')
                         data = products()
                         counts = data.summarize_business_metrics(**{
                             key: value[key] for key in ('product_id', 'source', 'scope', 'period_start', 'period_end')
@@ -910,6 +918,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             **value, 'net_minor': str(net) if net is not None and abs(net) >= 2**53 else net,
                             'orders': browser_metrics(counts)['orders'], 'refunds': browser_metrics(counts)['refunds'],
                             'fulfillment_after_sales': fulfillment,
+                            'on_time_fulfillment_rate': on_time / due if due and on_time is not None else None,
                             'missing': missing, 'conclusion': 'uncertain',
                         }})
                     if path == "/api/live/content-withdraw":
