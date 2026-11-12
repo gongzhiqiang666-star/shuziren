@@ -154,6 +154,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         replacement_id = replacement['plan']['id']
         self.assertEqual(self.call(plans, {**plan, 'expected_product_version': product['version']})[0], 409)
         self.assertEqual(self.call(plans + '/action', {**action, 'plan_id': replacement_id})[0], 409)
+        self.assertEqual(self.call(plans + '?product_id=' + product['id'])[1]['plans'][0]['review_reason'],
+                         '商品资料已更新')
         self.assertEqual(self.call(plans + '?product_id=' + product['id'])[1]['plans'][0]['status'], 'stale')
 
     def test_sourcing_candidates_preserve_source_and_leave_missing_terms_unknown(self):

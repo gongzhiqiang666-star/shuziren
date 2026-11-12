@@ -146,7 +146,9 @@ async function loadPromotionPlans(product) {
     pause.type = 'button';
     pause.textContent = '暂停本机方案';
     const showStatus = value => {
-      status.textContent = plan.requires_new_plan ? '本机已暂停，账单已变更，请重新保存方案' : labels[value];
+      const reason = plan.review_reason ?? '账单已变更';
+      status.textContent = plan.requires_new_plan ? `本机已暂停，${reason}，请重新保存方案`
+        : value === 'stale' ? `${reason}，待重审` : labels[value];
       approve.disabled = value === 'approved' || value === 'stale' || Boolean(plan.requires_new_plan);
       pause.disabled = value !== 'approved' && value !== 'stale';
     };

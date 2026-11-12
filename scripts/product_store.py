@@ -1369,6 +1369,9 @@ class ProductStore:
             bill = plan['bill']
             current = bills.get(tuple(bill[key] for key in keys))
             stale = row['invalidated'] or current != bill or plan.get('product_version') != version
+            if plan.get('product_version') != version:
+                plan['review_reason'] = ('旧方案未记录商品版本' if plan.get('product_version') is None
+                                         else '商品资料已更新')
             plan['status'] = 'stale' if row['status'] != 'paused' and stale else row['status']
             if plan['status'] == 'paused' and stale:
                 plan['requires_new_plan'] = True
