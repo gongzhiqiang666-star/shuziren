@@ -103,6 +103,20 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(second.call(plans + '/action', action)[0], 400)
         self.assertEqual(second.call(plans + '/actions?' + urlencode({'plan_id': action['plan_id']}))[0], 400)
         self.assertEqual(first.call(plans + '/action', action)[1]['plan']['status'], 'approved')
+        first_store = ProductStore(shop_data_directory(self.directory.name, 'first'))
+        product = first_store.get(product_id)
+        script_id = first_store.add_script(product, '茶杯口播。')
+        first_store.record_live_session('shop-scene', 1, started_at=2, ended_at=3, status='stopped')
+        first_store.record_rotation_completion('shop-scene', 'shop-clip', {
+            'product_id': product_id, 'product_version': product['version'], 'script_id': script_id,
+        }, 0)
+        report_url = '/api/live/report?session_id=shop-scene'
+        draft = {'session_id': 'shop-scene', 'task_id': 'shop-clip', 'body': '本店短视频文案'}
+        self.assertEqual(first.call('/api/live/content-draft', draft)[0], 200)
+        self.assertEqual(first.call(report_url)[1]['content_summary']['drafts'], 1)
+        self.assertEqual(second.call(report_url)[0], 400)
+        self.assertEqual(second.call('/api/live/content-draft?session_id=shop-scene&task_id=shop-clip')[0], 400)
+        self.assertEqual(second.call('/api/live/content-draft', draft)[0], 400)
 
     def test_promotion_spend_preserves_missing_attribution_and_corrects_bill(self):
         store = ProductStore(self.directory.name)
