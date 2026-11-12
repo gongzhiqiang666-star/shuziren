@@ -179,6 +179,8 @@ class ProductStore:
                     revision TEXT PRIMARY KEY, review TEXT NOT NULL);
             ''')
             db.execute('BEGIN IMMEDIATE')
+            if 'revoked' not in {row[1] for row in db.execute('PRAGMA table_info(product_after_sales_tasks)')}:
+                db.execute('ALTER TABLE product_after_sales_tasks ADD COLUMN revoked INTEGER NOT NULL DEFAULT 0')
             if 'withdrawn' not in {row[1] for row in db.execute('PRAGMA table_info(live_content_drafts)')}:
                 db.execute('ALTER TABLE live_content_drafts ADD COLUMN withdrawn INTEGER NOT NULL DEFAULT 0')
             if 'revoked_at' not in {row[1] for row in db.execute('PRAGMA table_info(live_advice_acknowledgments)')}:
@@ -900,10 +902,21 @@ class ProductStore:
             if not count:
                 raise Conflict('当前报表没有该售后原因的记录')
             db.execute("""
-                INSERT INTO product_after_sales_tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO product_after_sales_tasks
+                    (product_id, source, period_start, period_end, category, evidence_count, owner, goal)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(product_id, source, period_start, period_end, category) DO UPDATE SET
-                    evidence_count=excluded.evidence_count, owner=excluded.owner, goal=excluded.goal
+                    evidence_count=excluded.evidence_count, owner=excluded.owner, goal=excluded.goal, revoked=0
             """, (*key, category, count, owner, goal))
+
+    def revoke_after_sales_task(self, product_id, source, period_start, period_end, category):
+        with self.connect() as db:
+            result = db.execute("""
+                UPDATE product_after_sales_tasks SET revoked=1
+                WHERE product_id=? AND source=? AND period_start=? AND period_end=? AND category=?
+            """, (product_id, source, period_start, period_end, category))
+            if not result.rowcount:
+                raise Conflict('未找到对应售后任务')
 
     def after_sales_tasks(self, product_ids, *, current_only=False):
         if not product_ids:
@@ -921,7 +934,8 @@ class ProductStore:
         for row in rows:
             task = dict(row)
             current_counts = json.loads(task.pop('current_counts') or '{}')
-            if not current_only or current_counts.get(task['category']) == task['evidence_count']:
+            task['revoked'] = bool(task['revoked'])
+            if not current_only or (not task['revoked'] and current_counts.get(task['category']) == task['evidence_count']):
                 tasks.append(task)
         return tasks
 

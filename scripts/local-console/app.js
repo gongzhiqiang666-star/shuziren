@@ -188,21 +188,41 @@ async function afterSalesAction(action) {
         const save = document.createElement('button');
         save.type = 'submit';
         save.textContent = '保存售后改进任务';
+        const revoke = document.createElement('button');
+        revoke.type = 'button';
+        revoke.textContent = '撤销纳入准备包';
+        revoke.hidden = !followup.task || followup.task.revoked;
+        const identity = {product_id:product.id, source:report.source, period_start:report.period_start,
+          period_end:report.period_end, category:followup.category};
         const feedback = document.createElement('p');
         feedback.setAttribute('role', 'status');
         if (followup.task && followup.task.evidence_count !== followup.count) {
           feedback.textContent = '报表数量已更正，请核对目标后重新保存';
         }
-        form.append(ownerLabel, goalLabel, save, feedback);
+        if (followup.task?.revoked) feedback.textContent = '已撤销，可重新保存以纳入准备包';
+        form.append(ownerLabel, goalLabel, save, revoke, feedback);
+        revoke.addEventListener('click', async () => {
+          if (save.disabled || currentProduct !== product || consoleClosed) return;
+          save.disabled = revoke.disabled = true;
+          try {
+            await request(route + '/task/revoke', identity);
+            revoke.hidden = true;
+            feedback.textContent = '已撤销，可重新保存以纳入准备包';
+          } catch (error) {
+            feedback.textContent = error.message;
+          } finally {
+            save.disabled = revoke.disabled = false;
+          }
+        });
         form.addEventListener('submit', async event => {
           event.preventDefault();
           if (save.disabled || currentProduct !== product || consoleClosed) return;
           save.disabled = true;
           try {
             await request(route + '/task', {
-              product_id:product.id, source:report.source, period_start:report.period_start,
-              period_end:report.period_end, category:followup.category, owner:owner.value, goal:goal.value,
+              ...identity, owner:owner.value, goal:goal.value,
             });
+            revoke.hidden = false;
             feedback.textContent = '已保存，将纳入该商品的直播准备包';
           } catch (error) {
             feedback.textContent = error.message;
