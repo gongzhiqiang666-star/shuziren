@@ -522,12 +522,14 @@ settlementForm.addEventListener('submit', async event => {
     const {review} = await request('/api/products/settlement-review', payload);
     if (version !== summaryVersion) return;
     const basis = review.basis === 'settled' ? '已结算（按录入）' : '估算';
-    const net = review.net_minor == null ? '未知' : `${review.net_minor} 分`;
+    const amount = value => value == null ? '未知' : `${value} 分`;
+    const net = amount(review.net_minor);
     const onTimeRate = review.on_time_fulfillment_rate == null ? '未知'
       : new Intl.NumberFormat('zh-CN', {style:'percent', maximumFractionDigits:2}).format(review.on_time_fulfillment_rate);
     const turnover = review.inventory_turnover == null ? '未知'
       : `${new Intl.NumberFormat('zh-CN', {maximumFractionDigits:3}).format(review.inventory_turnover)} 次`;
     output.textContent = `${basis} · 净收益 ${net} · 订单 ${review.orders ?? '未知'} · 退款 ${review.refunds ?? '未知'} · 履约类售后 ${review.fulfillment_after_sales ?? '未知'} · 准时履约率 ${onTimeRate} · 按件库存周转 ${turnover}`;
+    output.append(` · 销售额 ${amount(review.sales_minor)} · 成本 ${amount(review.cost_minor)} · 费用 ${amount(review.fees_minor)} · 退款损失 ${amount(review.refund_loss_minor)}`);
   } catch (error) {
     if (version === summaryVersion) output.textContent = error.message;
   } finally {
