@@ -1096,12 +1096,65 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
     saveDraft.hidden = true;
     details.append(draftButton, draftStatus, draftLabel, saveDraft);
     const params = new URLSearchParams({session_id:sessionId, task_id:event.task_id});
+    const scheduleForm = document.createElement('form');
+    scheduleForm.hidden = true;
+    const scheduleFields = {};
+    for (const [key, label, limit] of [
+      ['account', '目标发布账号', 120], ['audience', '发布范围', 120], ['publish_at', '发布时间（含时区）', 64],
+    ]) {
+      const input = document.createElement('input');
+      input.required = true;
+      input.maxLength = limit;
+      if (key === 'publish_at') input.placeholder = '2027-01-01T09:00:00+08:00';
+      const field = document.createElement('label');
+      field.append(label, input);
+      scheduleForm.append(field);
+      scheduleFields[key] = input;
+    }
+    const scheduleSave = document.createElement('button');
+    scheduleSave.type = 'submit';
+    scheduleSave.textContent = '保存本机排期';
+    const scheduleStatus = document.createElement('p');
+    scheduleStatus.setAttribute('role', 'status');
+    scheduleForm.append(scheduleSave, scheduleStatus);
+    details.append(scheduleForm);
+    async function loadSchedule() {
+      scheduleForm.hidden = false;
+      scheduleSave.disabled = true;
+      try {
+        const {schedule, facts_review} = await request('/api/live/content-schedule?' + params);
+        for (const [key, input] of Object.entries(scheduleFields)) input.value = schedule?.[key] ?? '';
+        scheduleStatus.textContent = schedule && !schedule.draft_matches ? '文案已修改，请重新核对并保存排期' : '';
+        scheduleSave.disabled = facts_review !== 'version_current';
+        if (scheduleSave.disabled) scheduleStatus.textContent = '商品事实已变化，排期仅供查看';
+      } catch (error) {
+        scheduleStatus.textContent = error.message;
+      }
+    }
+    scheduleForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (scheduleSave.disabled || consoleClosed) return;
+      scheduleSave.disabled = true;
+      try {
+        const fields = Object.fromEntries(Object.entries(scheduleFields).map(([key, input]) => [key, input.value]));
+        const {schedule} = await request('/api/live/content-schedule', {
+          session_id:sessionId, task_id:params.get('task_id'), ...fields,
+        });
+        scheduleFields.publish_at.value = schedule.publish_at;
+        scheduleStatus.textContent = '本机排期已保存，等待人工发布';
+      } catch (error) {
+        scheduleStatus.textContent = error.message;
+      } finally {
+        scheduleSave.disabled = false;
+      }
+    });
     saveDraft.addEventListener('click', async () => {
       if (saveDraft.disabled || consoleClosed) return;
       saveDraft.disabled = true;
       try {
         await request('/api/live/content-draft', {session_id:sessionId, task_id:event.task_id, body:draftText.value});
         draftStatus.textContent = '文案已保存';
+        await loadSchedule();
       } catch (error) {
         draftStatus.textContent = error.message;
       } finally {
@@ -1121,6 +1174,7 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         saveDraft.hidden = !draft.editable;
         draftButton.hidden = true;
         draftStatus.textContent = draft.editable ? '' : '原商品或话术事实已变化，历史文案仅供核对';
+        if (draft.saved_body != null) await loadSchedule();
         if (draft.subtitle_srt) {
           const subtitleLabel = document.createElement('label');
           const subtitle = document.createElement('textarea');
