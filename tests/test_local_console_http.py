@@ -149,6 +149,11 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(updated['spend_difference_minor'], 50)
         self.assertIn('net_result', updated['missing'])
         self.assertEqual(updated['conclusion'], 'uncertain')
+        store.save(title=product['title'], content='更新后的商品说明', product_index=1,
+                   product_id=product['id'], version=product['version'])
+        replacement_id = replacement['plan']['id']
+        self.assertEqual(self.call(plans + '/action', {**action, 'plan_id': replacement_id})[0], 409)
+        self.assertEqual(self.call(plans + '?product_id=' + product['id'])[1]['plans'][0]['status'], 'stale')
 
     def test_sourcing_candidates_preserve_source_and_leave_missing_terms_unknown(self):
         route = '/api/sourcing/candidates'

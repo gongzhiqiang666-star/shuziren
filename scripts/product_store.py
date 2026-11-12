@@ -1341,7 +1341,9 @@ class ProductStore:
                 raise Conflict('投放账单已变化，请重新读取后核对预算')
             if bill['spend_minor'] > budget_minor:
                 raise Conflict('账单支出已超过预算上限')
+            version = db.execute('SELECT version FROM products WHERE id=?', (product_id,)).fetchone()['version']
             snapshot = {'id': str(uuid.uuid4()), 'bill': dict(bill), 'budget_minor': budget_minor,
+                        'product_version': version,
                         'rationale': rationale, 'recorded_at': datetime.now(timezone.utc).isoformat()}
             db.execute('INSERT INTO promotion_plans VALUES (?, ?, ?)',
                        (snapshot['id'], product_id, json.dumps(snapshot, ensure_ascii=False)))
@@ -1350,6 +1352,7 @@ class ProductStore:
     def promotion_plans(self, product_id):
         keys = ('source', 'period_start', 'period_end', 'campaign', 'asset')
         bills = {tuple(bill[key] for key in keys): bill for bill in self.promotion_spend(product_id)}
+        version = self.get(product_id)['version']
         with self.connect() as db:
             rows = db.execute('''SELECT snapshot, EXISTS (
                 SELECT 1 FROM invalidated_promotion_plans WHERE plan_id=promotion_plans.id
@@ -1362,8 +1365,9 @@ class ProductStore:
             plan = json.loads(row['snapshot'])
             bill = plan['bill']
             current = bills.get(tuple(bill[key] for key in keys))
-            plan['status'] = 'stale' if row['status'] != 'paused' and (row['invalidated'] or current != bill) else row['status']
-            if plan['status'] == 'paused' and (row['invalidated'] or current != bill):
+            stale = row['invalidated'] or current != bill or plan.get('product_version') != version
+            plan['status'] = 'stale' if row['status'] != 'paused' and stale else row['status']
+            if plan['status'] == 'paused' and stale:
                 plan['requires_new_plan'] = True
             plans.append(plan)
         return plans
@@ -1381,6 +1385,9 @@ class ProductStore:
                 if db.execute('SELECT 1 FROM invalidated_promotion_plans WHERE plan_id=?', (plan_id,)).fetchone():
                     raise Conflict('账单已变化，请重新核对并保存方案')
                 bill = snapshot['bill']
+                product = db.execute('SELECT version FROM products WHERE id=?', (bill['product_id'],)).fetchone()
+                if product is None or snapshot.get('product_version') != product['version']:
+                    raise Conflict('商品资料已变化或旧方案未记录版本，请重新核对并保存方案')
                 keys = ('product_id', 'source', 'period_start', 'period_end', 'campaign', 'asset')
                 current = db.execute("""
                     SELECT * FROM promotion_spend WHERE product_id=? AND source=? AND period_start=?
