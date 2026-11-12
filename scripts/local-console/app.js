@@ -2178,7 +2178,10 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         draftButton.hidden = true;
         withdrawDraft.hidden = draft.saved_body == null || Boolean(draft.withdrawn);
         draftStatus.textContent = draft.withdrawn ? '文案已停止复用，仅供回查'
-          : draft.editable ? '' : '原商品或话术事实已变化，历史文案仅供核对';
+          : draft.editable ? [
+            draft.speaker_role === 'assistant' ? '原口播为助播' : '原口播为主播',
+            draft.source.voice_id ? `原音色 ${draft.source.voice_id}` : '原音色未记录',
+          ].join(' · ') : '原商品或话术事实已变化，历史文案仅供核对';
         if (draft.saved_body != null) await loadSchedule();
         if (draft.withdrawn) scheduleSave.disabled = true;
         if (draft.subtitle_srt) {
