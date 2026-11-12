@@ -2147,6 +2147,7 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         saveDraft.disabled = false;
       }
     });
+    let reuseNarration = null;
     withdrawDraft.addEventListener('click', async () => {
       if (withdrawDraft.disabled || consoleClosed) return;
       withdrawDraft.disabled = true;
@@ -2155,6 +2156,7 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         draftText.readOnly = true;
         saveDraft.hidden = true;
         withdrawDraft.hidden = true;
+        if (reuseNarration) reuseNarration.hidden = true;
         await loadSchedule();
         scheduleSave.disabled = true;
         draftStatus.textContent = '文案已停止复用，仅供回查';
@@ -2186,23 +2188,38 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         if (draft.withdrawn) scheduleSave.disabled = true;
         if (draft.editable) {
           const reuse = document.createElement('button');
+          reuseNarration = reuse;
           reuse.type = 'button';
           reuse.textContent = '将原口播载入话术编辑器';
-          reuse.addEventListener('click', () => {
-            if (consoleClosed) return;
-            if (currentProduct?.id !== draft.source.product_id ||
-                currentProduct.version !== draft.source.product_version) {
-              draftStatus.textContent = '请先在商品与话术中打开对应版本的商品';
-              return;
+          reuse.addEventListener('click', async () => {
+            if (consoleClosed || reuse.disabled || reuse.hidden) return;
+            reuse.disabled = true;
+            try {
+              const {draft: latest} = await request('/api/live/content-draft?' + params);
+              if (consoleClosed || reuse.hidden) return;
+              if (!latest.editable) {
+                reuse.hidden = true;
+                draftStatus.textContent = '此文案已停止复用或原商品事实已变化';
+                return;
+              }
+              if (currentProduct?.id !== latest.source.product_id ||
+                  currentProduct.version !== latest.source.product_version) {
+                draftStatus.textContent = '请先在商品与话术中打开对应版本的商品';
+                return;
+              }
+              const editor = $('script-text');
+              if (editor.value.trim()) {
+                draftStatus.textContent = '请先处理话术编辑器中尚未保存的内容';
+                return;
+              }
+              editor.value = latest.narration;
+              parentScriptId = latest.source.script_id;
+              editor.focus();
+            } catch (error) {
+              draftStatus.textContent = error.message;
+            } finally {
+              reuse.disabled = false;
             }
-            const editor = $('script-text');
-            if (editor.value.trim()) {
-              draftStatus.textContent = '请先处理话术编辑器中尚未保存的内容';
-              return;
-            }
-            editor.value = draft.narration;
-            parentScriptId = draft.source.script_id;
-            editor.focus();
           });
           draftLabel.before(reuse);
         }
