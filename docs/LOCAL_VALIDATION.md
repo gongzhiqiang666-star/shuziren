@@ -142,3 +142,5 @@ V09 正式 run --with-media 入口实播短测通过。部署 173b7dd 至临时�
 V09-04 在本机 v122 最小验证目录复查 JSON/YAML 配置，排除随包 Python 环境及大于 2 MiB 的文件，未找到包含旧商品或直播模板标记的可用样本。现有发行包迁移回归 6 项通过。真实旧模板验收保留待补，需取得授权的原版导出模板。
 
 Windows 全量回归复跑：源码 d53f7d0，使用 v122 验证解释器并显式配置 SHUZIREN_TEST_RUNTIME_ROOT 和 SHUZIREN_TEST_FFMPEG。unittest discover 执行 284 项，全部通过，无跳过，耗时 125.101 秒。真实平台、连续性和商家试点仍按各关验收。
+
+一期 Windows 媒体与安装夹具补验（860f4a3）：以独立媒体运行目录的 Python、OpenCV 和显式 SHUZIREN_TEST_FFMPEG 复跑 test_console_package（8）、test_voice_store（5）、test_video_audio_tail（1）、test_raw_video_writer（3），17 项全部通过。覆盖安装清单、店铺迁移及形象保留、参考音归一化、视频尾部音轨和原始帧编码。干净 Windows 整机安装与人工听感仍待验。
