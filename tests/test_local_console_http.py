@@ -558,7 +558,9 @@ class ConsoleHTTPTests(unittest.TestCase):
                                   failure_reason='输出设备断开')
         store.record_live_session('other', 200)
         product = store.save(title='茶杯', content='验收商品', product_index=1)
-        item = {'product_id': product['id'], 'product_version': product['version'], 'script_id': 'script'}
+        script = store.add_script(product, '这是一只茶杯。')
+        store.select_script(product['id'], script)
+        item = {'product_id': product['id'], 'product_version': product['version'], 'script_id': script}
         store.record_rotation_completion('scene', 'first', item, 0)
         store.record_rotation_completion('scene', 'first', item, 0)
         store.record_rotation_completion('scene', 'second', item, 1)
@@ -611,6 +613,11 @@ class ConsoleHTTPTests(unittest.TestCase):
         package_route = '/api/live/preparation/package'
         self.assertEqual(self.call(package_route)[1]['improvements'], [])
         self.assertEqual(self.call(task_route, {**task, 'adopted': True})[0], 200)
+        self.assertEqual(self.call(package_route)[1]['improvements'][0]['fault_id'], 1)
+        replacement = store.add_script(product, '这是一只陶瓷茶杯。')
+        store.select_script(product['id'], replacement)
+        self.assertEqual(self.call(package_route)[1]['improvements'], [])
+        store.select_script(product['id'], script)
         self.assertEqual(self.call(package_route)[1]['improvements'][0]['fault_id'], 1)
         unrelated = store.save(title='桌布', content='另一场商品', product_index=2)
         store.save_live_preparation(product_ids=[unrelated['id']])

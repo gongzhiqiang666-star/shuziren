@@ -347,10 +347,13 @@ class ProductStore:
                 'assets': ['核对商品展示图或实拍视频'],
             })
         selected_versions = {item['product_id']: item['product_version'] for item in items}
+        selected_scripts = {product_id: self.selected_script(product_id) for product_id in selected_versions}
         improvements = [task for task in self.live_improvements(adopted_only=True)
                         if task['product_id'] is None or (
                             task['product_id'] in selected_versions
-                            and task['product_version'] == selected_versions[task['product_id']])]
+                            and task['product_version'] == selected_versions[task['product_id']]
+                            and (task['script_id'] is None
+                                 or task['script_id'] == selected_scripts[task['product_id']]))]
         package = {**preparation, 'items': items, 'improvements': improvements,
                    'after_sales_tasks': self.after_sales_tasks(preparation['draft']['product_ids'], current_only=True),
                    'segments': {
