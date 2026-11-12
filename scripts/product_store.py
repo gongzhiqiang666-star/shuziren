@@ -131,6 +131,10 @@ class ProductStore:
                     singleton INTEGER PRIMARY KEY CHECK(singleton=1), draft TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_rotation_faults (
                     session_id TEXT NOT NULL, occurred_at REAL NOT NULL, reason TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS live_improvement_tasks (
+                    session_id TEXT NOT NULL, fault_id INTEGER NOT NULL,
+                    owner TEXT NOT NULL, goal TEXT NOT NULL,
+                    PRIMARY KEY(session_id, fault_id));
                 CREATE TABLE IF NOT EXISTS live_queued_replies (
                     session_id TEXT NOT NULL, task_id TEXT NOT NULL, product_id TEXT NOT NULL,
                     product_version INTEGER NOT NULL, question TEXT NOT NULL, answer TEXT NOT NULL,
@@ -465,6 +469,30 @@ class ProductStore:
     def record_rotation_fault(self, session_id, occurred_at, reason):
         with self.connect() as db:
             db.execute('INSERT INTO live_rotation_faults VALUES (?, ?, ?)', (session_id, occurred_at, reason))
+
+    def save_live_improvement(self, session_id, fault_id, owner, goal):
+        owner = text(owner, '负责人', 120)
+        goal = text(goal, '改进目标', 2000)
+        if type(fault_id) is not int or not 0 < fault_id < 2**63:
+            raise ProductError('轮播故障编号无效')
+        with self.connect() as db:
+            result = db.execute("""
+                INSERT INTO live_improvement_tasks (session_id, fault_id, owner, goal)
+                SELECT session_id, rowid, ?, ? FROM live_rotation_faults WHERE session_id=? AND rowid=?
+                ON CONFLICT(session_id, fault_id) DO UPDATE SET owner=excluded.owner, goal=excluded.goal
+            """, (owner, goal, session_id, fault_id))
+            if not result.rowcount:
+                raise ProductError('该场次没有对应的轮播故障记录')
+
+    def live_improvements(self, session_id):
+        with self.connect() as db:
+            rows = db.execute("""
+                SELECT task.fault_id, task.owner, task.goal, fault.reason, fault.occurred_at
+                FROM live_improvement_tasks task
+                JOIN live_rotation_faults fault ON fault.rowid=task.fault_id AND fault.session_id=task.session_id
+                WHERE task.session_id=? ORDER BY task.fault_id
+            """, (session_id,)).fetchall()
+        return [dict(row) for row in rows]
 
     def record_rotation_completion(self, session_id, task_id, item, segment_index, *,
                                    sample_start=None, sample_end=None):

@@ -54,6 +54,17 @@ class ConsoleHTTPTests(unittest.TestCase):
         finding, = review['findings']
         self.assertEqual(finding['evidence'], {'event_id': 1, 'occurred_at': 104})
         self.assertEqual(finding['fact'], '语音合成超时')
+        task_route = '/api/live/improvements'
+        task = {'session_id': 'scene', 'fault_id': 1, 'owner': '运营', 'goal': '复测语音合成'}
+        self.assertEqual(self.call(task_route, {**task, 'session_id': 'other'})[0], 400)
+        self.assertEqual(self.call(task_route, task)[0], 200)
+        status, saved = self.call(task_route, {**task, 'goal': '复测两次语音合成'})
+        self.assertEqual(status, 200)
+        self.assertEqual(saved['tasks'], [{
+            'fault_id': 1, 'owner': '运营', 'goal': '复测两次语音合成',
+            'reason': '语音合成超时', 'occurred_at': 104,
+        }])
+        self.assertEqual(self.call(task_route + '?session_id=scene'), (200, saved))
         self.assertIn('questions_and_answers', review['missing'])
         unqueued, = review['unqueued_replies']
         self.assertEqual((unqueued['question'], unqueued['status'], unqueued['reason']),

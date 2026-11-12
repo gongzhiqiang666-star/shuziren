@@ -204,10 +204,12 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if len(sessions) != 1 or not 1 <= len(sessions[0]) <= 64:
                         raise ProductError('场次无效')
                     return self.respond(200, {'events': products().live_control_events(sessions[0])})
-                if path in {'/api/live/report', '/api/live/review'}:
+                if path in {'/api/live/report', '/api/live/review', '/api/live/improvements'}:
                     sessions = parse_qs(urlsplit(self.path).query, keep_blank_values=True).get('session_id', [])
                     if len(sessions) != 1 or not 1 <= len(sessions[0]) <= 64:
                         raise ProductError('场次无效')
+                    if path == '/api/live/improvements':
+                        return self.respond(200, {'tasks': products().live_improvements(sessions[0])})
                     report = products().live_session_report(sessions[0])
                     if path == '/api/live/review':
                         questions = {}
@@ -572,6 +574,12 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if path == '/api/tts/cancel':
                         if set(value)!={'task_id'} or not isinstance(value['task_id'],str): raise ProductError('TTS取消字段无效')
                         return self.respond(200,{'task':tts().cancel(value['task_id'])})
+                    if path == "/api/live/improvements":
+                        if set(value) != {'session_id', 'fault_id', 'owner', 'goal'} or not isinstance(value['session_id'], str):
+                            raise ProductError('改进任务字段无效')
+                        data = products()
+                        data.save_live_improvement(**value)
+                        return self.respond(200, {'tasks': data.live_improvements(value['session_id'])})
                     if path == "/api/live/preparation/review":
                         if set(value) != {'revision', 'review'}:
                             return self.respond(400, {"error": "需要准备包版本和审阅稿"})
