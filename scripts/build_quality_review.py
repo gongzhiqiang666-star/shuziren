@@ -38,9 +38,10 @@ def build(root):
 <label>听感/嘴周/身份/末句人工检查：<select><option value="pending">待检查</option><option value="pass">通过</option><option value="fail">失败</option></select></label>
 <label>具体问题与复查说明：<textarea rows="2"></textarea></label></section>''')
     metadata={'protocol':corpus['version'],'corpus_sha256':digest(root/'corpus.json'),'run_directory':str(root)}
+    metadata['result_sha256'] = digest(root/'result.json') if result is not None else None
     script='''const metadata=METADATA;
 const cards=[...document.querySelectorAll('[data-case]')];
-const draftKey='v04-review:'+metadata.run_directory+':'+metadata.corpus_sha256;
+const draftKey='v04-review:'+metadata.run_directory+':'+metadata.corpus_sha256+':'+metadata.result_sha256;
 const readCases=()=>cards.map(el=>({id:el.dataset.case,status:el.querySelector('select').value,notes:el.querySelector('textarea').value}));
 try {
 const draft=new Map(JSON.parse(localStorage.getItem(draftKey)||'[]').map(item=>[item.id,item]));
@@ -69,7 +70,7 @@ const file=event.target.files[0];
 if(!file)return;
 try {
 const data=JSON.parse(await file.text());
-if(data.protocol!==metadata.protocol||data.corpus_sha256!==metadata.corpus_sha256||
+if(data.protocol!==metadata.protocol||data.corpus_sha256!==metadata.corpus_sha256||data.result_sha256!==metadata.result_sha256||
 data.run_directory!==metadata.run_directory||!Array.isArray(data.cases)||data.cases.length!==cards.length)throw Error();
 const records=new Map(data.cases.map(item=>[item.id,item]));
 if(!cards.every(el=>{
