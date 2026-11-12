@@ -242,6 +242,43 @@ async function promotionSpendAction(save) {
       row.append(form);
       const billIdentity = {product_id:record.product_id, source:record.source, period_start:record.period_start,
         period_end:record.period_end, campaign:record.campaign, asset:record.asset};
+      const comparison = document.createElement('form');
+      for (const [name, caption] of [['trial_start', '试验开始'], ['trial_end', '试验结束']]) {
+        const input = document.createElement('input');
+        input.type = 'date';
+        input.name = name;
+        input.required = true;
+        const label = document.createElement('label');
+        label.append(caption, input);
+        comparison.append(label);
+      }
+      const compare = document.createElement('button');
+      compare.type = 'submit';
+      compare.textContent = '以本条账单为基线对照';
+      const compareStatus = document.createElement('p');
+      compareStatus.setAttribute('role', 'status');
+      comparison.append(compare, compareStatus);
+      row.append(comparison);
+      comparison.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (compare.disabled || currentProduct !== product || consoleClosed) return;
+        const query = new URLSearchParams(new FormData(comparison));
+        query.set('product_id', record.product_id);
+        query.set('source', record.source);
+        query.set('campaign', record.campaign);
+        query.set('asset', record.asset);
+        query.set('baseline_start', record.period_start);
+        query.set('baseline_end', record.period_end);
+        compare.disabled = true;
+        try {
+          const {comparison: result} = await request('/api/promotion/compare?' + query);
+          compareStatus.textContent = `基线 ${result.baseline.spend_minor} 分 · 试验 ${result.trial.spend_minor} 分 · 差值 ${result.spend_difference_minor} 分 · 增量效果不确定（待补归因订单、退款和净结果）`;
+        } catch (error) {
+          compareStatus.textContent = error.message;
+        } finally {
+          compare.disabled = false;
+        }
+      });
       savePlan.addEventListener('click', async () => {
         if (savePlan.disabled || currentProduct !== product || consoleClosed || !budget.reportValidity()) return;
         savePlan.disabled = true;
