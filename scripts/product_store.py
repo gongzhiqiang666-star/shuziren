@@ -129,6 +129,8 @@ class ProductStore:
                     PRIMARY KEY(product_id, source, period_start, period_end, scope));
                 CREATE TABLE IF NOT EXISTS live_preparation (
                     singleton INTEGER PRIMARY KEY CHECK(singleton=1), draft TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS live_lineup_baseline (
+                    singleton INTEGER PRIMARY KEY CHECK(singleton=1), snapshot TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_rotation_faults (
                     session_id TEXT NOT NULL, occurred_at REAL NOT NULL, reason TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_content_drafts (
@@ -231,6 +233,29 @@ class ProductStore:
         with self.connect() as db:
             db.execute('INSERT OR REPLACE INTO live_preparation VALUES (1, ?)',
                        (json.dumps(draft, ensure_ascii=False),))
+
+    def live_lineup_baseline(self):
+        with self.connect() as db:
+            row = db.execute('SELECT snapshot FROM live_lineup_baseline WHERE singleton=1').fetchone()
+        return json.loads(row['snapshot']) if row else None
+
+    def capture_live_lineup_baseline(self):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT draft FROM live_preparation WHERE singleton=1').fetchone()
+            draft = json.loads(row['draft']) if row else None
+            if not draft or not draft['product_ids']:
+                raise Conflict('请先保存包含商品的准备草稿')
+            lineup = []
+            for product_id in draft['product_ids']:
+                product = db.execute('SELECT id, title, version FROM products WHERE id=?', (product_id,)).fetchone()
+                if product is None:
+                    raise Conflict('基线商品已不存在，请核对草稿')
+                lineup.append(dict(product))
+            baseline = {'draft': draft, 'lineup': lineup, 'captured_at': datetime.now(timezone.utc).isoformat()}
+            db.execute('INSERT OR REPLACE INTO live_lineup_baseline VALUES (1, ?)',
+                       (json.dumps(baseline, ensure_ascii=False),))
+        return baseline
 
     def build_live_preparation(self):
         preparation = self.live_preparation()

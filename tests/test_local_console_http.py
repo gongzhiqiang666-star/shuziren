@@ -25,6 +25,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         second = store.save(title='桌布', content='口播验收', product_index=2)
         order = [second['id'], first['id']]
         route = '/api/live/preparation'
+        self.assertEqual(self.call(route + '/baseline', {})[0], 409)
         self.assertEqual(self.call(route, {'product_ids': order})[0], 200)
         self.assertEqual(self.call(route)[1]['draft']['product_ids'], order)
         status, package = self.call(route + '/package')
@@ -36,6 +37,11 @@ class ConsoleHTTPTests(unittest.TestCase):
         status, rotation = self.call(route + '/rotation', {'revision': package['revision']})
         self.assertEqual(status, 200)
         self.assertEqual([item['product_id'] for item in rotation['items']], order)
+        status, captured = self.call(route + '/baseline', {})
+        self.assertEqual(status, 200)
+        self.assertEqual([item['id'] for item in captured['baseline']['lineup']], order)
+        self.assertEqual(self.call(route, {'product_ids': list(reversed(order))})[0], 200)
+        self.assertEqual(self.call(route + '/baseline'), (200, captured))
 
     def test_product_selection_requires_verified_primary_role_and_commercial_facts(self):
         store = ProductStore(self.directory.name)

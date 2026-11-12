@@ -446,6 +446,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     return self.respond(200,VoiceStore(store.directory).audio_path(ids[0]).read_bytes(),'audio/wav')
                 if path == "/api/live/preparation":
                     return self.respond(200, products().live_preparation())
+                if path == "/api/live/preparation/baseline":
+                    return self.respond(200, {'baseline': products().live_lineup_baseline()})
                 if path == "/api/live/preparation/package":
                     return self.respond(200, products().build_live_preparation())
                 if path == "/api/products/selection-evidence":
@@ -797,6 +799,10 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         if set(value) != {'revision'}:
                             return self.respond(400, {"error": "需要准备包版本"})
                         return self.respond(200, products().live_preparation_rotation(**value))
+                    if path == "/api/live/preparation/baseline":
+                        if value:
+                            raise ProductError('基线使用当前已保存草稿')
+                        return self.respond(200, {'baseline': products().capture_live_lineup_baseline()})
                     if path == "/api/live/preparation":
                         if 'product_ids' not in value:
                             return self.respond(400, {"error": "缺少本场商品列表"})
