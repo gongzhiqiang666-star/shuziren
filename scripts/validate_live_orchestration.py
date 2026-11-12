@@ -71,7 +71,8 @@ def main():
         'vi-VN': ('Xin chào, đây là sản phẩm thứ nhất.', 'Đây là sản phẩm thứ hai.'),
     }[args.rotation_language]
     first_script = products.add_script(product, first_text)
-    products.select_script(product_id, first_script)
+    previous_script = products.add_script(product, '准备包审核切换验证。')
+    products.select_script(product_id, previous_script)
     existing_indices = {item['product_index'] for item in products.list()}
     second_index = next(index for index in range(1, len(existing_indices) + 2) if index not in existing_indices)
     if args.legacy_assistant_script:
@@ -92,8 +93,6 @@ def main():
         second_script = products.add_script(second, second_text)
     products.select_script(second['id'], second_script)
     products.save_live_preparation(product_ids=[product_id, second['id']])
-    preparation_revision = products.build_live_preparation()['revision']
-    products.save_live_preparation_review(preparation_revision, '本机轮播验收')
     voices = VoiceStore(directory)
     voice = voices.selected()
     assistant = None
@@ -191,6 +190,15 @@ def main():
 
     try:
         token = call('/api/session')['token']
+        route = '/api/live/preparation'
+        previous_revision = call(route + '/package')['revision']
+        call(route + '/review', {'revision': previous_revision, 'review': '旧话术验收'})
+        products.select_script(product_id, first_script)
+        call(route + '/rotation', {'revision': previous_revision}, expected=409)
+        preparation_revision = call(route + '/package')['revision']
+        call(route + '/rotation', {'revision': preparation_revision}, expected=409)
+        call(route + '/review', {'revision': preparation_revision, 'review': '本机轮播验收'})
+        report['preparation_review_refresh_verified'] = True
         device = next(item for item in call('/api/live/devices')['devices']
                       if 'CABLE Input' in item['name'] and 'WASAPI' in item['host'])
         report['device'] = device
