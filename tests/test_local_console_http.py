@@ -511,8 +511,10 @@ class ConsoleHTTPTests(unittest.TestCase):
             live.return_value.state.return_value.pop('silent_speech')
             self.assertEqual(self.call(route)[1]['advice'], [])
             self.assertEqual(self.call(route + '/acknowledge', silent_ack)[0], 409)
+            self.assertEqual(self.call(route + '/revoke', silent_ack)[0], 409)
             recorded = self.call('/api/live/report?session_id=scene')[1]['advice_acknowledgments']
-            self.assertIn(advice, [entry['advice'] for entry in recorded])
+            silent_record, = [entry for entry in recorded if entry['advice'] == advice]
+            self.assertIsNone(silent_record['revoked_at'])
             live.return_value.state.return_value.update(status='failed', ended_at=100,
                                                        device_underrun={'next_frame': 25})
             advice, = self.call(route)[1]['advice']
