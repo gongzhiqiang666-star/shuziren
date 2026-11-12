@@ -1431,10 +1431,13 @@ class ProductStore:
             facts = verified_product_facts(product, now=now)
             stock = facts.get('库存', {}).get('value')
             suitability = facts.get('适播性', {}).get('value')
+            lineup_role = facts.get('排品角色', {}).get('value')
             if type(stock) is int and stock == 0:
                 role, reason = 'hold', '已核对库存为零'
             elif suitability == '不适播':
                 role, reason = 'hold', '已核对为不适播'
+            elif lineup_role == '暂缓':
+                role, reason = 'hold', '商家已核对排品角色为暂缓'
             elif type(stock) is not int or stock < 0 or '发货条件' not in facts:
                 missing = []
                 if type(stock) is not int or stock < 0:
@@ -1443,7 +1446,7 @@ class ProductStore:
                     missing.append('发货条件')
                 role, reason = 'hold', '需核对' + '和'.join(missing)
             elif suitability == '适播' and '目标人群' in facts:
-                if facts.get('排品角色', {}).get('value') == '主推' and {'售价', '成本'} <= facts.keys():
+                if lineup_role == '主推' and {'售价', '成本'} <= facts.keys():
                     role, reason = 'primary', '商家已核对主推角色，适播、人群、库存、发货、售价与成本依据齐备'
                 else:
                     role, reason = 'support', '已有适播、人群、库存及发货依据，可作为辅助商品'

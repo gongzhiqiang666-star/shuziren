@@ -343,6 +343,12 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual([item['recommendation']['role'] for item in response['products']],
                          ['primary', 'support', 'support'])
+        store.save(title='暂缓商品', content='商品说明', product_index=4, product_facts={
+            key: {'status': 'verified', 'source': '商家确认', 'value': value}
+            for key, value in {**values, '排品角色': '暂缓'}.items()
+        })
+        self.assertEqual(self.call('/api/products/selection-evidence')[1]['products'][-1]['recommendation'],
+                         {'role': 'hold', 'reason': '商家已核对排品角色为暂缓'})
 
     def test_product_selection_evidence_preserves_zero_and_missing_conditions(self):
         store = ProductStore(self.directory.name)
