@@ -295,6 +295,22 @@ def main():
                     previous_end = end
                 report['rotation_event_count'] = len(events)
                 report['rotation_event_last_sample'] = previous_end
+                scene_report = call(f'/api/live/report?session_id={session_id}')
+                reported_scripts = {
+                    row['product_id']: (row['product_version'], row['script_id'])
+                    for row in scene_report['products']
+                }
+                if reported_scripts != expected_scripts:
+                    raise RuntimeError('Session report did not match the reviewed rotation scripts')
+                applications = scene_report['preparation_applications']
+                if not any(
+                    entry['revision'] == preparation_revision
+                    and {item['product_id']: (item['product_version'], item['script_id'])
+                         for item in entry['items']} == expected_scripts
+                    for entry in applications
+                ):
+                    raise RuntimeError('Session report did not contain the applied preparation revision')
+                report['session_report_verified'] = True
                 if args.legacy_assistant_script:
                     for event in events:
                         source = call(f"/api/live/content-source?session_id={session_id}&task_id={event['task_id']}")['source']
