@@ -165,7 +165,26 @@ async function loadPromotionPlans(product) {
     };
     approve.addEventListener('click', () => update('approved'));
     pause.addEventListener('click', () => update('paused'));
-    row.append(' ', status, ' ', approve, ' ', pause);
+    const history = document.createElement('details');
+    const title = document.createElement('summary');
+    title.textContent = '审核与暂停记录';
+    const entries = document.createElement('ul');
+    history.append(title, entries);
+    history.addEventListener('toggle', async () => {
+      if (!history.open || consoleClosed) return;
+      try {
+        const {actions} = await request('/api/promotion/plans/actions?' + new URLSearchParams({plan_id:plan.id}));
+        entries.replaceChildren(...actions.map(action => {
+          const entry = document.createElement('li');
+          entry.textContent = `${new Date(action.occurred_at).toLocaleString()} · ${labels[action.action]}`;
+          return entry;
+        }));
+        if (!actions.length) entries.textContent = '暂无操作记录';
+      } catch (error) {
+        entries.textContent = error.message;
+      }
+    });
+    row.append(' ', status, ' ', approve, ' ', pause, history);
     return row;
   }));
 }

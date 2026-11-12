@@ -469,6 +469,11 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if path.endswith('/decision'):
                         return self.respond(200, {'decision': products().sourcing_decision(ids[0])})
                     return self.respond(200, {'trial': products().sourcing_trial(ids[0])})
+                if path == "/api/promotion/plans/actions":
+                    ids = parse_qs(urlsplit(self.path).query).get('plan_id', [])
+                    if len(ids) != 1 or not 1 <= len(ids[0]) <= 64:
+                        raise ProductError('请选择投放方案')
+                    return self.respond(200, {'actions': products().promotion_plan_actions(ids[0])})
                 if path in {"/api/promotion/spend", "/api/promotion/plans"}:
                     ids = parse_qs(urlsplit(self.path).query).get('product_id', [])
                     if len(ids) != 1 or not 1 <= len(ids[0]) <= 64:

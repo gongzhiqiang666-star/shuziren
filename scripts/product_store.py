@@ -1214,6 +1214,14 @@ class ProductStore:
                            (plan_id, action, datetime.now(timezone.utc).isoformat()))
         return {**snapshot, 'status': action}
 
+    def promotion_plan_actions(self, plan_id):
+        with self.connect() as db:
+            if not db.execute('SELECT 1 FROM promotion_plans WHERE id=?', (plan_id,)).fetchone():
+                raise ProductError('投放方案不存在')
+            rows = db.execute('SELECT action, occurred_at FROM promotion_plan_actions WHERE plan_id=? ORDER BY rowid',
+                              (plan_id,)).fetchall()
+        return [dict(row) for row in rows]
+
     def promotion_spend(self, product_id):
         self.get(product_id)
         with self.connect() as db:
