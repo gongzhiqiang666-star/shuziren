@@ -14,7 +14,7 @@ from scripts.console_data_migration import migrate_data, migrate_v122_products
 from scripts.avatar_store import AvatarStore
 from scripts.local_console import InstanceLock
 from scripts.local_console_config import ConfigStore
-from scripts.product_store import ProductStore
+from scripts.product_store import ProductStore, playback_segments
 from scripts.voice_store import VoiceStore, fingerprint
 
 
@@ -79,6 +79,9 @@ class ConsolePackageTests(unittest.TestCase):
             self.assertEqual(imported[0]['legacy_index'], '007')
             self.assertEqual([row['text'] for row in store.scripts(identifier)], ['主讲', '助播'])
             self.assertEqual(store.get(identifier)['extra']['v122']['script_roles'], ['host', 'assistant'])
+            host, assistant = store.scripts(identifier)
+            self.assertEqual(playback_segments(host)[0]['type'], 'host')
+            self.assertEqual(playback_segments(assistant)[0]['type'], 'assistant')
             products[1]['product_index'] = 3
             source.write_text(json.dumps({**payload, 'enable_multi_product': True, 'current_product_index': 1}),
                               encoding='utf-8')

@@ -8,7 +8,7 @@ import threading
 import time
 import uuid
 
-from scripts.product_store import Conflict, ProductError, ProductStore, product_fact_deadline
+from scripts.product_store import Conflict, ProductError, ProductStore, playback_segments, product_fact_deadline
 from scripts.media_runtime import runtime_python
 from scripts.voice_store import VoiceStore
 
@@ -154,9 +154,7 @@ class TTSTasks:
             if rotation and rotation_voice_id is not None:
                 voice = self.voices.get(rotation_voice_id)
             if segment_index is not None:
-                from recovered.slice_content import slice_content
-
-                segments = slice_content(text)
+                segments = playback_segments(script)
                 if not rotation or type(segment_index) is not int or not 0 <= segment_index < len(segments):
                     raise ProductError('轮播话术分段无效')
                 segment = segments[segment_index]

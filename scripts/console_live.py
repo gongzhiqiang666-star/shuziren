@@ -11,7 +11,7 @@ import threading
 import time
 import uuid
 
-from scripts.product_store import Conflict, ProductError, product_fact_deadline, verified_product_facts
+from scripts.product_store import Conflict, ProductError, playback_segments, product_fact_deadline, verified_product_facts
 
 
 class ConsoleLive:
@@ -452,12 +452,10 @@ class ConsoleLive:
                     voice_id = shift_voice_ids[index]
                     self.tts.voices.get(voice_id)
                     item['shift_voice_id'] = voice_id
-                from recovered.slice_content import slice_content
-
                 script = next((row for row in self.tts.products.scripts(product_id) if row['id'] == script_id), None)
                 if script is None:
                     raise Conflict('选用话术已变化，请重新设置轮播')
-                segments = slice_content(script['text'])
+                segments = playback_segments(script)
                 if any(segment['type'] in {'assistant', 'pause'} for segment in segments):
                     item['segments'] = segments
                 items.append(item)

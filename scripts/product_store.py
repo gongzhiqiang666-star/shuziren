@@ -69,6 +69,16 @@ def product_fact_deadline(product):
     return min(deadlines, default=None)
 
 
+def playback_segments(script):
+    from recovered.slice_content import slice_content
+
+    segments = slice_content(script['text'])
+    if script.get('legacy_role') == 'assistant':
+        return [{**segment, 'type': 'assistant'} if segment['type'] == 'host' else segment
+                for segment in segments]
+    return segments
+
+
 def index_value(value):
     if isinstance(value, bool) or not isinstance(value, (str, int)):
         raise ProductError("商品编号必须为整数或整数字符串")
@@ -752,9 +762,9 @@ class ProductStore:
             source['facts_review'] = 'version_current'
         source['segment'] = None
         if source['script_text'] is not None:
-            from recovered.slice_content import slice_content
-
-            segments = slice_content(source['script_text'])
+            script = next((row for row in self.scripts(source['product_id']) if row['id'] == source['script_id']),
+                          {'text': source['script_text']})
+            segments = playback_segments(script)
             if not any(segment['type'] in {'assistant', 'pause'} for segment in segments):
                 segments = [{'type': 'host', 'content': source['script_text']}]
             index = source['segment_index']
@@ -1417,6 +1427,9 @@ class ProductStore:
             for row in db.execute("SELECT * FROM scripts WHERE product_id=? ORDER BY rowid", (product_id,)):
                 value = dict(row)
                 value["snapshot"] = json.loads(value["snapshot"])
+                roles = value["snapshot"].get('extra', {}).get('v122', {}).get('script_roles', [])
+                if isinstance(roles, list) and len(result) < len(roles) and roles[len(result)] == 'assistant':
+                    value['legacy_role'] = 'assistant'
                 result.append(value)
             return result
 
