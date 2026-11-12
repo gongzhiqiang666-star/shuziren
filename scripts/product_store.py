@@ -69,6 +69,14 @@ def product_fact_deadline(product):
     return min(deadlines, default=None)
 
 
+def legacy_script_role(snapshot, position):
+    legacy = snapshot.get('extra', {}).get('v122')
+    roles = legacy.get('script_roles', []) if isinstance(legacy, dict) else []
+    if isinstance(roles, list) and position < len(roles) and roles[position] == 'assistant':
+        return 'assistant'
+    return None
+
+
 def playback_segments(script):
     from recovered.slice_content import slice_content
 
@@ -737,7 +745,9 @@ class ProductStore:
                        event.script_id, event.segment_index, event.completed_at,
                        event.sample_start, event.sample_end, event.voice_id, event.speech_provenance,
                        script.snapshot, script.text AS script_text,
-                       script.created_at AS script_created_at, product.version AS current_product_version
+                       script.created_at AS script_created_at, product.version AS current_product_version,
+                       (SELECT COUNT(*) FROM scripts previous WHERE previous.product_id=script.product_id
+                        AND previous.rowid < script.rowid) AS script_position
                 FROM live_rotation_events event
                 LEFT JOIN scripts script ON script.id=event.script_id AND script.product_id=event.product_id
                                         AND script.product_version=event.product_version
@@ -752,6 +762,7 @@ class ProductStore:
         snapshot = source.pop('snapshot')
         source['product_snapshot'] = json.loads(snapshot) if snapshot else None
         created_at = source.pop('script_created_at')
+        position = source.pop('script_position')
         if not snapshot or not created_at:
             source['facts_review'] = 'source_missing'
         elif source['current_product_version'] != source['product_version']:
@@ -762,8 +773,8 @@ class ProductStore:
             source['facts_review'] = 'version_current'
         source['segment'] = None
         if source['script_text'] is not None:
-            script = next((row for row in self.scripts(source['product_id']) if row['id'] == source['script_id']),
-                          {'text': source['script_text']})
+            script = {'text': source['script_text'],
+                      'legacy_role': legacy_script_role(source['product_snapshot'], position)}
             segments = playback_segments(script)
             if not any(segment['type'] in {'assistant', 'pause'} for segment in segments):
                 segments = [{'type': 'host', 'content': source['script_text']}]
@@ -1427,10 +1438,9 @@ class ProductStore:
             for row in db.execute("SELECT * FROM scripts WHERE product_id=? ORDER BY rowid", (product_id,)):
                 value = dict(row)
                 value["snapshot"] = json.loads(value["snapshot"])
-                legacy = value["snapshot"].get('extra', {}).get('v122')
-                roles = legacy.get('script_roles', []) if isinstance(legacy, dict) else []
-                if isinstance(roles, list) and len(result) < len(roles) and roles[len(result)] == 'assistant':
-                    value['legacy_role'] = 'assistant'
+                role = legacy_script_role(value["snapshot"], len(result))
+                if role is not None:
+                    value['legacy_role'] = role
                 result.append(value)
             return result
 
