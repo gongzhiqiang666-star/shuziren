@@ -4,6 +4,8 @@
 
 ## 四期开发进度
 
+A01-05 使用源帧匹配和固定嘴周区域对回采做量化筛查。23 帧原声段的嘴周灰度平均绝对差中位数为 0.482，第三次插播的 46 帧为 5.440（8 位）；两组背景区域中位数均为 1.0。证据见 `logs/validation/a01-insert-tensorrt-multi-01/mouth-roi-comparison.json`。此结果确认插播画面变化集中在嘴周，固定区域比较无法判定动态唇音同步和边缘贴合。
+
 A01-05 从独立回采 1.75 秒处提取 11.4 秒复看片段，覆盖三次插播和中间跳转。H.264/AAC 片段双轨完整解码通过。另取第三段的 10 张抽样帧检查，可见口部动作及原视频身体动作保留。证据见 `logs/validation/a01-insert-tensorrt-multi-01/insertion-review.mp4` 和同目录 `insertion-contact.png`。抽样图未覆盖逐帧唇音同步、闪烁和贴合边缘的动态验收。
 
 A01-05 对同场三次 TensorRT 插播录像做源画面逐帧匹配。独立接收端第 138 帧（5.52 秒）从源第 150 帧跳到第 50 帧，命中请求的 2000 毫秒位置，后续匹配源第 51～57 帧连续递增。跳转前回采连续两帧匹配到源第 150 帧，保留接收连续性观察。证据见 `logs/validation/a01-insert-tensorrt-multi-01/seek-frame-alignment.json`。动态口型画质仍需单独验收。
