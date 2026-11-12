@@ -30,7 +30,10 @@ def main():
     parser.add_argument('--cycles', type=int, default=20)
     parser.add_argument('--interactions', type=int, default=None, help='Set to 0 to exercise start/stop only')
     parser.add_argument('--capture-seconds', type=int, default=35)
+    parser.add_argument('--capture-buffer-mb', type=int, default=16)
     args = parser.parse_args()
+    if args.capture_buffer_mb < 1:
+        parser.error('--capture-buffer-mb must be positive')
     interactions = args.cycles if args.interactions is None else args.interactions
     if args.cycles < 1 or interactions < 0 or args.capture_seconds < 1:
         parser.error('Cycle and capture lengths must be positive')
@@ -186,7 +189,9 @@ def main():
             if cycle == 0 and interactions:
                 live(lambda state: state['id'] == session_id and state.get('camera_frames', 0) > 0)
                 ffmpeg = args.runtime_root / '_internal/env/ffmpeg/bin/ffmpeg.exe'
-                capture = DeviceCapture(ffmpeg, directory, args.capture_seconds, dshow_video_clock=True)
+                report['capture_buffer_mb'] = args.capture_buffer_mb
+                capture = DeviceCapture(ffmpeg, directory, args.capture_seconds, dshow_video_clock=True,
+                                        buffer_mb=args.capture_buffer_mb)
                 rotate(session_id, exercise_pause=True)
                 for interaction in range(interactions):
                     urgent = speech()

@@ -31,7 +31,7 @@ class CounterDeviceSink(AVDeviceSink):
 
 
 class DeviceCapture:
-    def __init__(self,ffmpeg,directory,seconds,*,dshow_video_clock=False):
+    def __init__(self,ffmpeg,directory,seconds,*,dshow_video_clock=False,buffer_mb=16):
         self.dshow_video_clock=dshow_video_clock
         self.seconds=seconds
         timestamp_args=['-f','dshow','-use_video_device_timestamps','0'] if dshow_video_clock else [
@@ -41,7 +41,7 @@ class DeviceCapture:
         self.launched_unix_ns=time.time_ns()
         try:
             self.process=subprocess.Popen([str(ffmpeg),'-nostdin','-y','-hide_banner','-loglevel','info','-nostats',
-                *timestamp_args,'-rtbufsize','16M','-audio_buffer_size','20',
+                *timestamp_args,'-rtbufsize',f'{buffer_mb}M','-audio_buffer_size','20',
                 '-video_size','720x1280','-framerate','25','-i','video=C920:audio=CABLE Output (VB-Audio Virtual Cable)',
                 '-t',str(seconds),'-fps_mode','passthrough','-enc_time_base:v','1:1000',
                 '-c:v','ffv1','-c:a','pcm_s16le','-ar','48000','-ac','1',str(self.path)],
