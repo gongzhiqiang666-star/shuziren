@@ -292,6 +292,7 @@ def main():
     legacy.add_argument('--voice', type=Path, action='append', default=[])
     legacy.add_argument('--avatar', type=Path, action='append', default=[])
     legacy.add_argument('--products', type=Path)
+    legacy.add_argument('--shop-id', help='将旧素材和商品迁移到独立的店铺目录')
     legacy_products = commands.add_parser('migrate-v122-products')
     legacy_products.add_argument('--root', type=Path, required=True)
     legacy_products.add_argument('--source', type=Path, required=True)
@@ -303,7 +304,8 @@ def main():
         return 0
     if args.command == 'migrate-v122-assets':
         from scripts.console_data_migration import migrate_v122_assets
-        print(json.dumps(migrate_v122_assets(args.root, args.runtime, args.voice, args.avatar, args.products), ensure_ascii=False))
+        result = migrate_v122_assets(args.root, args.runtime, args.voice, args.avatar, args.products, args.shop_id)
+        print(json.dumps(result, ensure_ascii=False))
         return 0
     if args.command == 'migrate-data':
         from scripts.console_data_migration import migrate_data

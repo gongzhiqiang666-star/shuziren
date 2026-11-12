@@ -126,8 +126,13 @@ def migrate_data(source, root, shop_id=None):
     return {'status': 'ok', 'data_directory': str(target), 'data_sets': present}
 
 
-def migrate_v122_assets(root, runtime, voices, avatars, products=None):
+def migrate_v122_assets(root, runtime, voices, avatars, products=None, shop_id=None):
+    from scripts.local_console_config import shop_data_directory
+
     root = root.resolve()
+    target = root / 'data'
+    if shop_id is not None:
+        target = shop_data_directory(target, shop_id)
     runtime = runtime.resolve(strict=True)
     if not voices and not avatars:
         raise ValueError('Select at least one legacy voice or avatar directory')
@@ -135,7 +140,7 @@ def migrate_v122_assets(root, runtime, voices, avatars, products=None):
         raise ValueError('Independent media runtime is incomplete')
     ffmpeg = runtime_file(runtime, '_internal/env/ffmpeg/bin/ffmpeg.exe')
     imported = {'voices': [], 'avatars': []}
-    with new_managed_data(root) as snapshot:
+    with new_managed_data(root, shop_id) as snapshot:
         for kind, sources in (('voices', voices), ('avatars', avatars)):
             if not sources:
                 continue
@@ -157,7 +162,7 @@ def migrate_v122_assets(root, runtime, voices, avatars, products=None):
             imported['products'] = import_v122_products(snapshot, products)
         config = ConfigStore(snapshot)
         config.save({**config.load(), 'runtime_root': str(runtime)})
-    return {'status': 'ok', 'data_directory': str(root / 'data'), **imported}
+    return {'status': 'ok', 'data_directory': str(target), **imported}
 
 
 def import_v122_products(snapshot, source):
