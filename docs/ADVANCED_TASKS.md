@@ -185,3 +185,5 @@ A01-05 Windows CUDA 真实音轨补验通过：现有口播 WAV 经 WeNet 生成
 A01-05 RTMP 真实音轨联调首轮：本机 SRS 已启动，FFmpeg 直接复制对照样片的 MPEG-4 视频到 FLV 时无法写入头部，随后读取端探测超时。下一轮将样片转为 H.264 后重新推流，并先确认发布进程仍存活。证据 logs/validation/a01-rtmp-speech-01/sender.log。
 
 A01-05 本机 RTMP 与真实语音联合推理通过。H.264 样片经 SRS 回环，收到 4 张 720×1280 BGR 帧并检出有效人脸。真实口播 WAV 的 WeNet 特征与回环帧进入 CUDA 口型模型，输出 4 张尺寸一致且内容有变化的帧。解码进程和预处理线程已回收。证据 logs/validation/a01-rtmp-speech-01/joint-result.json。测试先采集一批再推理，控制台连续驱动、断流恢复及画质待验。
+
+A01-05 控制台 RTMP 实播通过：本机 SRS H.264 输入经开播 API 进入媒体子进程，完成预热、双商品轮播、插播、接管恢复及正常停播，回采双轨解码和场次报告追溯均通过。首轮原生人脸检测输出污染 JSON 通信，隔离原生标准输出后复跑通过。证据 logs/validation/a01-rtmp-console-02/result.json。浏览器配置、自动重连及长稳待验。
