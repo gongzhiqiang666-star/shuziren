@@ -1884,6 +1884,7 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
     }
     for (const publication of content_publications) {
       lines.push(`已登记作品 ${publication.publication_id} · 账号 ${publication.account} · 任务 ${publication.task_id}`);
+      lines.push(`计划发布 ${formatTime(Date.parse(publication.publish_at) / 1000)} · 发布范围 ${publication.audience}`);
     }
     for (const application of preparation_applications) {
       lines.push(`已载入准备包 ${application.revision}`);
