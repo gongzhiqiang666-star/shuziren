@@ -1,5 +1,5 @@
 """Single-machine product/script persistence with immutable generation snapshots."""
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import csv
 import hashlib
 import io
@@ -822,8 +822,8 @@ class ProductStore:
             """, (session_id, after, product_id, product_id, task_id, task_id)).fetchall()
         return [dict(row) for row in rows]
 
-    def live_content_source(self, session_id, task_id):
-        with self.connect() as db:
+    def live_content_source(self, session_id, task_id, *, connection=None):
+        with self.connect() if connection is None else nullcontext(connection) as db:
             row = db.execute("""
                 SELECT event.session_id, event.task_id, event.product_id, event.product_version,
                        event.script_id, event.segment_index, event.completed_at,
@@ -915,11 +915,11 @@ class ProductStore:
             raise ProductError('发布时间须使用带时区的日期时间') from error
         if scheduled.utcoffset() is None:
             raise ProductError('发布时间须使用带时区的日期时间')
-        source = self.live_content_source(session_id, task_id)
-        if source['facts_review'] != 'version_current' or source['segment'] is None:
-            raise Conflict('商品事实或片段来源需要重新核对')
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
+            source = self.live_content_source(session_id, task_id, connection=db)
+            if source['facts_review'] != 'version_current' or source['segment'] is None:
+                raise Conflict('商品事实或片段来源需要重新核对')
             if db.execute('SELECT 1 FROM live_content_receipts WHERE session_id=? AND task_id=?',
                           (session_id, task_id)).fetchone():
                 raise Conflict('已登记发布结果，不能覆盖原排期')
@@ -987,10 +987,11 @@ class ProductStore:
         if baseline_seconds is not None and (
                 type(baseline_seconds) is not int or not 0 <= baseline_seconds <= 2**31 - 1):
             raise ProductError('人工基线耗时须为非负整数秒')
-        source = self.live_content_source(session_id, task_id)
-        if source['facts_review'] != 'version_current' or source['segment'] is None:
-            raise Conflict('商品事实或片段来源需要重新核对')
         with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            source = self.live_content_source(session_id, task_id, connection=db)
+            if source['facts_review'] != 'version_current' or source['segment'] is None:
+                raise Conflict('商品事实或片段来源需要重新核对')
             result = db.execute("""
                 INSERT INTO live_content_drafts (session_id, task_id, body, revision_count, production_seconds, baseline_seconds)
                 VALUES (?, ?, ?, 0, ?, ?)
