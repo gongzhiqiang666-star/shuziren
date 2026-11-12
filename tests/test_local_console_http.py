@@ -246,6 +246,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         passed = {**trial, 'verdict': 'pass', 'trial_evidence': '试卖记录 001',
                   'metrics': {'orders': 5, 'refunds': 0, 'fulfilled_on_time': 4, 'gross_profit_minor': -100}}
         self.assertEqual(self.call(trial_route, {**passed, 'metrics': {'orders': 2, 'refunds': 3}})[0], 400)
+        self.assertEqual(self.call(trial_route, {**passed, 'metrics': {'orders': 2, 'fulfilled_on_time': 3}})[0], 400)
         self.assertEqual(self.call(trial_route, {**passed, 'metrics': {'gross_profit_minor': True}})[0], 400)
         partial = {**passed, 'metrics': {'fulfilled_on_time': 4, 'refunds': 0}}
         self.assertEqual(self.call(trial_route, partial), (200, {'trial': partial}))
