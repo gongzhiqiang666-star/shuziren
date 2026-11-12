@@ -183,7 +183,10 @@ class ProductStore:
                         value = values.get(name, '').strip()
                         if value and (len(value) > 19 or not value.isascii() or not value.isdigit()):
                             raise ValueError(f'{label}须为非负整数或留空')
-                        values[name] = int(value) if value else None
+                        count = int(value) if value else None
+                        if count is not None and count >= 2**63:
+                            raise ValueError(f'{label}超出可记录范围')
+                        values[name] = count
                     row = self._business_metric_row(product_id, **values)
                     if row[:5] in keys:
                         raise ValueError('报表内的来源、日期和口径重复')
