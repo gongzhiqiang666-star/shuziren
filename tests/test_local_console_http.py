@@ -843,6 +843,11 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(comparison['baseline']['repeated_question_groups'], 0)
         self.assertEqual(comparison['trial']['repeated_question_groups'], 1)
         self.assertEqual(comparison['trial']['repeat_question_occurrences'], 3)
+        store.record_unqueued_reply('trial', {'id': 'product', 'version': 1}, '问题', 'cancelled', '场次变化', 5)
+        trial_review = self.call(route + 'trial')[1]['trial']
+        self.assertEqual(trial_review['unqueued_questions'], 1)
+        self.assertEqual(trial_review['repeat_question_occurrences'], 4)
+        self.assertEqual(trial_review['reply_review'], comparison['trial']['reply_review'])
         self.assertEqual(comparison['baseline']['products'], [])
         self.assertEqual(comparison['baseline']['observed_product_order'], [])
         self.assertEqual(comparison['trial']['observed_product_order'], ['product'])

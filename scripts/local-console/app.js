@@ -2158,7 +2158,7 @@ $('live-compare-form').addEventListener('submit', event => {
         `${label} · 已审核轮播计划 ${plan.revision} · ${plan.items.map(item =>
           `${item.title}（版本 ${item.product_version}）`).join(' → ')}`);
       return [summary, reviewLine,
-        `${label} · 已入队答复中的重复问题 ${result.repeated_question_groups} 组（首次之后 ${result.repeat_question_occurrences} 次）`,
+        `${label} · 已记录的重复问题 ${result.repeated_question_groups} 组（首次之后 ${result.repeat_question_occurrences} 次）· 未入队提问 ${result.unqueued_questions} 条`,
         `${label} · 人工排品基线 ${lineup ?? '未关联'}`,
         ...plans, `${label} · 实际口播顺序 ${observed.join(' → ') || '未记录'}`, ...products];
     });

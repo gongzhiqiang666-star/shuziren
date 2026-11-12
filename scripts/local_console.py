@@ -297,7 +297,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         duration = None if started_at is None else session['ended_at'] - started_at
                         completed = sum(item['completed_segments'] for item in report['products'])
                         queued_replies = report['queued_replies']
-                        question_counts = Counter(map(reply_question_key, queued_replies))
+                        unqueued_replies = report['unqueued_replies']
+                        question_counts = Counter(map(reply_question_key, (*queued_replies, *unqueued_replies)))
                         verdicts = {verdict: sum(item['verdict'] == verdict for item in queued_replies)
                                     for verdict in ('correct', 'incorrect', 'uncertain')}
                         review_times = [item['review_seconds'] for item in queued_replies if item['review_seconds'] is not None]
@@ -309,6 +310,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             if duration and duration > 0 else None,
                             'rotation_faults': len(report['rotation_faults']),
                             'played_replies': sum(item['played_at'] is not None for item in queued_replies),
+                            'unqueued_questions': len(unqueued_replies),
                             'repeated_question_groups': sum(count > 1 for count in question_counts.values()),
                             'repeat_question_occurrences': sum(count - 1 for count in question_counts.values()),
                             'reply_review': {**verdicts, 'unreviewed': len(queued_replies) - sum(verdicts.values()),
