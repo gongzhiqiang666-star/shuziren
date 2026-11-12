@@ -96,6 +96,9 @@
 <label for="settlement-refunds">退款损失</label><input id="settlement-refunds" name="refund_loss_minor" type="number" min="0" step="1">
 <label for="settlement-fulfillment-due">到期应履约订单数</label><input id="settlement-fulfillment-due" name="fulfillment_due" type="number" min="0" step="1">
 <label for="settlement-fulfilled-on-time">其中准时履约订单数</label><input id="settlement-fulfilled-on-time" name="fulfilled_on_time" type="number" min="0" step="1">
+<label for="settlement-inventory-start">期初库存件数</label><input id="settlement-inventory-start" name="inventory_start" type="number" min="0" step="1">
+<label for="settlement-inventory-end">期末库存件数</label><input id="settlement-inventory-end" name="inventory_end" type="number" min="0" step="1">
+<label for="settlement-net-units">扣除退货后的净销量（件）</label><input id="settlement-net-units" name="net_units_sold" type="number" min="0" step="1">
 <button type="submit">计算复盘</button>
 </form>
 <p id="settlement-review-result" role="status"></p>

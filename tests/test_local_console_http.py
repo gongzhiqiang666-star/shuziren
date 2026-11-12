@@ -261,6 +261,13 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(result['review']['refunds'], 1)
         self.assertIsNone(result['review']['fulfillment_after_sales'])
         self.assertIsNone(result['review']['on_time_fulfillment_rate'])
+        self.assertIsNone(result['review']['inventory_turnover'])
+        for opening, closing, sold, expected in [(10, 20, 30, 2), (0, 10, 0, 0), (0, 0, 4, None), (None, 10, 4, None)]:
+            status, measured = self.call(route, {**payload, 'inventory_start': opening,
+                                                 'inventory_end': closing, 'net_units_sold': sold})
+            self.assertEqual(status, 200)
+            self.assertEqual(measured['review']['inventory_turnover'], expected)
+        self.assertEqual(self.call(route, {**payload, 'net_units_sold': -1})[0], 400)
         for due, on_time, expected in [(4, 3, .75), (4, 0, 0), (0, 0, None), (4, None, None)]:
             status, measured = self.call(route, {**payload, 'fulfillment_due': due, 'fulfilled_on_time': on_time})
             self.assertEqual(status, 200)

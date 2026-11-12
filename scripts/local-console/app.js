@@ -485,7 +485,7 @@ settlementForm.addEventListener('submit', async event => {
   for (const [field, value] of new FormData(settlementForm)) {
     payload[field] = field === 'basis' ? value : value === '' ? null : Number(value);
     if (field !== 'basis' && payload[field] !== null && !Number.isSafeInteger(payload[field])) {
-      output.textContent = field.endsWith('_minor') ? '金额必须是可准确表示的整数分' : '履约数量必须是可准确表示的整数';
+      output.textContent = field.endsWith('_minor') ? '金额必须是可准确表示的整数分' : '数量必须是可准确表示的整数';
       return;
     }
   }
@@ -498,7 +498,9 @@ settlementForm.addEventListener('submit', async event => {
     const net = review.net_minor == null ? '未知' : `${review.net_minor} 分`;
     const onTimeRate = review.on_time_fulfillment_rate == null ? '未知'
       : new Intl.NumberFormat('zh-CN', {style:'percent', maximumFractionDigits:2}).format(review.on_time_fulfillment_rate);
-    output.textContent = `${basis} · 净收益 ${net} · 订单 ${review.orders ?? '未知'} · 退款 ${review.refunds ?? '未知'} · 履约类售后 ${review.fulfillment_after_sales ?? '未知'} · 准时履约率 ${onTimeRate}`;
+    const turnover = review.inventory_turnover == null ? '未知'
+      : `${new Intl.NumberFormat('zh-CN', {maximumFractionDigits:3}).format(review.inventory_turnover)} 次`;
+    output.textContent = `${basis} · 净收益 ${net} · 订单 ${review.orders ?? '未知'} · 退款 ${review.refunds ?? '未知'} · 履约类售后 ${review.fulfillment_after_sales ?? '未知'} · 准时履约率 ${onTimeRate} · 按件库存周转 ${turnover}`;
   } catch (error) {
     if (version === summaryVersion) output.textContent = error.message;
   } finally {

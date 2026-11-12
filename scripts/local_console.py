@@ -890,7 +890,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         fields = ('sales_minor', 'cost_minor', 'fees_minor', 'refund_loss_minor')
                         required = {'product_id', 'source', 'scope', 'period_start', 'period_end',
                                     'currency', 'basis', *fields}
-                        if not required <= value.keys() <= required | {'fulfillment_due', 'fulfilled_on_time'}:
+                        quantities = ('fulfillment_due', 'fulfilled_on_time', 'inventory_start', 'inventory_end', 'net_units_sold')
+                        if not required <= value.keys() <= required | set(quantities):
                             raise ProductError('退款复盘字段无效')
                         if value['basis'] not in ('estimate', 'settled') or value['currency'] != 'CNY':
                             raise ProductError('请选择估算或已结算，并使用人民币分录入金额')
@@ -900,14 +901,20 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         due = value.get('fulfillment_due')
                         on_time = value.get('fulfilled_on_time')
                         if any(count is not None and (type(count) is not int or not 0 <= count < 2**53)
-                               for count in (due, on_time)):
-                            raise ProductError('履约数量须为非负整数或未知')
+                               for count in (value.get(field) for field in quantities)):
+                            raise ProductError('履约和库存周转数量须为非负整数或未知')
                         if due is not None and on_time is not None and on_time > due:
                             raise ProductError('准时履约数不能超过到期应履约数')
                         data = products()
                         counts = data.summarize_business_metrics(**{
                             key: value[key] for key in ('product_id', 'source', 'scope', 'period_start', 'period_end')
                         })
+                        inventory_start = value.get('inventory_start')
+                        inventory_end = value.get('inventory_end')
+                        sold = value.get('net_units_sold')
+                        turnover = None
+                        if None not in (inventory_start, inventory_end, sold) and inventory_start + inventory_end > 0:
+                            turnover = 2 * sold / (inventory_start + inventory_end)
                         missing = [field for field in fields if value[field] is None]
                         net = None if missing else value['sales_minor'] - sum(value[field] for field in fields[1:])
                         report_key = ('source', 'period_start', 'period_end')
@@ -919,6 +926,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             'orders': browser_metrics(counts)['orders'], 'refunds': browser_metrics(counts)['refunds'],
                             'fulfillment_after_sales': fulfillment,
                             'on_time_fulfillment_rate': on_time / due if due and on_time is not None else None,
+                            'inventory_turnover': turnover,
                             'missing': missing, 'conclusion': 'uncertain',
                         }})
                     if path == "/api/live/content-withdraw":
