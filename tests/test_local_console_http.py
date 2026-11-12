@@ -28,6 +28,13 @@ class ConsoleHTTPTests(unittest.TestCase):
         status, result = self.call(route, candidate)
         self.assertEqual(status, 200)
         self.assertEqual(self.call(route), (200, {'candidates': [{'id': result['id'], **candidate}]}))
+        trial_route = '/api/sourcing/trial'
+        trial = {'candidate_id': result['id'], 'sample_evidence': '样品验收单 001',
+                 'trial_evidence': '待开始试卖', 'cost_minor': 0, 'verdict': 'pending'}
+        self.assertEqual(self.call(trial_route, {**trial, 'sample_evidence': ''})[0], 400)
+        self.assertEqual(self.call(trial_route, {**trial, 'candidate_id': 'missing'})[0], 400)
+        self.assertEqual(self.call(trial_route, trial), (200, {'trial': trial}))
+        self.assertEqual(self.call(trial_route + '?candidate_id=' + result['id']), (200, {'trial': trial}))
 
     def test_after_sales_comparison_keeps_unreported_categories_unknown(self):
         store = ProductStore(self.directory.name)

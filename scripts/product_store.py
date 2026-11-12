@@ -134,6 +134,10 @@ class ProductStore:
                 CREATE TABLE IF NOT EXISTS sourcing_candidates (
                     id TEXT PRIMARY KEY, name TEXT NOT NULL, supplier TEXT NOT NULL, source TEXT NOT NULL,
                     observed_on TEXT NOT NULL, details TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS sourcing_trials (
+                    candidate_id TEXT PRIMARY KEY REFERENCES sourcing_candidates(id),
+                    sample_evidence TEXT NOT NULL, trial_evidence TEXT NOT NULL,
+                    cost_minor INTEGER, verdict TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS product_after_sales_tasks (
                     product_id TEXT NOT NULL, source TEXT NOT NULL, period_start TEXT NOT NULL,
                     period_end TEXT NOT NULL, category TEXT NOT NULL, evidence_count INTEGER NOT NULL,
@@ -1042,6 +1046,28 @@ class ProductStore:
         with self.connect() as db:
             rows = db.execute('SELECT * FROM sourcing_candidates ORDER BY observed_on DESC, rowid DESC').fetchall()
         return [{**dict(row), 'details': json.loads(row['details'])} for row in rows]
+
+    def save_sourcing_trial(self, candidate_id, sample_evidence, trial_evidence, cost_minor, verdict):
+        sample_evidence = text(sample_evidence, '样品核验依据', 2000)
+        trial_evidence = text(trial_evidence, '试卖记录或待办', 2000)
+        if cost_minor is not None and (type(cost_minor) is not int or not 0 <= cost_minor < 2**53):
+            raise ProductError('样品成本须为非负整数分或未知')
+        if verdict not in ('pending', 'pass', 'fail'):
+            raise ProductError('样品核验结果无效')
+        with self.connect() as db:
+            result = db.execute("""
+                INSERT INTO sourcing_trials
+                SELECT id, ?, ?, ?, ? FROM sourcing_candidates WHERE id=?
+                ON CONFLICT(candidate_id) DO UPDATE SET sample_evidence=excluded.sample_evidence,
+                    trial_evidence=excluded.trial_evidence, cost_minor=excluded.cost_minor, verdict=excluded.verdict
+            """, (sample_evidence, trial_evidence, cost_minor, verdict, candidate_id))
+            if not result.rowcount:
+                raise ProductError('采购候选不存在')
+
+    def sourcing_trial(self, candidate_id):
+        with self.connect() as db:
+            row = db.execute('SELECT * FROM sourcing_trials WHERE candidate_id=?', (candidate_id,)).fetchone()
+        return dict(row) if row else None
 
     def compare_product_facts(self, product_ids, fact_names):
         now = datetime.now(timezone.utc)
