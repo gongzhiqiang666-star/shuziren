@@ -58,3 +58,21 @@ class ResidentRtmpTests(unittest.TestCase):
         self.assertTrue(self.engine.rtmp_cancel.is_set())
         synth.close.assert_called_once_with()
         context.__exit__.assert_called_once_with(None, None, None)
+
+    def test_close_cancels_and_joins_pending_reconnect_before_stopping_reader(self):
+        started = threading.Event()
+        self.engine.synth = None
+
+        def reconnect(cancel):
+            started.set()
+            cancel.wait(2)
+
+        self.reader.reconnect.side_effect = reconnect
+        self.reader.processed_frames_queue.put(None)
+        self.engine._load_live_frames([0])
+        self.assertTrue(started.wait(1))
+        self.reader.stop_capture.side_effect = lambda: self.assertFalse(
+            self.engine.rtmp_reconnect.is_alive())
+        self.engine.close()
+        self.assertTrue(self.engine.rtmp_cancel.is_set())
+        self.reader.stop_capture.assert_called_once_with()
