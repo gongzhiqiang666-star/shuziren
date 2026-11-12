@@ -868,7 +868,7 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
   try {
     const query = new URLSearchParams({session_id:sessionId});
     const [{session, products, controls, rotation_faults, observed_product_switches, queued_replies,
-      advice_acknowledgments, missing}, review, improvements] =
+      advice_acknowledgments, advice_actions, missing}, review, improvements] =
       await Promise.all([request('/api/live/report?' + query), request('/api/live/review?' + query),
         request('/api/live/improvements?' + query)]);
     if (($('live-event-scene').value || liveSession.id) !== sessionId) return;
@@ -895,9 +895,21 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       );
     }
     if (session.failure_reason) lines.push('场次失败原因：' + session.failure_reason);
+    const actions = [...advice_actions];
     for (const entry of advice_acknowledgments) {
-      lines.push(`${formatTime(entry.acknowledged_at)} · 已核对运营提醒 · ${entry.advice.evidence}`);
-      if (entry.revoked_at != null) lines.push(`${formatTime(entry.revoked_at)} · 已撤销核对 · ${entry.advice.evidence}`);
+      if (!advice_actions.some(action => action.action === 'acknowledge' &&
+          action.occurred_at === entry.acknowledged_at && JSON.stringify(action.advice) === JSON.stringify(entry.advice))) {
+        actions.push({advice:entry.advice, action:'acknowledge', occurred_at:entry.acknowledged_at});
+      }
+      if (entry.revoked_at != null && !advice_actions.some(action => action.action === 'revoke' &&
+          action.occurred_at === entry.revoked_at && JSON.stringify(action.advice) === JSON.stringify(entry.advice))) {
+        actions.push({advice:entry.advice, action:'revoke', occurred_at:entry.revoked_at});
+      }
+    }
+    actions.sort((first, second) => first.occurred_at - second.occurred_at);
+    for (const entry of actions) {
+      const action = entry.action === 'revoke' ? '已撤销核对' : '已核对运营提醒';
+      lines.push(`${formatTime(entry.occurred_at)} · ${action} · ${entry.advice.evidence}`);
     }
     if (missing.length) lines.push('数据缺口：' + missing.map(key => labels[key] ?? key).join('、'));
     const faultIds = new Set(rotation_faults.map(fault => fault.event_id));
