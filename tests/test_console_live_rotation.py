@@ -109,11 +109,17 @@ class LiveRotationTests(unittest.TestCase):
                 live._rotate('scene',Mock(wait=lambda _: next(ticks)()))
             self.assertEqual(live.state()['status'],'running')
             self.assertEqual(live.state()['rotation_error'],'合成超时')
+            fault = live.state()['rotation_fault']
+            self.assertEqual((fault['product_id'], fault['product_version'], fault['script_id']), ('product', 1, 'script'))
+            tts.products.record_rotation_fault.assert_called_once_with(
+                'scene', fault['occurred_at'], '合成超时',
+                item={'product_id': 'product', 'product_version': 1, 'script_id': 'script'})
             self.assertEqual(live.state()['rotation_products'],[])
             self.assertEqual(live.state()['rotation_retry_products'],['product'])
             live.enqueue.assert_not_called()
 
             live.configure_rotation('scene',['product'])
+            self.assertNotIn('rotation_fault', live.state())
             tts.state.return_value={'id':'expired','status':'succeeded'}
 
             def finish_fresh():

@@ -441,6 +441,7 @@ class ConsoleLive:
                 self.session.discard_pending(self.rotation['task_id'])
             self.rotation = {'items': items, 'index': 0, 'segment': 0, 'task_id': None} if items else None
             self.status.update(rotation_products=list(product_ids), rotation_completed=0, rotation_error=None)
+            self.status.pop('rotation_fault', None)
             self.status.pop('shift_index', None)
             self.status.pop('rotation_retry_products', None)
             self.status.pop('last_rotation_product_id', None)
@@ -520,9 +521,14 @@ class ConsoleLive:
                     retry = [item['product_id'] for item in rotation['items']] if rotation else []
                     self.rotation = None
                     self.status.update(rotation_products=[], rotation_error=str(error), rotation_retry_products=retry)
+                    failed_item = rotation['items'][rotation['index']] if rotation else None
+                    occurred_at = time.time()
+                    self.status['rotation_fault'] = {
+                        'occurred_at': occurred_at,
+                        **{key: failed_item[key] for key in ('product_id', 'product_version', 'script_id')}
+                    } if failed_item else {'occurred_at': occurred_at}
                     try:
-                        failed_item = rotation['items'][rotation['index']] if rotation else None
-                        self.tts.products.record_rotation_fault(session_id, time.time(), str(error), item=failed_item)
+                        self.tts.products.record_rotation_fault(session_id, occurred_at, str(error), item=failed_item)
                     except sqlite3.Error:
                         logging.exception('记录轮播故障失败')
                     self.status.pop('shift_index', None)

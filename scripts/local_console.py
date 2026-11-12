@@ -91,6 +91,9 @@ def live_advice(session):
         advice.append({'code': 'automatic_queue_full',
                        'evidence': f"普通口播队列已满，待播 {session['pending']} 条",
                        'recommendation': '等待队列释放后再添加口播'})
+    for item in advice:
+        if item['code'] == 'rotation_error' and session.get('rotation_fault'):
+            item['context'] = session['rotation_fault']
     return advice
 
 

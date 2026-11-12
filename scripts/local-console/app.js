@@ -753,7 +753,16 @@ async function loadLive() {
   liveSession = session;
   $('live-advice').hidden = !advice.length;
   const adviceList = $('live-advice-list');
-  const adviceLines = advice.map(item => `${item.evidence} · ${item.recommendation}`);
+  const adviceLines = advice.map(item => {
+    const context = item.context;
+    const details = [item.evidence];
+    if (context?.occurred_at != null) details.push(new Date(context.occurred_at * 1000).toLocaleString());
+    if (context?.product_id) {
+      const title = savedProducts.find(product => product.id === context.product_id)?.title ?? context.product_id;
+      details.push(`${title} · 商品版本 ${context.product_version} · 话术 ${context.script_id}`);
+    }
+    return [...details, item.recommendation].join(' · ');
+  });
   const unchanged = adviceList.children.length === adviceLines.length &&
     adviceLines.every((line, index) => adviceList.children[index].textContent === line);
   if (!unchanged) adviceList.replaceChildren(...adviceLines.map(line => {
