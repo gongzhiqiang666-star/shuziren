@@ -1072,6 +1072,34 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
       ? ` · 发送时间线 ${(event.sample_start / 24000).toFixed(2)}–${(event.sample_end / 24000).toFixed(2)} 秒`
       : '';
     item.textContent = `${completed} · ${product?.title || event.product_id} · 商品版本 ${event.product_version} · 第 ${event.segment_index + 1} 段${interval} · 话术 ${event.script_id} · 任务 ${event.task_id}`;
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = '查看口播来源';
+    const sourceText = document.createElement('pre');
+    sourceText.style.whiteSpace = 'pre-wrap';
+    details.append(summary, sourceText);
+    item.append(details);
+    let loaded = false;
+    let loading = false;
+    details.addEventListener('toggle', async () => {
+      if (!details.open || loaded || loading || consoleClosed) return;
+      loading = true;
+      sourceText.textContent = '正在读取口播来源';
+      try {
+        const params = new URLSearchParams({session_id:sessionId, task_id:event.task_id});
+        const {source} = await request('/api/live/content-source?' + params);
+        const snapshot = source.product_snapshot;
+        sourceText.textContent = snapshot
+          ? [`商品快照 · ${snapshot.title} · 版本 ${snapshot.version}`, snapshot.content,
+            '', '原话术全文', source.script_text].join('\n')
+          : '这条口播记录缺少原商品快照或话术。';
+        loaded = true;
+      } catch (error) {
+        sourceText.textContent = error.message + '。关闭并重新展开可重试。';
+      } finally {
+        loading = false;
+      }
+    });
     return item;
   }));
   rotationEventCursor = result.next_cursor;
