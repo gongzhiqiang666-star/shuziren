@@ -183,6 +183,7 @@ def audit_received_voice(path,completed,expected,origin_ns=None):
                     origin_from_ready_ms+video_time*1000 if frame_index==target else None)
         source_start+=event['samples']
     steps=[b[0]-a[0] for a,b in zip(video,video[1:])]
+    timestamp_steps = [b[1] - a[1] for a, b in zip(video, video[1:])]
     received_speech=[index for index,_ in video if index in speech_frames]
     speech_counts=Counter(received_speech)
     missing_speech_indices=sorted(speech_frames-speech_counts.keys())
@@ -203,6 +204,8 @@ def audit_received_voice(path,completed,expected,origin_ns=None):
         'received_video_span_seconds':video[-1][1]-video[0][1],
         'missing_frames':sum(max(0,step-1) for step in steps),'repeated_frames':sum(step==0 for step in steps),
         'reordered_frames':sum(step<0 for step in steps),'frame_continuity_passed':bool(steps) and all(step==1 for step in steps),
+        'repeated_video_timestamps': sum(step == 0 for step in timestamp_steps),
+        'reordered_video_timestamps': sum(step < 0 for step in timestamp_steps),
         'voice_sync_passed':len(voices)==len(expected) and bool(voices) and all(voice['passed'] for voice in voices),
         'speech_video_frames_expected':len(speech_frames),'speech_missing_frames':speech_missing,
         'speech_repeated_frames':speech_repeated,'speech_reordered_frames':speech_reordered,
