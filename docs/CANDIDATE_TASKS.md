@@ -309,3 +309,5 @@ X08-02 合成帧管道隔离：对 100 帧记录 Python 管道 write 的累计�
 X08-04 直接 rawvideo 包封装暂不采用。相同 20 秒真实人物短测完成 500 帧，提交耗时 p95 6.478 ms，但迟到 p95 5.042 ms、超 5 ms 比例 5.08%，高于上一版缓冲区方案的 4.618 ms 和 3.66%。已回退单项，保留连续 BGR 缓冲区方案。证据 logs/validation/x08-nvenc-avatar-packet-01/run-d6100c92a97a48f7860059d6fe82b228/result.json。
 
 X08-02 Windows 取消恢复补验：修复 FFmpeg 退出后输出句柄短暂占用，5 次取消均回收进程且清除半成品。另一次取消后以相同输出路径重开，写入 25 帧并正常关闭，双轨完整解码通过。证据 logs/validation/x08-nvenc-abort-03/reopened.ts。长时运行及设备并发仍待验。
+
+X08-02 编码器意外退出补验通过：真实 FFmpeg 在 12 帧后被终止，下一次提交返回 OSError，输出对象进入关闭状态并删除未完成的 TS 文件。用例目录 logs/validation/x08-nvenc-encoder-exit-01。
