@@ -358,6 +358,7 @@ class ProductStore:
             items.append({
                 'product_id': product_id, 'product_version': product['version'], 'title': product['title'],
                 'script_id': self.selected_script(product_id),
+                'recommendation': self.lineup_recommendation(facts),
                 'selling_points': [{'name': name, 'value': fact['value'], 'source': fact['source']}
                                    for name, fact in facts.items()],
                 'faq': [{'question': f"{name}是什么？", 'answer': fact['value'], 'source': fact['source']}
@@ -1423,43 +1424,47 @@ class ProductStore:
             })
         return items
 
+    @staticmethod
+    def lineup_recommendation(facts):
+        stock = facts.get('库存', {}).get('value')
+        suitability = facts.get('适播性', {}).get('value')
+        lineup_role = facts.get('排品角色', {}).get('value')
+        if type(stock) is int and stock == 0:
+            role, reason = 'hold', '已核对库存为零'
+        elif suitability == '不适播':
+            role, reason = 'hold', '已核对为不适播'
+        elif lineup_role == '暂缓':
+            role, reason = 'hold', '商家已核对排品角色为暂缓'
+        elif type(stock) is not int or stock < 0 or '发货条件' not in facts:
+            missing = []
+            if type(stock) is not int or stock < 0:
+                missing.append('可售库存')
+            if '发货条件' not in facts:
+                missing.append('发货条件')
+            role, reason = 'hold', '需核对' + '和'.join(missing)
+        elif lineup_role in ('试播', '测试'):
+            role, reason = 'trial', '商家已核对试播角色，库存与发货条件齐备'
+        elif suitability == '适播' and '目标人群' in facts:
+            if lineup_role == '主推' and {'售价', '成本'} <= facts.keys():
+                role, reason = 'primary', '商家已核对主推角色，适播、人群、库存、发货、售价与成本依据齐备'
+            else:
+                role, reason = 'support', '已有适播、人群、库存及发货依据，可作为辅助商品'
+        else:
+            role, reason = 'trial', '库存与发货条件已核对，可小范围试播'
+        return {'role': role, 'reason': reason}
+
     def product_selection_evidence(self):
         fields = ('适播性', '目标人群', '售价', '成本', '库存', '发货条件', '排品角色')
         now = datetime.now(timezone.utc)
         result = []
         for product in self.list():
             facts = verified_product_facts(product, now=now)
-            stock = facts.get('库存', {}).get('value')
-            suitability = facts.get('适播性', {}).get('value')
-            lineup_role = facts.get('排品角色', {}).get('value')
-            if type(stock) is int and stock == 0:
-                role, reason = 'hold', '已核对库存为零'
-            elif suitability == '不适播':
-                role, reason = 'hold', '已核对为不适播'
-            elif lineup_role == '暂缓':
-                role, reason = 'hold', '商家已核对排品角色为暂缓'
-            elif type(stock) is not int or stock < 0 or '发货条件' not in facts:
-                missing = []
-                if type(stock) is not int or stock < 0:
-                    missing.append('可售库存')
-                if '发货条件' not in facts:
-                    missing.append('发货条件')
-                role, reason = 'hold', '需核对' + '和'.join(missing)
-            elif lineup_role in ('试播', '测试'):
-                role, reason = 'trial', '商家已核对试播角色，库存与发货条件齐备'
-            elif suitability == '适播' and '目标人群' in facts:
-                if lineup_role == '主推' and {'售价', '成本'} <= facts.keys():
-                    role, reason = 'primary', '商家已核对主推角色，适播、人群、库存、发货、售价与成本依据齐备'
-                else:
-                    role, reason = 'support', '已有适播、人群、库存及发货依据，可作为辅助商品'
-            else:
-                role, reason = 'trial', '库存与发货条件已核对，可小范围试播'
             result.append({
                 'product_id': product['id'], 'product_version': product['version'], 'title': product['title'],
                 'conditions': {name: {'value': facts[name]['value'], 'source': facts[name]['source']}
                                if name in facts else None for name in fields},
                 'verified_fact_count': len(facts),
-                'recommendation': {'role': role, 'reason': reason},
+                'recommendation': self.lineup_recommendation(facts),
             })
         return result
 

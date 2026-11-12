@@ -375,6 +375,9 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertIsNone(item['conditions']['售价'])
         self.assertEqual(item['verified_fact_count'], 1)
         self.assertEqual(item['recommendation'], {'role': 'hold', 'reason': '已核对库存为零'})
+        store.save_live_preparation(product_ids=[product['id']])
+        prepared, = self.call('/api/live/preparation/package')[1]['items']
+        self.assertEqual(prepared['recommendation'], item['recommendation'])
         store.save(title='桌布', content='另一商品', product_index=2, product_facts={
             '库存': {'status': 'verified', 'value': 20, 'source': '旧盘点',
                    'expires_at': '2020-01-01T00:00:00Z'},
