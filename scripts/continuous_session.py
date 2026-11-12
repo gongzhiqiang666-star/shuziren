@@ -15,13 +15,14 @@ from scripts.v122_acceleration import windows_timer_precision
 
 
 class ContinuousSession:
+    automatic_queue_capacity = 4
     def __init__(self,session_id,client,receiver,sink,source_directory,on_source_complete=None,on_present=None,on_started=None,*,idle_frames=8):
         if type(idle_frames) is not int or idle_frames not in (4,8):
             raise ValueError('Idle spans must contain four or eight frames')
         self.idle_frames=idle_frames
         self.session_id=session_id;self.client=client;self.receiver=receiver;self.sink=sink
         self.root=Path(source_directory).resolve();self.clock=SampleTimeline(session_id)
-        self.ready=queue.PriorityQueue(maxsize=5);self.submission_order=0
+        self.ready=queue.PriorityQueue(maxsize=self.automatic_queue_capacity + 1);self.submission_order=0
         self.manual=False;self.control_revision=0
         self.stop_event=threading.Event();self.producer=None;self.pacer=None;self.errors=[]
         self.on_source_complete=on_source_complete;self.on_present=on_present;self.on_started=on_started
@@ -63,10 +64,13 @@ class ContinuousSession:
 
     def control_state(self):
         with self.lease_lock:
-            return {'manual':self.manual,'control_revision':self.control_revision,'pending':self.ready.qsize()}
+            pending = self.ready.qsize()
+            return {'manual': self.manual, 'control_revision': self.control_revision, 'pending': pending,
+                    'automatic_queue_full': pending >= self.automatic_queue_capacity}
 
     def queue_full(self, manual_revision=None):
-        return self.ready.qsize() >= (5 if manual_revision is not None else 4)
+        capacity = self.automatic_queue_capacity + (manual_revision is not None)
+        return self.ready.qsize() >= capacity
 
     def discard_pending(self, task_id):
         """Discard an owned item only if the producer has not claimed it."""

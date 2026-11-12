@@ -13,6 +13,19 @@ from scripts.speech_assembler import Utterance
 
 
 class SessionLifecycleTests(unittest.TestCase):
+    def test_queue_snapshot_preserves_manual_capacity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = ContinuousSession('s', Mock(), Mock(), Mock(), Path(temporary))
+            for index in range(4):
+                session.ready.put_nowait((0, index, None))
+            state = session.control_state()
+            self.assertEqual(state['pending'], 4)
+            self.assertTrue(state['automatic_queue_full'])
+            self.assertTrue(session.queue_full())
+            self.assertFalse(session.queue_full(manual_revision=0))
+            session.ready.get_nowait()
+            self.assertFalse(session.control_state()['automatic_queue_full'])
+
     def test_expired_queued_speech_does_not_block_following_speech(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

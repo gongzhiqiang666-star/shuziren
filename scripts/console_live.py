@@ -38,7 +38,6 @@ class ConsoleLive:
                 state['frames'] = self.session.frames_written
                 state['camera_frames'] = self.session.sink.camera.frames
                 state.update(self.session.control_state())
-                state['automatic_queue_full'] = self.session.queue_full()
             return state
 
     def stall_snapshot(self):
