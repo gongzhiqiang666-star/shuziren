@@ -147,6 +147,13 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call(route, {**trial, 'spend_minor': 450})[0], 200)
         updated = self.call(compare_url)[1]['comparison']
         self.assertEqual(updated['spend_difference_minor'], 50)
+        self.assertEqual(self.call(route, {**trial, 'period_end': '2026-11-04', 'spend_minor': 150})[0], 200)
+        short_window = self.call('/api/promotion/compare?' + urlencode({
+            **comparison, 'trial_end': '2026-11-04',
+        }))[1]['comparison']
+        self.assertEqual((short_window['baseline_days'], short_window['trial_days']), (3, 1))
+        self.assertEqual(short_window['spend_difference_minor'], -250)
+        self.assertEqual(short_window['conclusion'], 'uncertain')
         self.assertIn('net_result', updated['missing'])
         self.assertEqual(updated['conclusion'], 'uncertain')
         store.save(title=product['title'], content='更新后的商品说明', product_index=1,
