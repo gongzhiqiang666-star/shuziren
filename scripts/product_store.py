@@ -241,6 +241,8 @@ class ProductStore:
                 db.execute('ALTER TABLE live_content_drafts ADD COLUMN revision_count INTEGER')
             if 'production_seconds' not in {row[1] for row in db.execute('PRAGMA table_info(live_content_drafts)')}:
                 db.execute('ALTER TABLE live_content_drafts ADD COLUMN production_seconds INTEGER')
+            if 'baseline_seconds' not in {row[1] for row in db.execute('PRAGMA table_info(live_content_drafts)')}:
+                db.execute('ALTER TABLE live_content_drafts ADD COLUMN baseline_seconds INTEGER')
             if 'revoked_at' not in {row[1] for row in db.execute('PRAGMA table_info(live_advice_acknowledgments)')}:
                 db.execute('ALTER TABLE live_advice_acknowledgments ADD COLUMN revoked_at REAL')
             fault_columns = {row[1] for row in db.execute('PRAGMA table_info(live_rotation_faults)')}
@@ -855,11 +857,11 @@ class ProductStore:
                              (session_id, task_id)).fetchone()
         return row['body'] if row else None
 
-    def live_content_production_seconds(self, session_id, task_id):
+    def live_content_timings(self, session_id, task_id):
         with self.connect() as db:
-            row = db.execute('SELECT production_seconds FROM live_content_drafts WHERE session_id=? AND task_id=?',
+            row = db.execute('SELECT production_seconds, baseline_seconds FROM live_content_drafts WHERE session_id=? AND task_id=?',
                              (session_id, task_id)).fetchone()
-        return row['production_seconds'] if row else None
+        return dict(row) if row else {'production_seconds': None, 'baseline_seconds': None}
 
     def live_content_summary(self, session_id):
         with self.connect() as db:
@@ -868,7 +870,9 @@ class ProductStore:
                        COUNT(CASE WHEN revision_count > 0 THEN 1 END) AS revised_drafts,
                        COUNT(publication_id) AS recorded_publications,
                        COUNT(production_seconds) AS timed_drafts,
-                       AVG(production_seconds) AS average_production_seconds
+                       AVG(production_seconds) AS average_production_seconds,
+                       COUNT(baseline_seconds - production_seconds) AS paired_drafts,
+                       AVG(baseline_seconds - production_seconds) AS average_seconds_saved
                 FROM live_content_drafts LEFT JOIN live_content_receipts USING (session_id, task_id)
                 WHERE session_id=?
             """, (session_id,)).fetchone()
@@ -953,23 +957,27 @@ class ProductStore:
             if not result.rowcount:
                 raise Conflict('该账号的作品编号已关联其他排期')
 
-    def save_live_content_draft(self, session_id, task_id, body, production_seconds=None):
+    def save_live_content_draft(self, session_id, task_id, body, production_seconds=None, baseline_seconds=None):
         body = text(body, '短视频文案', 100000)
         if production_seconds is not None and (
                 type(production_seconds) is not int or not 0 <= production_seconds <= 2**31 - 1):
             raise ProductError('制作耗时须为非负整数秒')
+        if baseline_seconds is not None and (
+                type(baseline_seconds) is not int or not 0 <= baseline_seconds <= 2**31 - 1):
+            raise ProductError('人工基线耗时须为非负整数秒')
         source = self.live_content_source(session_id, task_id)
         if source['facts_review'] != 'version_current' or source['segment'] is None:
             raise Conflict('商品事实或片段来源需要重新核对')
         with self.connect() as db:
             result = db.execute("""
-                INSERT INTO live_content_drafts (session_id, task_id, body, revision_count, production_seconds)
-                VALUES (?, ?, ?, 0, ?)
+                INSERT INTO live_content_drafts (session_id, task_id, body, revision_count, production_seconds, baseline_seconds)
+                VALUES (?, ?, ?, 0, ?, ?)
                 ON CONFLICT(session_id, task_id) DO UPDATE SET
                     revision_count=revision_count + (body <> excluded.body), body=excluded.body,
-                    production_seconds=COALESCE(excluded.production_seconds, production_seconds)
+                    production_seconds=COALESCE(excluded.production_seconds, production_seconds),
+                    baseline_seconds=COALESCE(excluded.baseline_seconds, baseline_seconds)
                 WHERE live_content_drafts.withdrawn=0
-            """, (session_id, task_id, body, production_seconds))
+            """, (session_id, task_id, body, production_seconds, baseline_seconds))
             if not result.rowcount:
                 raise Conflict('该文案已停止复用')
         return body

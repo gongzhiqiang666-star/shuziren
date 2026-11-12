@@ -459,7 +459,9 @@ class ConsoleHTTPTests(unittest.TestCase):
         other_clip = {'session_id': 'scene', 'task_id': 'fingerprinted-task'}
         self.assertEqual(self.call('/api/live/content-draft', {**body, **other_clip})[0], 200)
         self.assertEqual(self.call('/api/live/content-draft', {**body, **other_clip, 'production_seconds': -1})[0], 400)
-        self.assertEqual(self.call('/api/live/content-draft', {**body, **other_clip, 'production_seconds': 42})[0], 200)
+        self.assertEqual(self.call('/api/live/content-draft', {
+            **body, **other_clip, 'production_seconds': 42, 'baseline_seconds': 65,
+        })[0], 200)
         self.assertEqual(self.call(draft_route + 'fingerprinted-task')[1]['draft']['production_seconds'], 42)
         self.assertEqual(self.call(schedule_route, {**schedule, **other_clip})[0], 200)
         self.assertEqual(self.call(receipt_route, {**receipt, **other_clip})[0], 409)
@@ -487,6 +489,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call('/api/live/report?session_id=scene')[1]['content_summary'], {
             'drafts': 2, 'tracked_drafts': 2, 'revised_drafts': 1, 'recorded_publications': 2,
             'timed_drafts': 1, 'average_production_seconds': 42,
+            'paired_drafts': 1, 'average_seconds_saved': 23,
         })
         self.assertEqual(self.call(receipt_route, {**receipt, 'publication_id': 'platform-002'})[0], 409)
         self.assertEqual((source['sample_start'], source['sample_end']), (960, 1920))

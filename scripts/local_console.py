@@ -384,7 +384,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                                         'segment_index', 'voice_id', 'sample_start', 'sample_end')},
                             'speaker_role': source['segment']['type'],
                             'speech_provenance': source['speech_provenance'],
-                            'production_seconds': products().live_content_production_seconds(
+                            **products().live_content_timings(
                                 source['session_id'], source['task_id']),
                         }})
                     source['has_saved_draft'] = products().live_content_draft_body(
@@ -977,7 +977,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         return self.respond(200, {'schedule': data.live_content_schedule(
                             value['session_id'], value['task_id'])})
                     if path == "/api/live/content-draft":
-                        if set(value) - {'production_seconds'} != {'session_id', 'task_id', 'body'} or any(
+                        if set(value) - {'production_seconds', 'baseline_seconds'} != {'session_id', 'task_id', 'body'} or any(
                                 not isinstance(value[key], str) or not 1 <= len(value[key]) <= 64
                                 for key in ('session_id', 'task_id')):
                             raise ProductError('短视频草稿字段无效')

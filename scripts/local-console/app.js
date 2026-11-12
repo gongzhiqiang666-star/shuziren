@@ -1756,6 +1756,9 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       if (content_summary.timed_drafts) {
         lines.push(`人工登记平均制作耗时 ${content_summary.average_production_seconds.toFixed(1)} 秒（${content_summary.timed_drafts} 条）`);
       }
+      if (content_summary.paired_drafts) {
+        lines.push(`人工基线减去复用耗时，平均 ${content_summary.average_seconds_saved.toFixed(1)} 秒（${content_summary.paired_drafts} 条）`);
+      }
     }
     for (const application of preparation_applications) {
       if (!application.improvements.length) continue;
@@ -2074,6 +2077,10 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
     productionSeconds.step = '1';
     productionLabel.hidden = true;
     productionLabel.append('制作耗时（秒，选填）', productionSeconds);
+    const baselineLabel = document.createElement('label');
+    const baselineSeconds = productionSeconds.cloneNode();
+    baselineLabel.hidden = true;
+    baselineLabel.append('同一短视频的人工基线耗时（秒，选填）', baselineSeconds);
     const saveDraft = document.createElement('button');
     saveDraft.type = 'button';
     saveDraft.textContent = '保存文案';
@@ -2082,7 +2089,7 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
     withdrawDraft.type = 'button';
     withdrawDraft.textContent = '停止复用';
     withdrawDraft.hidden = true;
-    details.append(draftButton, draftStatus, draftLabel, productionLabel, saveDraft, withdrawDraft);
+    details.append(draftButton, draftStatus, draftLabel, productionLabel, baselineLabel, saveDraft, withdrawDraft);
     const params = new URLSearchParams({session_id:sessionId, task_id:event.task_id});
     const scheduleForm = document.createElement('form');
     scheduleForm.hidden = true;
@@ -2190,9 +2197,10 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
       if (saveDraft.disabled || consoleClosed) return;
       saveDraft.disabled = true;
       try {
-        if (!productionSeconds.reportValidity()) return;
+        if (!productionSeconds.reportValidity() || !baselineSeconds.reportValidity()) return;
         const payload = {session_id:sessionId, task_id:event.task_id, body:draftText.value};
         if (productionSeconds.value !== '') payload.production_seconds = productionSeconds.valueAsNumber;
+        if (baselineSeconds.value !== '') payload.baseline_seconds = baselineSeconds.valueAsNumber;
         await request('/api/live/content-draft', payload);
         draftStatus.textContent = '文案已保存';
         withdrawDraft.hidden = false;
@@ -2212,6 +2220,7 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         draftText.readOnly = true;
         saveDraft.hidden = true;
         productionLabel.hidden = true;
+        baselineLabel.hidden = true;
         withdrawDraft.hidden = true;
         if (reuseNarration) reuseNarration.hidden = true;
         await loadSchedule();
@@ -2235,7 +2244,9 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         draftText.readOnly = !draft.editable;
         saveDraft.hidden = !draft.editable;
         productionLabel.hidden = !draft.editable;
+        baselineLabel.hidden = !draft.editable;
         productionSeconds.value = draft.production_seconds ?? '';
+        baselineSeconds.value = draft.baseline_seconds ?? '';
         draftButton.hidden = true;
         withdrawDraft.hidden = draft.saved_body == null || Boolean(draft.withdrawn);
         draftStatus.textContent = draft.withdrawn ? '文案已停止复用，仅供回查'
