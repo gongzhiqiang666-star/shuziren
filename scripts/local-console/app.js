@@ -324,6 +324,13 @@ const afterSalesForm = $('after-sales-form');
 const afterSalesImportForm = $('after-sales-import-form');
 const afterSalesCategories = {quality:'质量', size:'尺码', expectation:'预期不符', fulfillment:'履约', other:'其他'};
 const afterSalesCompare = $('after-sales-compare');
+let afterSalesComparisonVersion = 0;
+function clearAfterSalesComparison() {
+  afterSalesComparisonVersion++;
+  $('after-sales-comparison').textContent = '';
+}
+afterSalesCompare.addEventListener('input', clearAfterSalesComparison);
+$(summaryFields.source).addEventListener('input', clearAfterSalesComparison);
 afterSalesCompare.addEventListener('submit', async event => {
   event.preventDefault();
   const product = currentProduct;
@@ -334,16 +341,17 @@ afterSalesCompare.addEventListener('submit', async event => {
   query.set('product_id', product.id);
   query.set('source', source.value);
   const result = $('after-sales-comparison');
+  const version = afterSalesComparisonVersion;
   button.disabled = true;
   result.textContent = '正在对照售后窗口';
   try {
     const {comparison} = await request('/api/products/after-sales/compare?' + query);
-    if (currentProduct !== product) return;
+    if (currentProduct !== product || version !== afterSalesComparisonVersion) return;
     const lines = Object.entries(afterSalesCategories).map(([key, label]) =>
       `${label} ${comparison.baseline.counts[key] ?? '未知'} → ${comparison.trial.counts[key] ?? '未知'}（差值 ${comparison.differences[key] ?? '未知'}）`);
     result.textContent = [...lines, '效果结论：不确定'].join(' · ');
   } catch (error) {
-    if (currentProduct === product) result.textContent = error.message;
+    if (currentProduct === product && version === afterSalesComparisonVersion) result.textContent = error.message;
   } finally {
     button.disabled = false;
   }
