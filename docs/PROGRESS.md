@@ -783,3 +783,5 @@ V09 原库复播写入核对通过：回退版新场次已停播，两件商品�
 V09 / G08-04 候选 b8ce9e7 通过 299 项 Windows 回归后构建并隔离安装，439 文件通过清单校验。包 SHA-256 为 13f821cd0369b9dbadffd4b23437ef60ee062cac9441940a89371beccd08324c。安装目录中的实际代码通过采购历史和 RTMP 开播参数两项 HTTP 检查。该候选的安装版实机回采及干净 Windows 整机验收待补。
 
 V09 / A01-05 候选 b8ce9e7 从本机隔离安装目录实播 RTMP 通过。用 SRS 输入完成轮播、插播、接管恢复和停播，共提交 935 帧，回采双轨完整解码与场次报告追溯通过。证据 logs/validation/n05-installed-rtmp-b8ce9e7/result.json。使用安装目录验收脚本启动，干净 Windows 整机和发行版长稳待验。
+
+V09 候选 b8ce9e7 正式 deploy --with-media 及 run --with-media 入口补验通过。临时安装根加载独立媒体运行目录，设备接口枚举到 CABLE Input，采购候选接口响应，确认退出请求后启动器退出码 0。此轮正式启动器未开播，安装目录实播另见 n05-installed-rtmp-b8ce9e7。
