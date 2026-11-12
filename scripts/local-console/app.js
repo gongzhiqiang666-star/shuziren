@@ -883,6 +883,9 @@ function sourcingDecisionEditor(candidate) {
           `来源：${record.candidate?.source ?? '未知'}`,
           `样品依据：${record.trial?.sample_evidence ?? '未知'}`,
           `试卖依据：${record.trial?.trial_evidence ?? '未知'}`,
+          `样品成本：${record.trial?.cost_minor == null ? '未知' : record.trial.cost_minor + ' 分'}`,
+          ...Object.entries(sourcingTrialMetrics).map(([key, label]) =>
+            `${label} ${record.trial?.metrics?.[key] ?? '未知'}`),
         ].join(' · ');
         return item;
       });
