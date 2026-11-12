@@ -14,11 +14,23 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from scripts.local_console import InstanceLock, create_server
-from scripts.local_console_config import ConfigStore
+from scripts.local_console_config import ConfigStore, shop_data_directory
 from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_shop_workspaces_keep_product_and_metrics_data_isolated(self):
+        first = ProductStore(shop_data_directory(self.directory.name, 'first'))
+        second = ProductStore(shop_data_directory(self.directory.name, 'second'))
+        product = first.save(title='茶杯', content='仅本店', product_index=1)
+        first.save_business_metrics(product['id'], source='账单', scope='商品',
+                                    period_start='2026-11-01', period_end='2026-11-01', orders=3)
+        self.assertEqual(second.list(), [])
+        self.assertEqual(ProductStore(self.directory.name).list(), [])
+        self.assertEqual(first.business_metrics(product['id'])[0]['orders'], 3)
+        with self.assertRaises(ValueError):
+            shop_data_directory(self.directory.name, '../first')
+
     def test_promotion_spend_preserves_missing_attribution_and_corrects_bill(self):
         store = ProductStore(self.directory.name)
         product = store.save(title='茶杯', content='商品说明', product_index=1)

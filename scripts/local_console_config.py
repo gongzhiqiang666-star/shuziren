@@ -41,6 +41,17 @@ def _unique_object(pairs):
     return result
 
 
+def shop_data_directory(base, shop_id):
+    if not isinstance(shop_id, str) or not 1 <= len(shop_id) <= 40 or any(
+            character not in 'abcdefghijklmnopqrstuvwxyz0123456789-_' for character in shop_id):
+        raise ValueError('店铺编号须为 1 至 40 位小写字母、数字、短横线或下划线')
+    root = (Path(base) if base is not None else default_data_directory()).resolve()
+    directory = root / 'shops' / ('shop-' + shop_id)
+    if directory.resolve() != directory:
+        raise ValueError('店铺数据目录不能指向其他目录')
+    return directory
+
+
 class ConfigStore:
     def __init__(self, directory=None):
         self.directory = Path(directory) if directory is not None else default_data_directory()

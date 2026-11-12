@@ -13,7 +13,7 @@ import sqlite3
 import threading
 from urllib.parse import urlsplit, parse_qs
 
-from scripts.local_console_config import ConfigError, ConfigStore, preflight
+from scripts.local_console_config import ConfigError, ConfigStore, preflight, shop_data_directory
 from scripts.product_store import ProductStore, Conflict, ProductError
 from scripts.voice_store import VoiceStore, VoiceError
 from scripts.avatar_store import AvatarStore, AvatarError
@@ -1030,11 +1030,16 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
 def main(argv=None):
     parser = argparse.ArgumentParser(description="数字人本地控制台")
     parser.add_argument("--data-directory", type=Path)
+    parser.add_argument("--shop-id", help="在数据目录下使用独立的店铺工作区")
     parser.add_argument("--port", type=int)
     parser.add_argument("--tts-engine", choices=("indextts", "zipvoice", "omnivoice"), default="indextts")
     parser.add_argument("--tts-model-root", type=Path)
     args = parser.parse_args(argv)
-    store = ConfigStore(args.data_directory)
+    try:
+        directory = shop_data_directory(args.data_directory, args.shop_id) if args.shop_id is not None else args.data_directory
+    except ValueError as error:
+        parser.error(str(error))
+    store = ConfigStore(directory)
     store.directory.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(filename=store.directory / "console.log", encoding="utf-8", level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
