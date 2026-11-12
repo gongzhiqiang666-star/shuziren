@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 from scripts.resident_avatar import ResidentAvatar
 
@@ -28,3 +28,13 @@ class ResidentRtmpTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, '未收到足够画面'):
             self.engine._load_live_frames([0])
         self.reader.reconnect.assert_called_once()
+
+    def test_close_releases_model_even_when_rtmp_cleanup_fails(self):
+        synth = self.engine.synth = Mock()
+        context = self.engine.context = MagicMock()
+        self.reader.stop_capture.side_effect = OSError('capture cleanup failed')
+        with self.assertRaisesRegex(OSError, 'capture cleanup failed'):
+            self.engine.close()
+        self.engine.close()
+        synth.close.assert_called_once_with()
+        context.__exit__.assert_called_once_with(None, None, None)

@@ -220,8 +220,14 @@ class ResidentAvatar:
             'output_device_tested':False,'visual_quality_verified':False}
 
     def close(self):
-        if self.rtmp_reader is not None:
-            self.rtmp_reader.stop_capture()
-            self.rtmp_reader = None
-        if self.synth:
-            self.synth.close();self.synth=None;self.context.__exit__(None,None,None)
+        reader, self.rtmp_reader = self.rtmp_reader, None
+        synth, self.synth = self.synth, None
+        try:
+            if reader is not None:
+                reader.stop_capture()
+        finally:
+            if synth is not None:
+                try:
+                    synth.close()
+                finally:
+                    self.context.__exit__(None, None, None)
