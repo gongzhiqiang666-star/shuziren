@@ -8,6 +8,23 @@ from scripts.product_store import Conflict
 
 
 class LiveRotationTests(unittest.TestCase):
+    def test_rotation_exposes_sourced_zero_inventory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tts = Mock()
+            tts.products.get.return_value = {'title': '茶杯', 'version': 1, 'extra': {'product_facts': {
+                '库存': {'value': 0, 'status': 'verified', 'source': '商家盘点'},
+            }}}
+            tts.products.selected_script.return_value = 'script'
+            tts.products.scripts.return_value = [{'id': 'script', 'text': '茶杯'}]
+            live = ConsoleLive(tts, directory)
+            live.status = {'id': 'scene', 'status': 'running'}
+            live.session = Mock()
+            live.session.control_state.return_value = {}
+            state = live.configure_rotation('scene', ['product'])
+            self.assertEqual(state['rotation_stock_evidence']['source'], '商家盘点')
+            tts.products.get.return_value['extra']['product_facts']['库存'] = {'status': 'unknown'}
+            self.assertNotIn('rotation_stock_evidence', live.configure_rotation('scene', ['product']))
+
     def test_expired_queued_rotation_does_not_wait_for_completion(self):
         with tempfile.TemporaryDirectory() as directory:
             tts = Mock()

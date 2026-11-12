@@ -103,6 +103,10 @@ def live_advice(session):
         advice.append({'code': 'shift_waiting_for_boundary', 'evidence': '当前班次已到设定时长，尚未切品',
                        'recommendation': '等待当前商品讲解结束后切换，若持续未切换请检查轮播状态',
                        'context': session['shift_waiting_for_boundary']})
+    if session.get('rotation_stock_evidence'):
+        stock = session['rotation_stock_evidence']
+        advice.append({'code': 'rotation_stock_zero', 'evidence': f"轮播商品版本的已核对库存为 0，来源 {stock['source']}",
+                       'recommendation': '确认当前可售库存，再决定是否调整讲解或切品', 'context': stock})
     for item in advice:
         if item['code'] == 'rotation_error' and session.get('rotation_fault'):
             item['context'] = session['rotation_fault']

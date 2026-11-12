@@ -11,7 +11,7 @@ import threading
 import time
 import uuid
 
-from scripts.product_store import Conflict, ProductError, product_fact_deadline
+from scripts.product_store import Conflict, ProductError, product_fact_deadline, verified_product_facts
 
 
 class ConsoleLive:
@@ -39,6 +39,12 @@ class ConsoleLive:
                 state['camera_frames'] = self.session.sink.camera.frames
                 state.update(self.session.control_state())
             rotation = self.rotation
+            if rotation:
+                current = rotation['items'][rotation['index']]
+                stock = current.get('stock_evidence')
+                deadline = current.get('fact_deadline')
+                if stock and (deadline is None or time.time() < deadline):
+                    state['rotation_stock_evidence'] = stock
             if rotation and len(rotation['items']) > 1 and not state.get('manual'):
                 item = rotation['items'][rotation['index']]
                 started = rotation.get('shift_started_at')
@@ -434,6 +440,10 @@ class ConsoleLive:
                 deadline = product_fact_deadline(product)
                 if deadline is not None:
                     item['fact_deadline'] = deadline
+                stock = verified_product_facts(product).get('库存')
+                if stock and type(stock['value']) is int and stock['value'] == 0:
+                    item['stock_evidence'] = {**{key: item[key] for key in ('product_id', 'product_version', 'script_id')},
+                                              'source': stock['source']}
                 if shift_durations is not None:
                     item['duration_seconds'] = shift_durations[index]
                 if shift_voice_ids is not None and shift_voice_ids[index] is not None:
