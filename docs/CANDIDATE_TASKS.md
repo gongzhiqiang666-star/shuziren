@@ -260,3 +260,6 @@ X03-01 已将固定 MuseTalk 源码检出到 Git 忽略的验证目录。上游 
 X03-01 Windows 扩展准备：从 OpenMMLab 的 CUDA 11.8/PyTorch 2.0 wheel 索引下载到 mmcv-2.0.1-cp310-cp310-win_amd64.whl，SHA-256 为 622bbff1f59cd8c9c350c43b6bc2a1a7a1bb065d34681ef8614da8e3b31c9486。文件保存在忽略的本机目录，待安装匹配 PyTorch 后实测 mmcv.ops 加载和 GPU 调用。
 
 X03-01 已建独立 Python 3.10 venv。pip 从 PyTorch 官方 CUDA 11.8 索引下载 2.0.1 时两次 TLS 握手失败，Windows curl 对官方主站及 R2 端点也无法完成握手。当前阻塞为官方 wheel 获取；已取得的 MMCV wheel 保留。匹配 PyTorch 安装、CUDA 扩展运行和模型实测待补。
+
+
+X03-01 补查 V09 独立媒体环境。PyTorch 2.6.0+cu118 在 RTX 3060 上执行 CUDA 张量运算通过，该环境未安装 MMCV。现有 MMCV wheel 面向 PyTorch 2.0，尚需配套解释器依赖和扩展实跑。
