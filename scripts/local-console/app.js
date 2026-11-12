@@ -399,14 +399,35 @@ function preparationProductIds() {
   return Array.from($('preparation-products').querySelectorAll('input:checked'), input => input.value);
 }
 function showPreparationProducts(ids) {
-  $('preparation-products').replaceChildren(...savedProducts.map(product => {
+  const byId = new Map(savedProducts.map(product => [product.id, product]));
+  const ordered = [...ids.map(id => byId.get(id)).filter(Boolean),
+    ...savedProducts.filter(product => !ids.includes(product.id))];
+  const list = $('preparation-products');
+  list.replaceChildren(...ordered.map(product => {
+    const row = document.createElement('div');
     const label = document.createElement('label');
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.value = product.id;
     input.checked = ids.includes(product.id);
     label.append(input, ' ', product.title);
-    return label;
+    row.append(label);
+    for (const direction of ['上移', '下移']) {
+      const move = document.createElement('button');
+      move.type = 'button';
+      move.className = 'secondary';
+      move.textContent = direction;
+      move.setAttribute('aria-label', direction + product.title);
+      move.addEventListener('click', () => {
+        const neighbor = direction === '上移' ? row.previousElementSibling : row.nextElementSibling;
+        if (!neighbor) return;
+        if (direction === '上移') list.insertBefore(row, neighbor);
+        else list.insertBefore(neighbor, row);
+        move.focus();
+      });
+      row.append(move);
+    }
+    return row;
   }));
 }
 function showPreparationMissing(missing) {
