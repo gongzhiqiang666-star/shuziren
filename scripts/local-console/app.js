@@ -245,6 +245,38 @@ const preparationRoute = '/api/live/preparation';
 const preparationFields = ['goal', 'audience', 'promotion', 'stock', 'shipping', 'constraints'];
 const preparationForm = $('preparation-form');
 const preparationSave = preparationForm.querySelector('button[type="submit"]');
+const preparationPreview = $('preparation-preview');
+let savedPreparationHasProducts = false;
+function updatePreparationPreview(draft) {
+  savedPreparationHasProducts = draft.product_ids.length > 0;
+  preparationPreview.disabled = !savedPreparationHasProducts;
+}
+preparationPreview.addEventListener('click', async () => {
+  preparationPreview.disabled = true;
+  preparationSave.disabled = true;
+  $('preparation-error').textContent = '';
+  try {
+    const {items, segments, missing} = await request(preparationRoute + '/package');
+    const lines = ['开场', segments.opening];
+    for (const [index, item] of items.entries()) {
+      if (index) lines.push('', '转场', segments.transition);
+      lines.push('', `${index + 1}. ${item.title}（版本 ${item.product_version}）`);
+      for (const point of item.selling_points) lines.push(`${point.name}：${point.value}（来源：${point.source}）`);
+      for (const entry of item.faq) lines.push(`问：${entry.question} 答：${entry.answer}（来源：${entry.source}）`);
+      for (const condition of item.missing) lines.push(`待补：${condition}`);
+      for (const asset of item.assets) lines.push(`素材：${asset}`);
+    }
+    lines.push('', '收尾', segments.closing);
+    if (missing.length) lines.push('', '场次待补条件', ...missing);
+    $('preparation-package').value = lines.join('\n');
+    $('preparation-package-panel').hidden = false;
+  } catch (error) {
+    $('preparation-error').textContent = error.message;
+  } finally {
+    preparationPreview.disabled = !savedPreparationHasProducts;
+    preparationSave.disabled = false;
+  }
+});
 function preparationProductIds() {
   return Array.from($('preparation-products').querySelectorAll('input:checked'), input => input.value);
 }
@@ -272,6 +304,7 @@ async function loadPreparation() {
     showPreparationProducts(draft.product_ids);
     for (const field of preparationFields) $('preparation-' + field).value = draft[field];
     showPreparationMissing(missing);
+    updatePreparationPreview(draft);
     preparationSave.disabled = false;
   } catch (error) {
     $('preparation-error').textContent = error.message;
@@ -281,18 +314,23 @@ preparationForm.addEventListener('submit', async event => {
   event.preventDefault();
   if (preparationSave.disabled) return;
   preparationSave.disabled = true;
+  preparationPreview.disabled = true;
   $('preparation-error').textContent = '';
   $('preparation-status').textContent = '';
   try {
     const draft = {product_ids:preparationProductIds()};
     for (const field of preparationFields) draft[field] = $('preparation-' + field).value;
-    const {missing} = await request(preparationRoute, draft);
+    const {draft: savedDraft, missing} = await request(preparationRoute, draft);
     showPreparationMissing(missing);
+    updatePreparationPreview(savedDraft);
+    $('preparation-package-panel').hidden = true;
+    $('preparation-package').value = '';
     $('preparation-status').textContent = missing.length ? '草稿已保存，以下条件待补' : '草稿已保存，条件已填齐';
   } catch (error) {
     $('preparation-error').textContent = error.message;
   } finally {
     preparationSave.disabled = false;
+    preparationPreview.disabled = !savedPreparationHasProducts;
   }
 });
 async function loadProducts() {
