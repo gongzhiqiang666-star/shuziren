@@ -497,6 +497,30 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertIsNone(expired_package['items'][0]['stock_review'])
         self.assertEqual(expired['conditions']['库存']['value'], 2)
 
+    def test_preparation_review_expires_at_the_activity_deadline(self):
+        store = ProductStore(self.directory.name)
+        product = store.save(title='茶杯', content='活动验证商品', product_index=1, product_facts={
+            '活动售价': {'status': 'verified', 'value': '99 元', 'source': '活动清单',
+                     'expires_at': '2099-01-01T00:00:00Z'},
+        })
+        script = store.add_script(product, '请核对商品活动信息。')
+        store.select_script(product['id'], script)
+        store.save_live_preparation(product_ids=[product['id']])
+        route = '/api/live/preparation'
+        with patch('scripts.product_store.datetime', wraps=datetime) as clock:
+            clock.now.return_value = datetime(2098, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+            package = self.call(route + '/package')[1]
+            revision = {'revision': package['revision']}
+            self.assertEqual(self.call(route + '/review', {**revision, 'review': '已核对活动售价'})[0], 200)
+            self.assertEqual(self.call(route + '/rotation', revision)[0], 200)
+            clock.now.return_value = datetime(2099, 1, 1, tzinfo=timezone.utc)
+            self.assertEqual(self.call(route + '/rotation', revision)[0], 409)
+            expired = self.call(route + '/package')[1]
+            self.assertNotEqual(expired['revision'], revision['revision'])
+            self.assertIsNone(expired['review'])
+            self.assertEqual(expired['items'][0]['faq'], [])
+            self.assertIn('重新核对已过期的商品事实：活动售价', expired['items'][0]['missing'])
+
     def test_product_selection_evidence_preserves_zero_and_missing_conditions(self):
         store = ProductStore(self.directory.name)
         product = store.save(title='茶杯', content='商品说明', product_index=1, product_facts={
