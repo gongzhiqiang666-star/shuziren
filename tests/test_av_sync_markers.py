@@ -24,3 +24,8 @@ class SyncMarkerTests(unittest.TestCase):
         video=self.video();video.insert(3,video[2])
         result=analyze_markers(video,[1.,2.6,4.2])
         self.assertEqual(result['repeated_frames'],1);self.assertFalse(result['frame_continuity_passed'])
+        video = self.video()
+        video[3], video[4] = video[4], video[3]
+        result = analyze_markers(video, [1., 2.6, 4.2])
+        self.assertEqual((result['missing_frames'], result['reordered_frames']), (0, 1))
+        self.assertFalse(result['frame_continuity_passed'])

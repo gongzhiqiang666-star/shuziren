@@ -14,9 +14,10 @@ def analyze_markers(video,audio_times):
         if flash and not previous:starts.append((index,stamp))
         previous=flash
     steps=[b[0]-a[0] for a,b in zip(video,video[1:])]
+    indices = {frame[0] for frame in video}
     result={'visual_events':starts,'audio_marker_times':audio_times,
-        'repeated_frames':sum(step==0 for step in steps),
-        'missing_frames':sum(max(0,step-1) for step in steps),
+        'repeated_frames':len(video) - len(indices),
+        'missing_frames':max(indices) - min(indices) + 1 - len(indices) if indices else 0,
         'reordered_frames':sum(step<0 for step in steps),
         'frame_continuity_passed':bool(steps) and all(step==1 for step in steps),
         'av_offset_ms':[],'onset_uncertainty_ms':[],'receiver_sync_passed':False}
