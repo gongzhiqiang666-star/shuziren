@@ -65,7 +65,7 @@ class ConsoleLive:
             'worker': {'pid': worker.pid, 'exit_code': worker.poll()} if worker is not None else None,
         }
 
-    def start(self, audio_device, *, language='zh-CN', assistant_voice_id=None):
+    def start(self, audio_device, *, language='zh-CN', assistant_voice_id=None, camera_device=None):
         if type(audio_device) is not int or audio_device < 0:
             raise ProductError('请选择明确的音频输出设备')
         with self.lock:
@@ -82,11 +82,11 @@ class ConsoleLive:
             self.rotation = None
             self.reply_session = None
             self.completed = SimpleQueue()
-            self.thread = threading.Thread(target=self._run, args=(session_id, audio_device), name='console-live')
+            self.thread = threading.Thread(target=self._run, args=(session_id, audio_device, camera_device), name='console-live')
             self.thread.start()
             return self.state()
 
-    def _run(self, session_id, audio_device):
+    def _run(self, session_id, audio_device, camera_device=None):
         client = receiver = sink = ingress = assembler = None
         ole32 = None
         rotation_thread = None
@@ -133,6 +133,7 @@ class ConsoleLive:
                 avatar['width'], avatar['height'], audio_device,
                 buffer_frames=self.device_buffer_frames, video_delay_ms=100,
                 smooth_clock=True, camera_i420=True,
+                camera_device=camera_device,
             )
 
             def started():

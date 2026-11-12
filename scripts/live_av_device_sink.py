@@ -11,7 +11,8 @@ from scripts.audio_video_clock import AudioVideoClock,VideoDeadline
 class AVDeviceSink:
     clock_mode='audio'
 
-    def __init__(self,width,height,audio_device,on_present=None,video_delay_ms=0,smooth_clock=False,buffer_frames=2,camera_i420=False):
+    def __init__(self,width,height,audio_device,on_present=None,video_delay_ms=0,smooth_clock=False,buffer_frames=2,camera_i420=False,
+                 *, camera_device=None):
         import sounddevice as sd
         if type(audio_device) is not int:raise ValueError('Explicit output device required')
         if type(smooth_clock) is not bool:raise ValueError('Explicit clock mode required')
@@ -35,7 +36,7 @@ class AVDeviceSink:
         settings=sd.WasapiSettings(auto_convert=True) if sd.query_hostapis(info['hostapi'])['name']=='Windows WASAPI' else None
         sd.check_output_settings(device=audio_device,channels=1,dtype='int16',samplerate=24000,extra_settings=settings)
         try:
-            self.camera=VirtualCameraOutput(width,height,pixel_format='I420' if camera_i420 else 'BGR')
+            self.camera=VirtualCameraOutput(width,height,device=camera_device,pixel_format='I420' if camera_i420 else 'BGR')
             if camera_i420:
                 import cv2
                 self.prepare_camera_frame=lambda frame:cv2.cvtColor(frame,cv2.COLOR_BGR2YUV_I420)

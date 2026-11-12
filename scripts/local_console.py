@@ -653,7 +653,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                                                 '/api/voices/select', '/api/avatar-preparation/start', '/api/render/start'}:
                         raise Conflict('请先停止本机场次')
                     if path == '/api/live/start':
-                        if set(value) - {'audio_device', 'rotation_language', 'assistant_voice_id', 'video_path', 'video_backend'} or type(value.get('audio_device')) is not int or value['audio_device'] < 0:
+                        if set(value) - {'audio_device', 'rotation_language', 'assistant_voice_id', 'video_path', 'video_backend', 'camera_device'} or type(value.get('audio_device')) is not int or value['audio_device'] < 0:
                             raise ProductError('请选择音频输出设备')
                         if 'video_path' in value:
                             if set(value) - {'audio_device', 'video_path', 'video_backend'}:
@@ -663,6 +663,11 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         elif 'video_backend' in value:
                             raise ProductError('请选择本地驱动视频')
                         assistant_voice_id = value.get('assistant_voice_id')
+                        camera_device = value.get('camera_device')
+                        if camera_device is not None and (
+                                not isinstance(camera_device, str) or not 1 <= len(camera_device.strip()) <= 256
+                                or '\x00' in camera_device):
+                            raise ProductError('虚拟摄像头设备名称无效')
                         if assistant_voice_id is not None and (not isinstance(assistant_voice_id, str) or not assistant_voice_id):
                             raise ProductError('助播音色无效')
                         language = value.get('rotation_language', 'zh-CN')
@@ -679,6 +684,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             )})
                         return self.respond(202, {'session': live_manager.start(
                             value['audio_device'], language=language, assistant_voice_id=assistant_voice_id,
+                            **({'camera_device': camera_device.strip()} if camera_device is not None else {}),
                         )})
                     if path == '/api/live/video-seek':
                         if set(value) != {'session_id', 'position_ms'} or not isinstance(value['session_id'], str):

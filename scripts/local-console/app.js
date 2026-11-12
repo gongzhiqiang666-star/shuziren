@@ -2455,6 +2455,8 @@ $('live-start').addEventListener('click', () => liveAction(() => {
     audio_device, rotation_language:$('tts-language').value,
     assistant_voice_id:$('live-assistant-voice').value || null
   };
+  const cameraDevice = $('live-camera-device').value.trim();
+  if (!video_path && cameraDevice) payload.camera_device = cameraDevice;
   return request('/api/live/start', payload);
 }));
 $('live-stop').addEventListener('click', () => liveAction(() => request('/api/live/stop',{session_id:liveSession.id})));
