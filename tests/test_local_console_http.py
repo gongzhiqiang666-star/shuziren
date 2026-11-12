@@ -84,6 +84,18 @@ class ConsoleHTTPTests(unittest.TestCase):
                 self.assertIn('覆盖', error['error'])
         self.assertEqual(self.call(route + '/summary?' + urlencode({**base, **first_report}))[0], 200)
 
+    def test_business_metrics_summary_preserves_large_integer_totals(self):
+        route = '/api/products/business-metrics'
+        _, response = self.call('/api/products', {'title': '茶杯', 'content': '经营数据', 'product_index': 1})
+        base = {'product_id': response['product']['id'], 'source': '商家报表', 'scope': '商品日统计'}
+        for day, orders in [('2026-11-01', 2**53 - 1), ('2026-11-02', 2)]:
+            self.assertEqual(self.call(route, {**base, 'period_start': day, 'period_end': day,
+                                               'orders': orders, 'refunds': 0})[0], 200)
+        query = urlencode({**base, 'period_start': '2026-11-01', 'period_end': '2026-11-02'})
+        self.assertEqual(self.call(route + '/summary?' + query), (200, {'summary': {
+            'clicks': None, 'orders': str(2**53 + 1), 'refunds': 0, 'closing_stock': None,
+        }}))
+
     def test_rotation_event_pages_preserve_order_and_scene_isolation(self):
         store = ProductStore(self.directory.name)
         product = store.save(title='茶杯', content='口播验收', product_index=1)

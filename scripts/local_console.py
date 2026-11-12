@@ -281,6 +281,9 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if set(query) != fields or any(len(values) != 1 or not values[0] for values in query.values()):
                         raise ProductError("请选择商品、数据来源、统计口径和日期")
                     summary = products().summarize_business_metrics(**{key: values[0] for key, values in query.items()})
+                    # The browser cannot represent all SQLite counts as JSON numbers.
+                    summary = {key: str(value) if value is not None and value >= 2**53 else value
+                               for key, value in summary.items()}
                     return self.respond(200, {"summary": summary})
                 if path == "/api/llm/state":
                     from scripts.console_llm import status
