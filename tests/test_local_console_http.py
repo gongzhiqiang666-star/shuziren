@@ -24,7 +24,6 @@ class ConsoleHTTPTests(unittest.TestCase):
         store = ProductStore(self.directory.name)
         product = store.save(title='茶杯', content='商品说明', product_index=1, product_facts={
             '材质': {'status': 'verified', 'value': '陶瓷', 'source': '商品标签'},
-            '低库存阈值': {'status': 'verified', 'value': 2, 'source': '商家确认'},
         })
         product_id = product['id']
         script_id = store.add_script(product, '这是一只陶瓷杯。')
@@ -246,18 +245,21 @@ class ConsoleHTTPTests(unittest.TestCase):
         store = ProductStore(self.directory.name)
         first = store.save(title='茶杯', content='旧说明', product_index=1, product_facts={
             '材质': {'status': 'verified', 'value': '陶瓷', 'source': '商品标签'},
+            '成本': {'status': 'verified', 'value': 20, 'source': '商家确认'},
+            '排品角色': {'status': 'verified', 'value': '主推', 'source': '商家确认'},
+            '低库存阈值': {'status': 'verified', 'value': 2, 'source': '商家确认'},
             '活动': {'status': 'verified', 'value': '半价', 'source': '旧活动',
                      'expires_at': '2020-01-01T00:00:00Z'},
         })
         second = store.save(title='桌布', content='旧说明', product_index=2)
-        query = urlencode({'product_id': [second['id'], first['id']], 'fact': ['材质', '活动', '低库存阈值']}, doseq=True)
+        fields = ['材质', '活动', '低库存阈值', '成本', '排品角色']
+        query = urlencode({'product_id': [second['id'], first['id']], 'fact': fields}, doseq=True)
         status, result = self.call('/api/products/guide?' + query)
         self.assertEqual(status, 200)
         unknown, verified = result['products']
         self.assertEqual(unknown['product_id'], second['id'])
-        self.assertEqual(unknown['facts'], {'材质': None, '活动': None, '低库存阈值': None})
-        self.assertEqual(verified['facts'], {'材质': {'value': '陶瓷', 'source': '商品标签'},
-                                             '活动': None, '低库存阈值': None})
+        self.assertEqual(unknown['facts'], dict.fromkeys(fields))
+        self.assertEqual(verified['facts'], {**dict.fromkeys(fields), '材质': {'value': '陶瓷', 'source': '商品标签'}})
 
     def test_settlement_review_keeps_estimates_and_unknown_costs_distinct(self):
         store = ProductStore(self.directory.name)

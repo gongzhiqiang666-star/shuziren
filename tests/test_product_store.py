@@ -138,6 +138,8 @@ class ProductStoreTests(unittest.TestCase):
             'promotion': {'value': 'expired offer', 'status': 'verified',
                           'source': 'catalog', 'expires_at': '2026-11-11T00:00:00Z'},
             'stock': {'value': 10, 'status': 'unknown', 'source': 'catalog'},
+            '成本': {'value': 20, 'status': 'verified', 'source': '商家确认'},
+            '排品角色': {'value': '主推', 'status': 'verified', 'source': '商家确认'},
         })
         current = self.store.get(edited['id'])
         self.assertEqual(current['extra']['未知原字段'], original['extra']['未知原字段'])
