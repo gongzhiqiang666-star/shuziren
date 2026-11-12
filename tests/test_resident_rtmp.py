@@ -69,10 +69,13 @@ class ResidentRtmpTests(unittest.TestCase):
 
         self.reader.reconnect.side_effect = reconnect
         self.reader.processed_frames_queue.put(None)
-        self.engine._load_live_frames([0])
-        self.assertTrue(started.wait(1))
-        self.reader.stop_capture.side_effect = lambda: self.assertFalse(
-            self.engine.rtmp_reconnect.is_alive())
-        self.engine.close()
+        with self.assertLogs(level='WARNING') as logs:
+            self.engine._load_live_frames([0])
+            self.assertTrue(started.wait(1))
+            self.reader.stop_capture.side_effect = lambda: self.assertFalse(
+                self.engine.rtmp_reconnect.is_alive())
+            self.engine.close()
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn('开始重连', logs.output[0])
         self.assertTrue(self.engine.rtmp_cancel.is_set())
         self.reader.stop_capture.assert_called_once_with()

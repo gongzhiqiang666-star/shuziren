@@ -95,9 +95,11 @@ class ResidentAvatar:
             if (reader.width, reader.height) != size:
                 raise RuntimeError('RTMP 重连后输入尺寸发生变化')
         except Exception as error:
-            self.rtmp_error = error
+            if not self.rtmp_cancel.is_set():
+                self.rtmp_error = error
         else:
-            logging.warning('RTMP 已重新连接')
+            if not self.rtmp_cancel.is_set():
+                logging.warning('RTMP 已重新连接')
 
     def start(self,session):
         if not isinstance(session,str) or not session:raise ValueError('Session ID required')
