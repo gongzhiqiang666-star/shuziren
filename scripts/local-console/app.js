@@ -360,9 +360,29 @@ preparationReviewSave.addEventListener('click', async () => {
   }
 });
 let savedPreparationHasProducts = false;
+const captureBaseline = $('preparation-capture-baseline');
+async function showLineupBaseline(capture) {
+  const button = capture ? captureBaseline : $('preparation-baseline');
+  if (button.disabled || consoleClosed) return;
+  button.disabled = true;
+  const status = $('preparation-baseline-status');
+  try {
+    const {baseline} = await request(preparationRoute + '/baseline', capture ? {} : undefined);
+    status.textContent = baseline
+      ? `人工基线 · ${new Date(baseline.captured_at).toLocaleString()} · ${baseline.lineup.map(item => `${item.title}（版本 ${item.version}）`).join(' → ')}`
+      : '暂无人工排品基线';
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = capture && !savedPreparationHasProducts;
+  }
+}
+$('preparation-baseline').addEventListener('click', () => showLineupBaseline(false));
+captureBaseline.addEventListener('click', () => showLineupBaseline(true));
 function updatePreparationPreview(draft) {
   savedPreparationHasProducts = draft.product_ids.length > 0;
   preparationPreview.disabled = !savedPreparationHasProducts;
+  captureBaseline.disabled = !savedPreparationHasProducts;
 }
 preparationPreview.addEventListener('click', async () => {
   preparationPreview.disabled = true;
