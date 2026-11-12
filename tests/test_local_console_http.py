@@ -38,6 +38,12 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertIsNone(result['review']['net_minor'])
         self.assertEqual(result['review']['missing'], ['fees_minor'])
         self.assertEqual(self.call(route, {**payload, 'fees_minor': True})[0], 400)
+        status, result = self.call(route, {**payload, 'sales_minor': 1000})
+        self.assertEqual(status, 200)
+        self.assertEqual(result['review']['net_minor'], -4000)
+        status, error = self.call(route, {**payload, 'period_end': '2026-11-02'})
+        self.assertEqual(status, 400)
+        self.assertIn('覆盖', error['error'])
 
     def test_preparation_preserves_manual_lineup_order_through_handoff(self):
         store = ProductStore(self.directory.name)
