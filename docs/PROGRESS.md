@@ -797,3 +797,7 @@ V09 候选 6930e9f 安装版回采时间轴复核：解码 875 帧，不递增�
 V09 候选 71dba1f 在本机完成 439 文件清单校验和隔离安装，包 SHA-256 为 5fb9cf695015b40113a762f642b882b470272981e38e9ca2f8df1f975f7ffd86。从安装目录加载控制台代码，Chrome 启动 CUDA 视频直驱后查看场次报告，运行中显示 26 帧，正常停播显示 33 帧。证据 logs/validation/v09-installed-live-report-71dba1f/result.json。源码 HTTP 回归 48 项，47 项通过、1 项跳过。此次从安装目录直接加载控制台，正式启动器、干净 Windows 整机和长稳仍待针对本候选验收。
 
 V09 候选 71dba1f 正式启动器补验通过。使用 deploy --with-media 激活候选包，再通过 run --with-media 启动。Chrome 完成 CUDA 视频直驱开播、查询运行报告（27 帧）、正常停播并复查最终报告（35 帧），经页面退出后启动器退出码 0。证据 logs/validation/v09-managed-report-71dba1f/result.json。干净 Windows 整机及长稳仍待验。
+
+V09-04 候选 0080c7e 构建及本机隔离安装通过，439 文件通过清单校验，包 SHA-256 为 2d85cae3f926ef983bb75cd61b149a37519a44bd527d18e35d0741bf71c64214。以仓库测试用例加载安装目录代码，9 项打包与迁移回归通过。本机未发现可用的 Windows Sandbox 或虚拟机环境，干净 Windows 整机验收保持待验。
+
+候选 0080c7e 源码 Windows 全量回归执行 302 项，290 项通过、12 项跳过，进程退出码 0。日志 logs/full-regression-0080c7e.log。
