@@ -313,3 +313,5 @@ X08-02 Windows 取消恢复补验：修复 FFmpeg 退出后输出句柄短暂占
 X08-02 编码器意外退出补验通过：真实 FFmpeg 在 12 帧后被终止，下一次提交返回 OSError，输出对象进入关闭状态并删除未完成的 TS 文件。用例目录 logs/validation/x08-nvenc-encoder-exit-01。
 
 X08-02 内存步幅回归：同一组 12 张灰阶图分别用连续数组与隔列视图提交，NVENC 输出逐帧解码后像素及 PTS 完全一致。直接与原始 BGR 灰度比较最大差约 3.67，编码颜色转换后的同路径对照通过。证据 logs/validation/x08-nvenc-strided-01。
+
+X08-02 Windows NVENC 意外退出后重开通过。提交 12 帧后终止 FFmpeg，下一次提交报错且半成品清理；同一路径新建编码器并提交 50 帧，正常关闭后 FFmpeg 双轨完整解码通过。证据 logs/validation/x08-nvenc-crash-reopen-01/result.json。此轮使用合成帧和静音，真实人物时序、设备并发和长稳门槛保持待验。
