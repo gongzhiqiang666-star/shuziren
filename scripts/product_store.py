@@ -303,7 +303,8 @@ class ProductStore:
         improvements = [task for task in self.live_improvements(adopted_only=True)
                         if task['product_id'] is None or task['product_id'] in selected_ids]
         package = {**preparation, 'items': items, 'improvements': improvements,
-                   'after_sales_tasks': self.after_sales_tasks(preparation['draft']['product_ids']), 'segments': {
+                   'after_sales_tasks': self.after_sales_tasks(preparation['draft']['product_ids'], current_only=True),
+                   'segments': {
             'opening': '欢迎来到直播间，接下来为大家逐一介绍本场商品。',
             'transition': '接下来介绍下一件商品。',
             'closing': '感谢观看，本场商品介绍到这里。',
@@ -904,16 +905,25 @@ class ProductStore:
                     evidence_count=excluded.evidence_count, owner=excluded.owner, goal=excluded.goal
             """, (*key, category, count, owner, goal))
 
-    def after_sales_tasks(self, product_ids):
+    def after_sales_tasks(self, product_ids, *, current_only=False):
         if not product_ids:
             return []
         placeholders = ', '.join('?' for _ in product_ids)
         with self.connect() as db:
             rows = db.execute(f"""
-                SELECT * FROM product_after_sales_tasks WHERE product_id IN ({placeholders})
-                ORDER BY product_id, period_end DESC, source, category
+                SELECT task.*, report.counts AS current_counts
+                FROM product_after_sales_tasks task LEFT JOIN product_after_sales report
+                USING (product_id, source, period_start, period_end)
+                WHERE task.product_id IN ({placeholders})
+                ORDER BY task.product_id, task.period_end DESC, task.source, task.category
             """, product_ids).fetchall()
-        return [dict(row) for row in rows]
+        tasks = []
+        for row in rows:
+            task = dict(row)
+            current_counts = json.loads(task.pop('current_counts') or '{}')
+            if not current_only or current_counts.get(task['category']) == task['evidence_count']:
+                tasks.append(task)
+        return tasks
 
     def after_sales(self, product_id):
         self.get(product_id)

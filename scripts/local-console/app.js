@@ -190,6 +190,9 @@ async function afterSalesAction(action) {
         save.textContent = '保存售后改进任务';
         const feedback = document.createElement('p');
         feedback.setAttribute('role', 'status');
+        if (followup.task && followup.task.evidence_count !== followup.count) {
+          feedback.textContent = '报表数量已更正，请核对目标后重新保存';
+        }
         form.append(ownerLabel, goalLabel, save, feedback);
         form.addEventListener('submit', async event => {
           event.preventDefault();
