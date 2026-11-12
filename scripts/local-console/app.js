@@ -572,6 +572,8 @@ function renderLiveButtons() {
     : $('live-enqueue').disabled;
   $('live-audio').disabled = active || liveBusy;
   $('live-video-path').disabled = consoleClosed || active || liveBusy;
+  $('live-video-backend-panel').hidden = !$('live-video-path').value.trim();
+  $('live-video-backend').disabled = consoleClosed || active || liveBusy;
   $('live-video-seek').hidden = liveSession.mode !== 'local_video' || liveSession.status !== 'running';
   $('live-video-jump').disabled = consoleClosed || liveBusy || !!liveSession.seek_pending || !!liveSession.insert_pending;
   $('live-assistant-voice').disabled = consoleClosed || active || liveBusy;
@@ -612,6 +614,7 @@ async function liveAction(work) {
   finally { liveBusy = false; renderLiveButtons(); }
 }
 $('live-audio').addEventListener('change', renderLiveButtons);
+$('live-video-path').addEventListener('input', renderLiveButtons);
 $('live-products').addEventListener('change', () => { rotationSelectionEdited = true; renderShiftFields(); renderLiveButtons(); });
 $('live-shifts-enabled').addEventListener('change', renderShiftFields);
 $('live-rotation-start').addEventListener('click', () => liveAction(() => {
@@ -688,7 +691,7 @@ $('live-devices').addEventListener('click', () => liveAction(async () => {
 $('live-start').addEventListener('click', () => liveAction(() => {
   const audio_device = Number($('live-audio').value);
   const video_path = $('live-video-path').value.trim();
-  const payload = video_path ? {audio_device, video_path} : {
+  const payload = video_path ? {audio_device, video_path, video_backend:$('live-video-backend').value} : {
     audio_device, rotation_language:$('tts-language').value,
     assistant_voice_id:$('live-assistant-voice').value || null
   };

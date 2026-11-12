@@ -179,9 +179,11 @@ class ConsoleLive:
                 self.status.update(status='failed' if error else 'stopped', error=error, ended_at=time.time())
                 self._record_session()
 
-    def start_video(self, audio_device, video_path):
+    def start_video(self, audio_device, video_path, *, backend='cuda'):
         if type(audio_device) is not int or audio_device < 0:
             raise ProductError('请选择明确的音频输出设备')
+        if backend not in ('cuda', 'tensorrt'):
+            raise ProductError('本地视频推理后端无效')
         if not isinstance(video_path, str) or not video_path.strip():
             raise ProductError('请选择本地驱动视频')
         video = Path(video_path).expanduser()
@@ -193,17 +195,17 @@ class ConsoleLive:
             self.cancel.clear()
             session_id = uuid.uuid4().hex
             self.status = {'id': session_id, 'status': 'preparing', 'mode': 'local_video',
-                           'audio_device': audio_device, 'frames': 0, 'requested_at': time.time()}
+                           'audio_device': audio_device, 'backend': backend, 'frames': 0, 'requested_at': time.time()}
             self.rotation = self.reply_session = None
             self.video_commands = Queue(maxsize=1)
             self.video_insert_snapshot = None
             self._record_session()
-            self.thread = threading.Thread(target=self._run_video, args=(session_id, audio_device, video.resolve()),
+            self.thread = threading.Thread(target=self._run_video, args=(session_id, audio_device, video.resolve(), backend),
                                            name='console-origin-live')
             self.thread.start()
             return self.state()
 
-    def _run_video(self, session_id, audio_device, video):
+    def _run_video(self, session_id, audio_device, video, backend):
         from scripts.media_runtime import runtime_python
 
         error = None
@@ -215,6 +217,8 @@ class ConsoleLive:
             directory.mkdir(parents=True)
             command = [str(runtime_python(self.tts.runtime)), '-X', 'utf8', '-m', 'scripts.origin_live_worker',
                        '--runtime-root', str(self.tts.runtime), '--video', str(video), '--audio-device', str(audio_device)]
+            if backend == 'tensorrt':
+                command.extend(['--tensorrt-cache', str(self.directory / 'origin-engine-cache')])
             events = SimpleQueue()
             with (directory / 'origin-worker.log').open('w', encoding='utf-8') as log:
                 process = subprocess.Popen(command, cwd=Path(__file__).resolve().parents[1],
@@ -233,7 +237,7 @@ class ConsoleLive:
 
                 reader = threading.Thread(target=read_events, daemon=True)
                 reader.start()
-                deadline = time.monotonic() + 60
+                deadline = time.monotonic() + (240 if backend == 'tensorrt' else 60)
                 stopping = False
                 while process.poll() is None:
                     if self.cancel.is_set() and not stopping:
