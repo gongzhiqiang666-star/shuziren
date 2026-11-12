@@ -300,6 +300,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             'rotation_faults': len(report['rotation_faults']),
                             'played_replies': sum(item['played_at'] is not None for item in report['queued_replies']),
                             'products': report['products'],
+                            'lineup_baseline': report['lineup_baseline'],
                         }
                     return self.respond(200, {**comparison, 'conclusion': 'uncertain',
                                               'missing': ['audience', 'traffic', 'promotion', 'refund_lag']})

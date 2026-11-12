@@ -446,6 +446,10 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call(route + '/baseline', {})[0], 200)
         self.assertEqual(self.call(route + '/trial', trial)[1]['lineup_baseline'], captured['baseline'])
         self.assertEqual(self.call('/api/live/report?session_id=trial')[1]['lineup_baseline'], captured['baseline'])
+        store.record_live_session('control', 1, started_at=2, ended_at=3, status='stopped')
+        comparison = self.call('/api/live/compare?baseline=control&trial=trial')[1]
+        self.assertIsNone(comparison['baseline']['lineup_baseline'])
+        self.assertEqual(comparison['trial']['lineup_baseline'], captured['baseline'])
 
     def test_product_selection_requires_verified_primary_role_and_commercial_facts(self):
         store = ProductStore(self.directory.name)

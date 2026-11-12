@@ -2136,7 +2136,8 @@ $('live-compare-form').addEventListener('submit', event => {
         const title = savedProducts.find(product => product.id === item.product_id)?.title ?? item.product_id;
         return `${label} · ${title} · 商品版本 ${item.product_version} · 话术 ${item.script_id} · 已播 ${item.completed_segments} 段`;
       });
-      return [summary, ...products];
+      const lineup = result.lineup_baseline?.lineup.map(item => `${item.title}（版本 ${item.version}）`).join(' → ');
+      return [summary, `${label} · 人工排品基线 ${lineup ?? '未关联'}`, ...products];
     });
     const gaps = {audience:'人群', traffic:'流量', promotion:'活动', refund_lag:'退款滞后'};
     lines.push('结论：不确定', '待补数据：' + comparison.missing.map(key => gaps[key] ?? key).join('、'));
