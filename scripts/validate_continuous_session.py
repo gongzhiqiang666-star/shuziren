@@ -280,6 +280,7 @@ def main():
                     report['checks']['first_output_cohort_within_budget']=all(
                         metric['count']==50 and metric['p95_ms']<=1000 for metric in latency.values())
                 if args.seconds>=1840:
+                    report['checks']['receiver_full_capture_continuity'] = report['receiver']['frame_continuity_passed']
                     span=report['receiver']['speech_measurement_span_seconds']
                     drift=report['receiver']['speech_av_drift_ms']
                     report['checks']['receiver_drift_within_budget']=(
