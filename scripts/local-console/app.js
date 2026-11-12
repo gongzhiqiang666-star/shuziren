@@ -105,6 +105,7 @@ function showProduct(product) {
   $('promotion-form').reset();
   $('promotion-status').textContent = '';
   $('promotion-records').replaceChildren();
+  $('promotion-plans').replaceChildren();
   $('after-sales-form').reset();
   $('after-sales-import-form').reset();
   $('after-sales-compare').reset();
@@ -129,6 +130,15 @@ for (const id of Object.values(summaryFields)) {
 }
 const settlementForm = $('settlement-review-form');
 const promotionForm = $('promotion-form');
+async function loadPromotionPlans(product) {
+  const {plans} = await request('/api/promotion/plans?' + new URLSearchParams({product_id:product.id}));
+  if (currentProduct !== product) return;
+  $('promotion-plans').replaceChildren(...plans.map(plan => {
+    const row = document.createElement('li');
+    row.textContent = `本机方案 ${plan.bill.campaign} / ${plan.bill.asset} · ${plan.bill.period_start} 至 ${plan.bill.period_end} · 原账单 ${plan.bill.spend_minor} 分 · 上限 ${plan.budget_minor} 分 · ${plan.rationale}`;
+    return row;
+  }));
+}
 async function promotionSpendAction(save) {
   const product = currentProduct;
   const buttons = Array.from(promotionForm.querySelectorAll('button'));
@@ -172,16 +182,37 @@ async function promotionSpendAction(save) {
       button.textContent = '预览预算';
       const previewStatus = document.createElement('p');
       previewStatus.setAttribute('role', 'status');
-      form.append(label, button, previewStatus);
+      const rationale = document.createElement('textarea');
+      rationale.maxLength = 2000;
+      const reason = document.createElement('label');
+      reason.append('调整理由', rationale);
+      const savePlan = document.createElement('button');
+      savePlan.type = 'button';
+      savePlan.textContent = '保存本机投放方案';
+      form.append(label, button, reason, savePlan, previewStatus);
       row.append(form);
+      const billIdentity = {product_id:record.product_id, source:record.source, period_start:record.period_start,
+        period_end:record.period_end, campaign:record.campaign, asset:record.asset};
+      savePlan.addEventListener('click', async () => {
+        if (savePlan.disabled || currentProduct !== product || consoleClosed || !budget.reportValidity()) return;
+        savePlan.disabled = true;
+        try {
+          await request('/api/promotion/plans', {...billIdentity, budget_minor:budget.valueAsNumber, rationale:rationale.value});
+          previewStatus.textContent = '本机投放方案已保存';
+          await loadPromotionPlans(product);
+        } catch (error) {
+          previewStatus.textContent = error.message;
+        } finally {
+          savePlan.disabled = false;
+        }
+      });
       form.addEventListener('submit', async event => {
         event.preventDefault();
         if (button.disabled || currentProduct !== product || consoleClosed) return;
-        const {product_id, source, period_start, period_end, campaign, asset} = record;
         button.disabled = true;
         try {
           const {preview} = await request('/api/promotion/budget-preview', {
-            product_id, source, period_start, period_end, campaign, asset, budget_minor:budget.valueAsNumber,
+            ...billIdentity, budget_minor:budget.valueAsNumber,
           });
           const labels = {over_budget:'已超预算', at_limit:'已达上限', below_limit:'低于上限'};
           previewStatus.textContent = `${labels[preview.status]} · 账单支出 ${preview.bill.spend_minor} 分 · 预算余额 ${preview.remaining_minor} 分`;
@@ -194,6 +225,7 @@ async function promotionSpendAction(save) {
       return row;
     }));
     status.textContent = save ? '投放费用已保存' : result.records.length ? '' : '暂无投放费用';
+    await loadPromotionPlans(product);
   } catch (error) {
     if (currentProduct === product) status.textContent = error.message;
   } finally {
