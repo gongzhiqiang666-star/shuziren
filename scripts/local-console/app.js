@@ -285,7 +285,7 @@ async function promotionSpendAction(save) {
         savePlan.disabled = true;
         try {
           await request('/api/promotion/plans', {...billIdentity, budget_minor:budget.valueAsNumber,
-            rationale:rationale.value, expected_bill:record});
+            rationale:rationale.value, expected_bill:record, expected_product_version:product.version});
           previewStatus.textContent = '本机投放方案已保存';
           await loadPromotionPlans(product);
         } catch (error) {

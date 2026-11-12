@@ -152,6 +152,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         store.save(title=product['title'], content='更新后的商品说明', product_index=1,
                    product_id=product['id'], version=product['version'])
         replacement_id = replacement['plan']['id']
+        self.assertEqual(self.call(plans, {**plan, 'expected_product_version': product['version']})[0], 409)
         self.assertEqual(self.call(plans + '/action', {**action, 'plan_id': replacement_id})[0], 409)
         self.assertEqual(self.call(plans + '?product_id=' + product['id'])[1]['plans'][0]['status'], 'stale')
 

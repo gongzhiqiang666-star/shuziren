@@ -1322,7 +1322,7 @@ class ProductStore:
             """, (*key, campaign, asset, spend_minor, attribution))
 
     def save_promotion_plan(self, product_id, source, period_start, period_end, campaign, asset,
-                            budget_minor, rationale, expected_bill=_UNCHANGED):
+                            budget_minor, rationale, expected_bill=_UNCHANGED, expected_product_version=None):
         rationale = text(rationale, '调整理由', 2000)
         if type(budget_minor) is not int or not 0 <= budget_minor < 2**53:
             raise ProductError('预算上限须为非负整数分')
@@ -1342,6 +1342,9 @@ class ProductStore:
             if bill['spend_minor'] > budget_minor:
                 raise Conflict('账单支出已超过预算上限')
             version = db.execute('SELECT version FROM products WHERE id=?', (product_id,)).fetchone()['version']
+            if expected_product_version is not None and (
+                    type(expected_product_version) is not int or expected_product_version != version):
+                raise Conflict('商品资料已变化，请重新读取后核对投放方案')
             snapshot = {'id': str(uuid.uuid4()), 'bill': dict(bill), 'budget_minor': budget_minor,
                         'product_version': version,
                         'rationale': rationale, 'recorded_at': datetime.now(timezone.utc).isoformat()}
