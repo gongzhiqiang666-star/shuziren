@@ -19,6 +19,23 @@ from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_live_content_source_preserves_original_product_and_script(self):
+        store = ProductStore(self.directory.name)
+        product = store.save(title='茶杯', content='原商品资料', product_index=1)
+        script_id = store.add_script(product, '原口播')
+        store.record_rotation_completion('scene', 'task', {
+            'product_id': product['id'], 'product_version': product['version'], 'script_id': script_id,
+        }, 0, sample_start=960, sample_end=1920)
+        store.save(title='新版茶杯', content='更新资料', product_index=1,
+                   product_id=product['id'], version=product['version'])
+        status, result = self.call('/api/live/content-source?session_id=scene&task_id=task')
+        self.assertEqual(status, 200)
+        source = result['source']
+        self.assertEqual(source['product_snapshot'], product)
+        self.assertEqual(source['script_text'], '原口播')
+        self.assertEqual((source['sample_start'], source['sample_end']), (960, 1920))
+        self.assertEqual(self.call('/api/live/content-source?session_id=other&task_id=task')[0], 400)
+
     def test_live_advice_only_reports_current_explicit_faults(self):
         route = '/api/live/advice'
         self.assertEqual(self.call(route), (200, {'session_id': None, 'advice': []}))

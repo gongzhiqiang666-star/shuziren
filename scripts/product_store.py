@@ -600,6 +600,24 @@ class ProductStore:
             """, (session_id, after, product_id, product_id, task_id, task_id)).fetchall()
         return [dict(row) for row in rows]
 
+    def live_content_source(self, session_id, task_id):
+        with self.connect() as db:
+            row = db.execute("""
+                SELECT event.session_id, event.task_id, event.product_id, event.product_version,
+                       event.script_id, event.segment_index, event.completed_at,
+                       event.sample_start, event.sample_end, script.snapshot, script.text AS script_text
+                FROM live_rotation_events event
+                LEFT JOIN scripts script ON script.id=event.script_id AND script.product_id=event.product_id
+                                        AND script.product_version=event.product_version
+                WHERE event.session_id=? AND event.task_id=?
+            """, (session_id, task_id)).fetchone()
+        if row is None:
+            raise ProductError('该场次没有对应的口播完成记录')
+        source = dict(row)
+        snapshot = source.pop('snapshot')
+        source['product_snapshot'] = json.loads(snapshot) if snapshot else None
+        return source
+
     @staticmethod
     def decode(row):
         if row is None:
