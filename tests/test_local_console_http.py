@@ -642,6 +642,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         adopted_reply, = self.call(package_route)[1]['improvements']
         self.assertEqual((adopted_reply['reply_task_id'], adopted_reply['product_version']),
                          ('current-reply', current['version']))
+        snapshot = {'revision': 'accepted-package', 'items': [], 'improvements': [adopted_reply]}
+        store.record_preparation_application('other', snapshot)
         store.record_reply_playback('scene', 'current-reply', 112)
         updated_review = self.call('/api/live/review?session_id=scene')[1]
         self.assertNotIn('current-reply', [reply['task_id'] for reply in
@@ -650,6 +652,9 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertIn(adopted_reply, saved_tasks)
         self.assertEqual(self.call(task_route, {**reply_task, 'adopted': False})[0], 200)
         self.assertEqual(self.call(package_route)[1]['improvements'], [])
+        self.assertEqual(self.call('/api/live/report?session_id=other')[1]['preparation_applications'],
+                         [snapshot])
+        self.assertEqual(self.call('/api/live/report?session_id=scene')[1]['preparation_applications'], [])
         self.assertIn('questions_and_answers', review['missing'])
         unqueued, = review['unqueued_replies']
         self.assertEqual((unqueued['question'], unqueued['status'], unqueued['reason']),
