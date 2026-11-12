@@ -844,9 +844,17 @@ function sourcingDecisionEditor(candidate) {
   panel.append(summary, form);
   function showEvidence(record) {
     const snapshot = record?.trial;
-    evidence.textContent = snapshot
-      ? `保存结论时的样品依据：${snapshot.sample_evidence} · 试卖：${snapshot.trial_evidence} · 样品成本：${snapshot.cost_minor ?? '未知'}${snapshot.cost_minor == null ? '' : ' 分'}`
-      : '';
+    const terms = record?.candidate;
+    evidence.textContent = terms
+      ? `保存结论时的采购资料：${terms.supplier} · ${terms.source} · ${terms.observed_on}`
+      : record ? '历史结论未记录采购资料快照' : '';
+    if (terms) {
+      for (const [key, label] of Object.entries(sourcingFields)) {
+        if (terms.details?.[key]) evidence.append(` · ${label} ${terms.details[key]}`);
+      }
+    }
+    if (snapshot) evidence.append(
+      ` · 样品依据：${snapshot.sample_evidence} · 试卖：${snapshot.trial_evidence} · 样品成本：${snapshot.cost_minor ?? '未知'}${snapshot.cost_minor == null ? '' : ' 分'}`);
     if (snapshot) {
       const metrics = Object.entries(sourcingTrialMetrics).map(([key, label]) =>
         `${label} ${snapshot.metrics?.[key] ?? '未知'}`);
