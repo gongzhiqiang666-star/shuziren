@@ -525,13 +525,17 @@ class ConsoleLive:
                                     voice_id = self.status.get('assistant_voice_id') or voice_id
                             if 'segments' in item or 'shift_voice_id' in item:
                                 item = {**item, 'voice_id': voice_id}
-                            self.enqueue(session_id, task_id, rotation_item=item)
+                            utterance = self.enqueue(session_id, task_id, rotation_item=item)
                             rotation['task_id'] = task_id
                             rotation['task_voice_id'] = voice_id
                             rotation['task_speech_provenance'] = {
                                 key: state[key] for key in ('engine', 'language', 'voice_audio_sha256', 'voice_text_sha256')
                                 if key in state
                             }
+                            rotation['task_speech_provenance'].update(
+                                generated_audio_sha256=utterance.original_sha256,
+                                played_pcm_sha256=utterance.pcm_sha256,
+                            )
                             pending = None
                         elif state['status'] not in {'running', 'succeeded'}:
                             raise ProductError(state.get('error') or '轮播语音合成失败')
@@ -640,6 +644,7 @@ class ConsoleLive:
             except Exception:
                 utterance.path.unlink(missing_ok=True)
                 raise
+            return utterance
 
     def stop(self, session_id):
         with self.lock:
