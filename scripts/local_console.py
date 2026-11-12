@@ -450,6 +450,16 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     return self.respond(200, {'baseline': products().live_lineup_baseline()})
                 if path == "/api/live/preparation/package":
                     return self.respond(200, products().build_live_preparation())
+                if path == "/api/products/guide":
+                    query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                    ids = query.get('product_id', [])
+                    names = [name.strip() for name in query.get('fact', [])]
+                    if (set(query) != {'product_id', 'fact'} or not 1 <= len(ids) <= 10
+                            or len(ids) != len(set(ids)) or any(not 1 <= len(item) <= 64 for item in ids)
+                            or not 1 <= len(names) <= 12 or len(names) != len(set(names))
+                            or any(not 1 <= len(name) <= 100 for name in names)):
+                        raise ProductError('请选择商品和需要比较的商品事实')
+                    return self.respond(200, {'products': products().compare_product_facts(ids, names)})
                 if path == "/api/products/selection-evidence":
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                     fields = {'source', 'scope', 'period_start', 'period_end'}
