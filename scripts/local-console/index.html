@@ -92,6 +92,20 @@
 </form>
 <p id="settlement-review-result" role="status"></p>
 </details>
+<details id="after-sales-panel">
+<summary>售后原因汇总</summary>
+<form id="after-sales-form">
+<p class="hint">使用上方来源和日期，只填写各类数量。留空表示未知。</p>
+<label>质量<input name="quality" type="number" min="0" step="1"></label>
+<label>尺码<input name="size" type="number" min="0" step="1"></label>
+<label>预期不符<input name="expectation" type="number" min="0" step="1"></label>
+<label>履约<input name="fulfillment" type="number" min="0" step="1"></label>
+<label>其他<input name="other" type="number" min="0" step="1"></label>
+<button type="submit">保存售后汇总</button>
+<button type="button" class="secondary" id="after-sales-read">读取售后汇总</button>
+</form>
+<p id="after-sales-status" role="status"></p><ul id="after-sales-reports"></ul>
+</details>
 </section>
 <section>
 <h2>直播准备</h2>

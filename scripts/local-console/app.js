@@ -102,6 +102,9 @@ function showProduct(product) {
   $('business-metrics-form').reset();
   $('business-import-form').reset();
   $('settlement-review-form').reset();
+  $('after-sales-form').reset();
+  $('after-sales-status').textContent = '';
+  $('after-sales-reports').replaceChildren();
   $('metrics-status').textContent = '';
   $('metrics-error').textContent = '';
   $('metrics-records').replaceChildren();
@@ -119,6 +122,53 @@ for (const id of Object.values(summaryFields)) {
   $(id).addEventListener('input', clearBusinessSummary);
 }
 const settlementForm = $('settlement-review-form');
+const afterSalesForm = $('after-sales-form');
+async function afterSalesAction(save) {
+  const product = currentProduct;
+  if (!product || consoleClosed) return;
+  const buttons = Array.from(afterSalesForm.querySelectorAll('button'));
+  if (buttons.some(button => button.disabled)) return;
+  const status = $('after-sales-status');
+  const route = '/api/products/after-sales';
+  const categories = {quality:'质量', size:'尺码', expectation:'预期不符', fulfillment:'履约', other:'其他'};
+  buttons.forEach(button => { button.disabled = true; });
+  status.textContent = '';
+  try {
+    let result;
+    if (save) {
+      const payload = {product_id:product.id, counts:{}};
+      for (const key of ['source', 'period_start', 'period_end']) {
+        const input = $(summaryFields[key]);
+        if (!input.reportValidity()) return;
+        payload[key] = input.value;
+      }
+      for (const [key, value] of new FormData(afterSalesForm)) {
+        if (value !== '') {
+          const count = Number(value);
+          if (!Number.isSafeInteger(count)) throw new Error('数量必须是可准确表示的整数');
+          payload.counts[key] = count;
+        }
+      }
+      result = await request(route, payload);
+    } else {
+      result = await request(route + '?' + new URLSearchParams({product_id:product.id}));
+    }
+    if (currentProduct !== product) return;
+    $('after-sales-reports').replaceChildren(...result.reports.map(report => {
+      const row = document.createElement('li');
+      const counts = Object.entries(categories).map(([key, label]) => `${label} ${report.counts[key] ?? '未知'}`);
+      row.textContent = [report.source, `${report.period_start} 至 ${report.period_end}`, ...counts].join(' · ');
+      return row;
+    }));
+    status.textContent = save ? '售后汇总已保存' : result.reports.length ? '' : '暂无售后汇总';
+  } catch (error) {
+    if (currentProduct === product) status.textContent = error.message;
+  } finally {
+    buttons.forEach(button => { button.disabled = false; });
+  }
+}
+afterSalesForm.addEventListener('submit', event => { event.preventDefault(); afterSalesAction(true); });
+$('after-sales-read').addEventListener('click', () => afterSalesAction(false));
 settlementForm.addEventListener('input', clearBusinessSummary);
 settlementForm.addEventListener('submit', async event => {
   event.preventDefault();
