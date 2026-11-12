@@ -211,3 +211,5 @@ A01-05 浏览器开播首轮未进入场次。Chrome 已载入控制台，但自
 A01-05 本机独立 Chrome 补验完成 RTMP 开播与停播。浏览器枚举并选中 CABLE Input，填入本机 SRS 地址，等待页面显示 RTMP 驱动及虚拟摄像头后点击停播。数据库记录场次已停止、输出 29 帧，无失败原因。自动化最后误等“已停播”文案，实际页面标签为“已停止”，脚本超时，终态由持久化场次核实。本轮未录制接收端。
 
 A01-05 摄像头输入环境复核：当前 FFmpeg DirectShow 仅枚举 Tblive Virtual Camera 视频端及 VB-Audio CABLE Output 音频端，未找到独立物理摄像头。人脸接口 4 项回归通过，实际有效画面和断开恢复保留待验。
+
+A01-05 本地视频直驱 HTTP 补验使用 V09 独立媒体目录时未启动。工作进程缺少 bin.image_infer_v2.wenet.compute_ctc_att_bnf，场次在 0 帧退出。证据 logs/validation/a01-direct-http-seek-01 的场次日志。下一步核对独立媒体打包所需的原视频 WeNet 支持，再复测跳转。
