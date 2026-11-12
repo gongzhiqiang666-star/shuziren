@@ -22,3 +22,9 @@
 截图本机忽略路径：`logs/validation/v04-profile-integration/ui-profile-result.png`（方案/结果）与`ui-success.png`（播放结束画面）。ui-proof.json保存任务与媒体核对，不提交人物、录音、配置或引擎。
 
 10项任务状态回归、16项HTTP回归（显式真实FFmpeg，无跳过）、前端JS语法检查通过；恢复基线日志另存v04-profile-recovery.log。阶段状态：V04-04f在产品任务/页面/取消范围通过，V03/V04整关人工与其他场景仍待验。后续继续V05-01b真实TTS快照交接与V05-02常驻模型，不重复调优已过线的批次容量。
+
+## X08 编码回归复核（2026-11-12）
+
+本机使用 v122 随包 CPython 3.10 和 FFmpeg，设置 SHUZIREN_TEST_NVENC=1。运行 `python -X utf8 -m unittest discover -s tests -p test_raw_video_writer.py` 通过 3 项，再以相同解释器运行 `test_render_tasks.py` 对应的发现命令，10 项通过。覆盖真实 NVENC 与 libx264 的音频尾部、异常及取消清理，以及任务层的编码器声明、输入绑定和迟到结果校验。产品 API 的真实子进程取消依据仍为上文记录。
+
+X08 直接编码维持显式加速预览。X08-03 的 30 分钟连续性和人工动态口型画质待补验，X08-04 的默认路径采用决定待验收后再定。其他 GPU 优化按实测瓶颈逐项验证。
