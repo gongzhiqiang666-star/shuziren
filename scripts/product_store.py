@@ -145,6 +145,9 @@ class ProductStore:
                     period_start TEXT NOT NULL, period_end TEXT NOT NULL, campaign TEXT NOT NULL,
                     asset TEXT NOT NULL, spend_minor INTEGER NOT NULL, attribution TEXT,
                     PRIMARY KEY(product_id, source, period_start, period_end, campaign, asset));
+                CREATE TABLE IF NOT EXISTS promotion_plans (
+                    id TEXT PRIMARY KEY, product_id TEXT NOT NULL REFERENCES products(id),
+                    snapshot TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS product_after_sales_tasks (
                     product_id TEXT NOT NULL, source TEXT NOT NULL, period_start TEXT NOT NULL,
                     period_end TEXT NOT NULL, category TEXT NOT NULL, evidence_count INTEGER NOT NULL,
@@ -1142,6 +1145,36 @@ class ProductStore:
                 ON CONFLICT(product_id, source, period_start, period_end, campaign, asset)
                 DO UPDATE SET spend_minor=excluded.spend_minor, attribution=excluded.attribution
             """, (*key, campaign, asset, spend_minor, attribution))
+
+    def save_promotion_plan(self, product_id, source, period_start, period_end, campaign, asset, budget_minor, rationale):
+        rationale = text(rationale, '调整理由', 2000)
+        if type(budget_minor) is not int or not 0 <= budget_minor < 2**53:
+            raise ProductError('预算上限须为非负整数分')
+        keys = (product_id, source, period_start, period_end, campaign, asset)
+        if any(not isinstance(value, str) or not value.strip() for value in keys):
+            raise ProductError('投放方案需要完整的账单定位条件')
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            bill = db.execute("""
+                SELECT * FROM promotion_spend WHERE product_id=? AND source=? AND period_start=?
+                    AND period_end=? AND campaign=? AND asset=?
+            """, keys).fetchone()
+            if not bill:
+                raise ProductError('缺少对应的投放账单')
+            if bill['spend_minor'] > budget_minor:
+                raise Conflict('账单支出已超过预算上限')
+            snapshot = {'id': str(uuid.uuid4()), 'bill': dict(bill), 'budget_minor': budget_minor,
+                        'rationale': rationale, 'recorded_at': datetime.now(timezone.utc).isoformat()}
+            db.execute('INSERT INTO promotion_plans VALUES (?, ?, ?)',
+                       (snapshot['id'], product_id, json.dumps(snapshot, ensure_ascii=False)))
+        return snapshot
+
+    def promotion_plans(self, product_id):
+        self.get(product_id)
+        with self.connect() as db:
+            rows = db.execute('SELECT snapshot FROM promotion_plans WHERE product_id=? ORDER BY rowid DESC',
+                              (product_id,)).fetchall()
+        return [json.loads(row['snapshot']) for row in rows]
 
     def promotion_spend(self, product_id):
         self.get(product_id)

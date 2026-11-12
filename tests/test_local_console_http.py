@@ -38,6 +38,14 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(result['preview'], {'bill': corrected, 'budget_minor': 300,
                                             'remaining_minor': -20, 'status': 'over_budget'})
         self.assertEqual(self.call(preview_route, {**preview, 'budget_minor': 320})[1]['preview']['status'], 'at_limit')
+        plans = '/api/promotion/plans'
+        plan = {**preview, 'budget_minor': 500, 'rationale': '验证新素材'}
+        self.assertEqual(self.call(plans, {**plan, 'budget_minor': 300})[0], 409)
+        status, result = self.call(plans, plan)
+        self.assertEqual(status, 200)
+        self.assertEqual(result['plan']['bill'], corrected)
+        self.assertEqual(self.call(route, {**corrected, 'spend_minor': 400})[0], 200)
+        self.assertEqual(self.call(plans + '?product_id=' + product['id']), (200, {'plans': [result['plan']]}))
 
     def test_sourcing_candidates_preserve_source_and_leave_missing_terms_unknown(self):
         route = '/api/sourcing/candidates'

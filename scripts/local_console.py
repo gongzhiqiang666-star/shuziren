@@ -469,10 +469,12 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if path.endswith('/decision'):
                         return self.respond(200, {'decision': products().sourcing_decision(ids[0])})
                     return self.respond(200, {'trial': products().sourcing_trial(ids[0])})
-                if path == "/api/promotion/spend":
+                if path in {"/api/promotion/spend", "/api/promotion/plans"}:
                     ids = parse_qs(urlsplit(self.path).query).get('product_id', [])
                     if len(ids) != 1 or not 1 <= len(ids[0]) <= 64:
                         raise ProductError('请选择投放商品')
+                    if path.endswith('/plans'):
+                        return self.respond(200, {'plans': products().promotion_plans(ids[0])})
                     return self.respond(200, {'records': products().promotion_spend(ids[0])})
                 if path == "/api/sourcing/candidates":
                     return self.respond(200, {'candidates': products().sourcing_candidates()})
@@ -788,6 +790,11 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         else:
                             data.revoke_live_advice_acknowledgment(value['session_id'], value['advice'], time())
                         return self.respond(200, {'acknowledged': acknowledge})
+                    if path == "/api/promotion/plans":
+                        if set(value) != {'product_id', 'source', 'period_start', 'period_end', 'campaign', 'asset',
+                                         'budget_minor', 'rationale'}:
+                            raise ProductError('投放方案字段无效')
+                        return self.respond(200, {'plan': products().save_promotion_plan(**value)})
                     if path == "/api/promotion/budget-preview":
                         fields = {'product_id', 'source', 'period_start', 'period_end', 'campaign', 'asset'}
                         if (set(value) != fields | {'budget_minor'} or any(
