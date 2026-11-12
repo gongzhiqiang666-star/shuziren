@@ -138,7 +138,7 @@ async function loadPromotionPlans(product) {
     row.textContent = `本机方案 ${plan.bill.campaign} / ${plan.bill.asset} · ${plan.bill.period_start} 至 ${plan.bill.period_end} · 原账单 ${plan.bill.spend_minor} 分 · 上限 ${plan.budget_minor} 分 · ${plan.rationale}`;
     const status = document.createElement('span');
     status.setAttribute('role', 'status');
-    const labels = {draft:'待审核', approved:'本机已审核', paused:'本机已暂停'};
+    const labels = {draft:'待审核', approved:'本机已审核', paused:'本机已暂停', stale:'账单已变更，待重审'};
     const approve = document.createElement('button');
     approve.type = 'button';
     approve.textContent = '审核本机方案';
@@ -147,8 +147,8 @@ async function loadPromotionPlans(product) {
     pause.textContent = '暂停本机方案';
     const showStatus = value => {
       status.textContent = labels[value];
-      approve.disabled = value === 'approved';
-      pause.disabled = value !== 'approved';
+      approve.disabled = value === 'approved' || value === 'stale';
+      pause.disabled = value !== 'approved' && value !== 'stale';
     };
     showStatus(plan.status);
     const update = async action => {

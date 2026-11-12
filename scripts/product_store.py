@@ -1173,13 +1173,21 @@ class ProductStore:
         return snapshot
 
     def promotion_plans(self, product_id):
-        self.get(product_id)
+        keys = ('source', 'period_start', 'period_end', 'campaign', 'asset')
+        bills = {tuple(bill[key] for key in keys): bill for bill in self.promotion_spend(product_id)}
         with self.connect() as db:
             rows = db.execute('''SELECT snapshot, COALESCE((
                 SELECT action FROM promotion_plan_actions WHERE plan_id=promotion_plans.id ORDER BY rowid DESC LIMIT 1
             ), 'draft') AS status FROM promotion_plans WHERE product_id=? ORDER BY rowid DESC''',
                               (product_id,)).fetchall()
-        return [{**json.loads(row['snapshot']), 'status': row['status']} for row in rows]
+        plans = []
+        for row in rows:
+            plan = json.loads(row['snapshot'])
+            bill = plan['bill']
+            current = bills.get(tuple(bill[key] for key in keys))
+            plan['status'] = 'stale' if row['status'] == 'approved' and current != bill else row['status']
+            plans.append(plan)
+        return plans
 
     def update_promotion_plan(self, plan_id, action):
         if action not in ('approved', 'paused'):
