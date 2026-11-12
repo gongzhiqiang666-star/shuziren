@@ -855,6 +855,12 @@ class ProductStore:
                              (session_id, task_id)).fetchone()
         return row['body'] if row else None
 
+    def live_content_production_seconds(self, session_id, task_id):
+        with self.connect() as db:
+            row = db.execute('SELECT production_seconds FROM live_content_drafts WHERE session_id=? AND task_id=?',
+                             (session_id, task_id)).fetchone()
+        return row['production_seconds'] if row else None
+
     def live_content_summary(self, session_id):
         with self.connect() as db:
             row = db.execute("""

@@ -384,6 +384,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                                         'segment_index', 'voice_id', 'sample_start', 'sample_end')},
                             'speaker_role': source['segment']['type'],
                             'speech_provenance': source['speech_provenance'],
+                            'production_seconds': products().live_content_production_seconds(
+                                source['session_id'], source['task_id']),
                         }})
                     source['has_saved_draft'] = products().live_content_draft_body(
                         source['session_id'], source['task_id']) is not None

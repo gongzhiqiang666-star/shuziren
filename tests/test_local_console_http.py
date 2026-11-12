@@ -460,6 +460,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call('/api/live/content-draft', {**body, **other_clip})[0], 200)
         self.assertEqual(self.call('/api/live/content-draft', {**body, **other_clip, 'production_seconds': -1})[0], 400)
         self.assertEqual(self.call('/api/live/content-draft', {**body, **other_clip, 'production_seconds': 42})[0], 200)
+        self.assertEqual(self.call(draft_route + 'fingerprinted-task')[1]['draft']['production_seconds'], 42)
         self.assertEqual(self.call(schedule_route, {**schedule, **other_clip})[0], 200)
         self.assertEqual(self.call(receipt_route, {**receipt, **other_clip})[0], 409)
         self.assertEqual(self.call(receipt_route, {**receipt, **other_clip, 'publication_id': 'platform-003'})[0], 200)

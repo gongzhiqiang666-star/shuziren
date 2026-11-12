@@ -2235,6 +2235,7 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         draftText.readOnly = !draft.editable;
         saveDraft.hidden = !draft.editable;
         productionLabel.hidden = !draft.editable;
+        productionSeconds.value = draft.production_seconds ?? '';
         draftButton.hidden = true;
         withdrawDraft.hidden = draft.saved_body == null || Boolean(draft.withdrawn);
         draftStatus.textContent = draft.withdrawn ? '文案已停止复用，仅供回查'
