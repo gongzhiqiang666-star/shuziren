@@ -361,7 +361,11 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertIsNone(item['conditions']['售价'])
         self.assertEqual(item['verified_fact_count'], 1)
         self.assertEqual(item['recommendation'], {'role': 'hold', 'reason': '已核对库存为零'})
-        store.save(title='桌布', content='另一商品', product_index=2)
+        store.save(title='桌布', content='另一商品', product_index=2, product_facts={
+            '库存': {'status': 'verified', 'value': 20, 'source': '旧盘点',
+                   'expires_at': '2020-01-01T00:00:00Z'},
+            '发货条件': {'status': 'verified', 'value': '48小时内', 'source': '商家确认'},
+        })
         window = {'source': '商家报表', 'scope': '商品日统计',
                   'period_start': '2026-11-01', 'period_end': '2026-11-01'}
         store.save_business_metrics(product['id'], **window, orders=5, refunds=0)
@@ -375,6 +379,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(first['business_metrics']['refunds'], 0)
         self.assertIsNone(second['business_metrics'])
         self.assertEqual(second['recommendation']['role'], 'hold')
+        self.assertIsNone(second['conditions']['库存'])
+        self.assertEqual(second['recommendation']['reason'], '需核对可售库存和发货条件')
         self.assertIn('覆盖', second['business_metrics_gap'])
         self.assertNotIn('refund_review', first)
         store.save_business_metrics(product['id'], **window, orders=5, refunds=6)
