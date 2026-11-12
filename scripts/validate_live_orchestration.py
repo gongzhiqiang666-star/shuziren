@@ -34,6 +34,7 @@ def main():
     parser.add_argument('--capture-seconds', type=int, default=35)
     parser.add_argument('--capture-buffer-mb', type=int, default=16)
     parser.add_argument('--camera-device', help='Require this explicit virtual camera for rotation')
+    parser.add_argument('--rtmp-url', help='Use an RTMP driving source matching the fixture dimensions')
     args = parser.parse_args()
     if args.capture_buffer_mb < 1:
         parser.error('--capture-buffer-mb must be positive')
@@ -207,6 +208,7 @@ def main():
             session_id = call('/api/live/start', {
                 'audio_device': device['id'], 'rotation_language': args.rotation_language,
                 'assistant_voice_id': assistant,
+                **({'rtmp_url': args.rtmp_url} if args.rtmp_url else {}),
                 **({'camera_device': args.camera_device} if args.camera_device else {}),
             }, 202)['session']['id']
             running = live(lambda state: state['id'] == session_id and state['status'] == 'running')
