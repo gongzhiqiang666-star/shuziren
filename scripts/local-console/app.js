@@ -861,11 +861,14 @@ function sourcingDecisionEditor(candidate) {
   history.append(historyTitle, historyList);
   form.append(button, status, evidence, currentEvidence);
   panel.append(summary, form, history);
+  let historyRequest = 0;
   async function loadHistory() {
+    const version = ++historyRequest;
     const query = new URLSearchParams({candidate_id:candidate.id});
     historyList.replaceChildren();
     try {
       const {decisions} = await request(route + '/history?' + query);
+      if (version !== historyRequest) return;
       const entries = decisions.map(record => {
         const item = document.createElement('li');
         const verdict = {continue:'继续试验', adopt:'采用', drop:'放弃'}[record.decision] ?? record.decision;
@@ -884,6 +887,7 @@ function sourcingDecisionEditor(candidate) {
       }
       historyList.replaceChildren(...entries);
     } catch (error) {
+      if (version !== historyRequest) return;
       const item = document.createElement('li');
       item.textContent = error.message;
       historyList.replaceChildren(item);
