@@ -853,8 +853,45 @@ function sourcingDecisionEditor(candidate) {
   status.setAttribute('role', 'status');
   const evidence = document.createElement('p');
   const currentEvidence = document.createElement('p');
+  const history = document.createElement('details');
+  const historyTitle = document.createElement('summary');
+  const historyList = document.createElement('ul');
+  historyTitle.textContent = '历史采购结论';
+  historyList.setAttribute('aria-live', 'polite');
+  history.append(historyTitle, historyList);
   form.append(button, status, evidence, currentEvidence);
-  panel.append(summary, form);
+  panel.append(summary, form, history);
+  async function loadHistory() {
+    const query = new URLSearchParams({candidate_id:candidate.id});
+    historyList.replaceChildren();
+    try {
+      const {decisions} = await request(route + '/history?' + query);
+      const entries = decisions.map(record => {
+        const item = document.createElement('li');
+        const verdict = {continue:'继续试验', adopt:'采用', drop:'放弃'}[record.decision] ?? record.decision;
+        item.textContent = [
+          verdict, record.recorded_at, record.rationale, `约束：${record.constraints}`,
+          `来源：${record.candidate?.source ?? '未知'}`,
+          `样品依据：${record.trial?.sample_evidence ?? '未知'}`,
+          `试卖依据：${record.trial?.trial_evidence ?? '未知'}`,
+        ].join(' · ');
+        return item;
+      });
+      if (!entries.length) {
+        const item = document.createElement('li');
+        item.textContent = '暂无历史结论';
+        entries.push(item);
+      }
+      historyList.replaceChildren(...entries);
+    } catch (error) {
+      const item = document.createElement('li');
+      item.textContent = error.message;
+      historyList.replaceChildren(item);
+    }
+  }
+  history.addEventListener('toggle', () => {
+    if (history.open && !consoleClosed) void loadHistory();
+  });
   function showEvidence(record) {
     const snapshot = record?.trial;
     const terms = record?.candidate;
@@ -921,6 +958,7 @@ function sourcingDecisionEditor(candidate) {
         rationale:rationale.value, constraints:constraints.value, expected_trial:reviewedTrial});
       showEvidence(record);
       status.textContent = '采购辅助结论已保存';
+      if (history.open) await loadHistory();
     } catch (error) {
       loaded = false;
       status.textContent = error.message;
