@@ -243,8 +243,9 @@ def switch_release(root, archive=None, with_media=False):
         return active
 
 
-def run_release(root, port, with_media=False):
+def run_release(root, port, with_media=False, shop_id=None):
     from scripts.local_console import InstanceLock
+    from scripts.local_console_config import shop_data_directory
 
     root = root.resolve()
     with InstanceLock(root / '.deployment'):
@@ -253,6 +254,8 @@ def run_release(root, port, with_media=False):
             raise ValueError('Install a release first')
         release, _ = check_release(root, commit)
         data = root / 'data'
+        if shop_id is not None:
+            data = shop_data_directory(data, shop_id)
         python = configured_media(data)[1] if with_media else None
         return subprocess.call(console_command(data, port, python), cwd=release, env=console_environment())
 
@@ -276,6 +279,7 @@ def main():
             command.add_argument('--archive', required=True, type=Path)
         if name == 'run':
             command.add_argument('--port', type=int)
+            command.add_argument('--shop-id', help='使用独立的店铺数据目录')
     migration = commands.add_parser('migrate-data')
     migration.add_argument('--root', type=Path, required=True)
     migration.add_argument('--source', type=Path, required=True)
@@ -302,7 +306,7 @@ def main():
         print(json.dumps(migrate_data(args.source, args.root), ensure_ascii=False))
         return 0
     if args.command == 'run':
-        return run_release(args.root, args.port, args.with_media)
+        return run_release(args.root, args.port, args.with_media, args.shop_id)
     if args.command in {'deploy', 'rollback'}:
         print(json.dumps(switch_release(args.root, getattr(args, 'archive', None), args.with_media)))
         return 0
