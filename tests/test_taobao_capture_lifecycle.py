@@ -1,12 +1,21 @@
-from threading import current_thread
+from threading import Event, current_thread
 import unittest
 from unittest.mock import Mock
 
 from recovered.taobao_control_capture import TaobaoControlDanmuCapture
-from recovered.taobao_live_control import TaobaoLiveControl
+from recovered.taobao_live_control import TaobaoLiveControl, _wait_taobao_login_with_cancel
 
 
 class TaobaoCaptureLifecycleTests(unittest.TestCase):
+    def test_login_wait_stops_when_cancelled_between_polls(self):
+        cancel = Event()
+        page = Mock(url='https://login.taobao.com/')
+        page.wait_for_timeout.side_effect = lambda _: cancel.set()
+        with self.assertRaises(InterruptedError):
+            _wait_taobao_login_with_cancel(page, target_url='https://liveplatform.taobao.com/list',
+                                           timeout_sec=600, cancel=cancel)
+        page.wait_for_timeout.assert_called_once_with(250)
+
     def test_goods_id_prefers_label_over_numeric_product_name(self):
         item = Mock()
         item.inner_text.return_value = '20261111 纪念款 ID:123456789 开始讲解'
