@@ -108,3 +108,5 @@ G09-03 通过本机 Chrome 投放方案测试。用测试账单保存 500 分预
 V00 / X15-01 Windows 恢复验证补跑：指定原运行目录并将随包 FFmpeg 加入本次进程 PATH。修正 ZipVoice 校验替身缺失 no_grad 后，通过该生命周期检查。全量校验仍退出 1，停在 RtmpFaceReader._get_video_properties 签名差异，原二进制参数数为 2，重建额外带可选 cancel。待核对取消参数的调用方与原契约。日志位于 logs/validation/recovery-current-retry.log。
 
 V00 / X15-01 复测通过。RTMP 取流和淘宝登录等待保留原二进制入口参数，将重建的取消和超时控制移入内部入口。RTMP 5 项回归通过。原运行目录及随包 FFmpeg 环境下，恢复校验退出 0，128/128 映射与导入、调用签名、核心方法及协议夹具通过。真实平台及业务差分仍按各关单独验收。
+
+V08-01l 按 300 秒窗口复核 1,732 条采样。五个完整窗口约 25 fps，待播与临时 WAV 峰值各为 1，显存中位数首末持平。进程树 RSS 中位数逐窗增加，首末相差约 8.24 MiB，样本不足以确认泄漏。末尾不足 300 秒窗口为 24.945 fps，未计入趋势。报告位于 logs/validation/v08-pcm-memory-8h-01/resource-summary-300s.json。现有数据未见待播累积，8 小时欠载故障仍待定位。
