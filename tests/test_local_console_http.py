@@ -35,6 +35,20 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertIsNone(item['conditions']['成本'])
         self.assertIsNone(item['conditions']['售价'])
         self.assertEqual(item['verified_fact_count'], 1)
+        store.save(title='桌布', content='另一商品', product_index=2)
+        window = {'source': '商家报表', 'scope': '商品日统计',
+                  'period_start': '2026-11-01', 'period_end': '2026-11-01'}
+        store.save_business_metrics(product['id'], **window, orders=5, refunds=0)
+        route = '/api/products/selection-evidence'
+        self.assertEqual(self.call(route + '?source=report')[0], 400)
+        status, evidence = self.call(route + '?' + urlencode(window))
+        self.assertEqual(status, 200)
+        self.assertEqual(evidence['business_metrics_scope'], window)
+        first, second = evidence['products']
+        self.assertEqual(first['business_metrics']['orders'], 5)
+        self.assertEqual(first['business_metrics']['refunds'], 0)
+        self.assertIsNone(second['business_metrics'])
+        self.assertIn('覆盖', second['business_metrics_gap'])
 
     def test_live_content_source_preserves_original_product_and_script(self):
         store = ProductStore(self.directory.name)

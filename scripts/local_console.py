@@ -449,7 +449,25 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                 if path == "/api/live/preparation/package":
                     return self.respond(200, products().build_live_preparation())
                 if path == "/api/products/selection-evidence":
-                    return self.respond(200, {'products': products().product_selection_evidence()})
+                    query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                    fields = {'source', 'scope', 'period_start', 'period_end'}
+                    if query and (set(query) != fields or any(len(values) != 1 or not values[0]
+                                                               for values in query.values())):
+                        raise ProductError('请填写经营数据来源、口径和日期区间')
+                    data = products()
+                    candidates = data.product_selection_evidence()
+                    if not query:
+                        return self.respond(200, {'products': candidates})
+                    scope = {key: values[0] for key, values in query.items()}
+                    for candidate in candidates:
+                        try:
+                            candidate['business_metrics'] = data.summarize_business_metrics(candidate['product_id'], **scope)
+                        except ProductError as error:
+                            candidate['business_metrics'] = None
+                            candidate['business_metrics_gap'] = str(error)
+                        if candidate['business_metrics'] is not None:
+                            candidate['business_metrics'] = browser_metrics(candidate['business_metrics'])
+                    return self.respond(200, {'products': candidates, 'business_metrics_scope': scope})
                 if path == "/api/products":
                     data = products()
                     return self.respond(200, {"products": data.list(), "selected": data.selected()})
