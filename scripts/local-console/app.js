@@ -277,8 +277,8 @@ async function promotionSpendAction(save) {
           const {comparison: result} = await request('/api/promotion/compare?' + query);
           const {baseline, trial, spend_difference_minor} = result;
           compareStatus.textContent = [
-            `基线 ${baseline.period_start} 至 ${baseline.period_end}，${baseline.spend_minor} 分，归因口径 ${baseline.attribution ?? '未记录'}`,
-            `试验 ${trial.period_start} 至 ${trial.period_end}，${trial.spend_minor} 分，归因口径 ${trial.attribution ?? '未记录'}`,
+            `基线 ${baseline.period_start} 至 ${baseline.period_end}（${result.baseline_days} 天），${baseline.spend_minor} 分，归因口径 ${baseline.attribution ?? '未记录'}`,
+            `试验 ${trial.period_start} 至 ${trial.period_end}（${result.trial_days} 天），${trial.spend_minor} 分，归因口径 ${trial.attribution ?? '未记录'}`,
             `支出差值 ${spend_difference_minor} 分`,
             '增量效果不确定（待补归因订单、退款和净结果）',
           ].join(' · ');

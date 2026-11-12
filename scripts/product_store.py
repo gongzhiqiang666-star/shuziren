@@ -1453,7 +1453,9 @@ class ProductStore:
                 if row is None:
                     raise ProductError('缺少相同活动和素材的对应账单')
                 bills.append(dict(row))
-        return {'baseline': bills[0], 'trial': bills[1],
+        days = [(date.fromisoformat(bill['period_end']) - date.fromisoformat(bill['period_start'])).days + 1
+                for bill in bills]
+        return {'baseline': bills[0], 'trial': bills[1], 'baseline_days': days[0], 'trial_days': days[1],
                 'spend_difference_minor': bills[1]['spend_minor'] - bills[0]['spend_minor'],
                 'conclusion': 'uncertain', 'missing': ['attributed_orders', 'attributed_refunds', 'net_result']}
 
