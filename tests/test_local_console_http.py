@@ -163,11 +163,21 @@ class ConsoleHTTPTests(unittest.TestCase):
                                 'expires_at': '2099-01-01T00:00:00Z'},
                    })
         expiring = self.call(plans, plan)[1]['plan']
+        expiring_action = {**action, 'plan_id': expiring['id']}
+        self.assertEqual(self.call(plans + '/action', expiring_action)[0], 200)
         with patch('scripts.product_store.datetime', wraps=datetime) as clock:
             clock.now.return_value = datetime(2099, 1, 1, tzinfo=timezone.utc)
             self.assertEqual(self.call(plans + '/action', {**action, 'plan_id': expiring['id']})[0], 409)
             latest = self.call(plans + '?product_id=' + product['id'])[1]['plans'][0]
             self.assertEqual((latest['status'], latest['review_reason']), ('stale', '商品事实已到期'))
+            pause = {**expiring_action, 'action': 'paused'}
+            self.assertEqual(self.call(plans + '/action', pause)[0], 200)
+            self.assertEqual(self.call(plans + '/action', pause)[0], 200)
+            paused = self.call(plans + '?product_id=' + product['id'])[1]['plans'][0]
+            self.assertEqual(paused['status'], 'paused')
+            self.assertTrue(paused['requires_new_plan'])
+            history = self.call(plans + '/actions?plan_id=' + expiring['id'])[1]['actions']
+            self.assertEqual([entry['action'] for entry in history], ['approved', 'paused'])
     def test_sourcing_candidates_preserve_source_and_leave_missing_terms_unknown(self):
         route = '/api/sourcing/candidates'
         candidate = {'name': '陶瓷杯', 'supplier': '样品供应商', 'source': '商家报价单',
