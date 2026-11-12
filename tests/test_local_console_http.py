@@ -19,6 +19,26 @@ from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_settlement_review_keeps_estimates_and_unknown_costs_distinct(self):
+        store = ProductStore(self.directory.name)
+        product = store.save(title='茶杯', content='商品说明', product_index=1)
+        window = {'source': '商家报表', 'scope': '商品日统计',
+                  'period_start': '2026-11-01', 'period_end': '2026-11-01'}
+        store.save_business_metrics(product['id'], **window, orders=5, refunds=1)
+        payload = {**window, 'product_id': product['id'], 'currency': 'CNY', 'basis': 'estimate',
+                   'sales_minor': 10000, 'cost_minor': 3000, 'fees_minor': 0, 'refund_loss_minor': 2000}
+        route = '/api/products/settlement-review'
+        status, result = self.call(route, payload)
+        self.assertEqual(status, 200)
+        self.assertEqual(result['review']['net_minor'], 5000)
+        self.assertEqual(result['review']['basis'], 'estimate')
+        self.assertEqual(result['review']['refunds'], 1)
+        status, result = self.call(route, {**payload, 'basis': 'settled', 'fees_minor': None})
+        self.assertEqual(status, 200)
+        self.assertIsNone(result['review']['net_minor'])
+        self.assertEqual(result['review']['missing'], ['fees_minor'])
+        self.assertEqual(self.call(route, {**payload, 'fees_minor': True})[0], 400)
+
     def test_preparation_preserves_manual_lineup_order_through_handoff(self):
         store = ProductStore(self.directory.name)
         first = store.save(title='茶杯', content='口播验收', product_index=1)

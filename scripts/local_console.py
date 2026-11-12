@@ -752,6 +752,26 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         else:
                             data.revoke_live_advice_acknowledgment(value['session_id'], value['advice'], time())
                         return self.respond(200, {'acknowledged': acknowledge})
+                    if path == "/api/products/settlement-review":
+                        fields = ('sales_minor', 'cost_minor', 'fees_minor', 'refund_loss_minor')
+                        if set(value) != {'product_id', 'source', 'scope', 'period_start', 'period_end',
+                                         'currency', 'basis', *fields}:
+                            raise ProductError('退款复盘字段无效')
+                        if value['basis'] not in ('estimate', 'settled') or value['currency'] != 'CNY':
+                            raise ProductError('请选择估算或已结算，并使用人民币分录入金额')
+                        if any(amount is not None and (type(amount) is not int or not 0 <= amount < 2**53)
+                               for amount in (value[field] for field in fields)):
+                            raise ProductError('金额须为非负整数分或未知')
+                        counts = products().summarize_business_metrics(**{
+                            key: value[key] for key in ('product_id', 'source', 'scope', 'period_start', 'period_end')
+                        })
+                        missing = [field for field in fields if value[field] is None]
+                        net = None if missing else value['sales_minor'] - sum(value[field] for field in fields[1:])
+                        return self.respond(200, {'review': {
+                            **value, 'net_minor': str(net) if net is not None and abs(net) >= 2**53 else net,
+                            'orders': browser_metrics(counts)['orders'], 'refunds': browser_metrics(counts)['refunds'],
+                            'missing': missing, 'conclusion': 'uncertain',
+                        }})
                     if path == "/api/live/content-withdraw":
                         if set(value) != {'session_id', 'task_id'} or any(
                                 not isinstance(value[key], str) or not 1 <= len(value[key]) <= 64
