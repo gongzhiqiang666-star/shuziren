@@ -558,7 +558,7 @@ class ConsoleHTTPTests(unittest.TestCase):
                                   failure_reason='输出设备断开')
         store.record_live_session('other', 200)
         product = store.save(title='茶杯', content='验收商品', product_index=1)
-        item = {'product_id': product['id'], 'product_version': 2, 'script_id': 'script'}
+        item = {'product_id': product['id'], 'product_version': product['version'], 'script_id': 'script'}
         store.record_rotation_completion('scene', 'first', item, 0)
         store.record_rotation_completion('scene', 'first', item, 0)
         store.record_rotation_completion('scene', 'second', item, 1)
@@ -618,6 +618,13 @@ class ConsoleHTTPTests(unittest.TestCase):
         store.save_live_preparation(product_ids=[product['id']])
         self.assertEqual(self.call(task_route, {**task, 'adopted': False})[0], 200)
         self.assertEqual(self.call(package_route)[1]['improvements'], [])
+        self.assertEqual(self.call(task_route, {**task, 'adopted': True})[0], 200)
+        store.save(title='更新后的茶杯', content='新版验收商品', product_index=1,
+                   product_id=product['id'], version=product['version'])
+        self.assertEqual(self.call(package_route)[1]['improvements'], [])
+        historical_task, = self.call(task_route + '?session_id=scene')[1]['tasks']
+        self.assertEqual(historical_task['product_version'], product['version'])
+        self.assertTrue(historical_task['adopted'])
         self.assertIn('questions_and_answers', review['missing'])
         unqueued, = review['unqueued_replies']
         self.assertEqual((unqueued['question'], unqueued['status'], unqueued['reason']),
@@ -639,7 +646,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual((switch['previous_product_id'], switch['product_id'], switch['task_id']),
                          (product['id'], 'next-product', 'third'))
         self.assertIn('platform_product_switches', report['missing'])
-        self.assertEqual(first_product['product_version'], 2)
+        self.assertEqual(first_product['product_version'], product['version'])
         self.assertEqual(report['controls'], [{'revision': 1, 'manual': True, 'occurred_at': 103}])
         self.assertIn('attributed_sales', report['missing'])
         self.assertEqual(self.call('/api/live/report?session_id=unknown')[0], 400)
