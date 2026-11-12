@@ -466,6 +466,14 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             candidate['business_metrics'] = None
                             candidate['business_metrics_gap'] = str(error)
                         if candidate['business_metrics'] is not None:
+                            refunds = candidate['business_metrics']['refunds']
+                            orders = candidate['business_metrics']['orders']
+                            if refunds is not None and refunds > 0:
+                                candidate['refund_review'] = (
+                                    '窗口内退款多于订单，请核对退款归属及滞后窗口'
+                                    if orders is not None and refunds > orders
+                                    else '窗口内有退款，请核对退款原因及对应订单后再决定排品'
+                                )
                             candidate['business_metrics'] = browser_metrics(candidate['business_metrics'])
                     return self.respond(200, {'products': candidates, 'business_metrics_scope': scope})
                 if path == "/api/products":

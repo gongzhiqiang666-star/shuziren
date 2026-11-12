@@ -284,6 +284,11 @@ $('selection-evidence-form').addEventListener('submit', async event => {
           ? `点击 ${counts.clicks ?? '未知'} · 订单 ${counts.orders ?? '未知'} · 退款 ${counts.refunds ?? '未知'} · 期末库存 ${counts.closing_stock ?? '未知'}`
           : product.business_metrics_gap;
         block.append(metrics);
+        if (product.refund_review) {
+          const review = document.createElement('p');
+          review.textContent = product.refund_review;
+          block.append(review);
+        }
       }
       return block;
     }));

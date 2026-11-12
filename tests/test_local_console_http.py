@@ -65,6 +65,11 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertIsNone(second['business_metrics'])
         self.assertEqual(second['recommendation']['role'], 'hold')
         self.assertIn('覆盖', second['business_metrics_gap'])
+        self.assertNotIn('refund_review', first)
+        store.save_business_metrics(product['id'], **window, orders=5, refunds=6)
+        updated = self.call(route + '?' + urlencode(window))[1]['products'][0]
+        self.assertEqual(updated['business_metrics']['refunds'], 6)
+        self.assertIn('退款多于订单', updated['refund_review'])
 
     def test_live_content_source_preserves_original_product_and_script(self):
         store = ProductStore(self.directory.name)
