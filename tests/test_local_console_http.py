@@ -625,8 +625,10 @@ class ConsoleHTTPTests(unittest.TestCase):
         question, = review['repeated_questions']
         self.assertEqual(question['question'], '什么材质？')
         self.assertIn('FAQ', question['recommendation'])
-        self.assertEqual([item['task_id'] for item in question['evidence']], ['reply', 'second-reply'])
-        self.assertIsNone(question['evidence'][1]['played_at'])
+        self.assertEqual(question['evidence'], [
+            {'task_id': 'reply', 'product_version': 2, 'queued_at': 106, 'played_at': 108},
+            {'task_id': 'second-reply', 'product_version': 3, 'queued_at': 109, 'played_at': None},
+        ])
         pending, = review['replies_without_playback_record']
         self.assertEqual(pending['task_id'], 'second-reply')
         self.assertEqual(pending['product_version'], 3)
