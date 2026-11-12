@@ -1895,6 +1895,11 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
     }
     for (const application of preparation_applications) {
       lines.push(`已载入准备包 ${application.revision}`);
+      for (const task of application.after_sales_tasks ?? []) {
+        const title = application.items.find(item => item.product_id === task.product_id)?.title ?? task.product_id;
+        const category = afterSalesCategories[task.category] ?? task.category;
+        lines.push(`售后整改 · ${title} · ${category} ${task.evidence_count} 条 · ${task.owner} · ${task.goal} · ${task.source} · ${task.period_start} 至 ${task.period_end}`);
+      }
       for (const task of application.improvements) {
         const source = task.reply_task_id ? `答复 ${task.reply_task_id}` : `故障 ${task.fault_id}`;
         lines.push(`${task.owner} · ${task.goal} · 原场次 ${task.session_id} · ${source}`);

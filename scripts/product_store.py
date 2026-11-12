@@ -434,6 +434,7 @@ class ProductStore:
         rotation = {'revision': revision, 'items': items}
         if include_improvements:
             rotation['improvements'] = package['improvements']
+            rotation['after_sales_tasks'] = package['after_sales_tasks']
         return rotation
 
     def record_preparation_application(self, session_id, preparation):
