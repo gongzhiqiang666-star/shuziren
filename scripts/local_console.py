@@ -719,6 +719,15 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         else:
                             data.revoke_live_advice_acknowledgment(value['session_id'], value['advice'], time())
                         return self.respond(200, {'acknowledged': acknowledge})
+                    if path == "/api/live/content-receipt":
+                        if set(value) != {'session_id', 'task_id', 'publication_id'} or any(
+                                not isinstance(value[key], str) or not 1 <= len(value[key]) <= 64
+                                for key in ('session_id', 'task_id')):
+                            raise ProductError('发布结果字段无效')
+                        data = products()
+                        data.record_live_content_receipt(**value)
+                        return self.respond(200, {'schedule': data.live_content_schedule(
+                            value['session_id'], value['task_id'])})
                     if path == "/api/live/content-schedule":
                         if set(value) != {'session_id', 'task_id', 'account', 'audience', 'publish_at'} or any(
                                 not isinstance(value[key], str) or not 1 <= len(value[key]) <= 64

@@ -140,6 +140,10 @@ class ProductStore:
                     audience TEXT NOT NULL, publish_at TEXT NOT NULL, planned_body TEXT NOT NULL,
                     PRIMARY KEY(session_id, task_id),
                     FOREIGN KEY(session_id, task_id) REFERENCES live_content_drafts(session_id, task_id));
+                CREATE TABLE IF NOT EXISTS live_content_receipts (
+                    session_id TEXT NOT NULL, task_id TEXT NOT NULL, account TEXT NOT NULL, publication_id TEXT NOT NULL,
+                    PRIMARY KEY(session_id, task_id), UNIQUE(account, publication_id),
+                    FOREIGN KEY(session_id, task_id) REFERENCES live_content_schedule(session_id, task_id));
                 CREATE TABLE IF NOT EXISTS live_advice_acknowledgments (
                     session_id TEXT NOT NULL, advice TEXT NOT NULL, acknowledged_at REAL NOT NULL,
                     PRIMARY KEY(session_id, advice));
@@ -666,8 +670,10 @@ class ProductStore:
     def live_content_schedule(self, session_id, task_id):
         with self.connect() as db:
             row = db.execute("""
-                SELECT account, audience, publish_at, planned_body=body AS draft_matches
+                SELECT live_content_schedule.account, audience, publish_at, planned_body=body AS draft_matches,
+                       publication_id
                 FROM live_content_schedule JOIN live_content_drafts USING (session_id, task_id)
+                LEFT JOIN live_content_receipts USING (session_id, task_id)
                 WHERE session_id=? AND task_id=?
             """, (session_id, task_id)).fetchone()
         return {**dict(row), 'draft_matches': bool(row['draft_matches'])} if row else None
@@ -685,6 +691,10 @@ class ProductStore:
         if source['facts_review'] != 'version_current' or source['segment'] is None:
             raise Conflict('商品事实或片段来源需要重新核对')
         with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if db.execute('SELECT 1 FROM live_content_receipts WHERE session_id=? AND task_id=?',
+                          (session_id, task_id)).fetchone():
+                raise Conflict('已登记发布结果，不能覆盖原排期')
             result = db.execute("""
                 INSERT INTO live_content_schedule
                 SELECT session_id, task_id, ?, ?, ?, body FROM live_content_drafts
@@ -695,6 +705,26 @@ class ProductStore:
             """, (account, audience, scheduled.astimezone(timezone.utc).isoformat(), session_id, task_id))
             if not result.rowcount:
                 raise Conflict('请先保存短视频文案')
+
+    def record_live_content_receipt(self, session_id, task_id, publication_id):
+        publication_id = text(publication_id, '平台作品编号', 200)
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('''
+                SELECT schedule.account, receipt.publication_id FROM live_content_schedule schedule
+                LEFT JOIN live_content_receipts receipt USING (session_id, task_id)
+                WHERE session_id=? AND task_id=?
+            ''', (session_id, task_id)).fetchone()
+            if row is None:
+                raise Conflict('请先保存本机排期')
+            if row['publication_id'] == publication_id:
+                return
+            if row['publication_id'] is not None:
+                raise Conflict('该排期已登记其他作品编号')
+            result = db.execute('INSERT OR IGNORE INTO live_content_receipts VALUES (?, ?, ?, ?)',
+                                (session_id, task_id, row['account'], publication_id))
+            if not result.rowcount:
+                raise Conflict('该账号的作品编号已关联其他排期')
 
     def save_live_content_draft(self, session_id, task_id, body):
         body = text(body, '短视频文案', 100000)
