@@ -311,3 +311,5 @@ X08-04 直接 rawvideo 包封装暂不采用。相同 20 秒真实人物短测�
 X08-02 Windows 取消恢复补验：修复 FFmpeg 退出后输出句柄短暂占用，5 次取消均回收进程且清除半成品。另一次取消后以相同输出路径重开，写入 25 帧并正常关闭，双轨完整解码通过。证据 logs/validation/x08-nvenc-abort-03/reopened.ts。长时运行及设备并发仍待验。
 
 X08-02 编码器意外退出补验通过：真实 FFmpeg 在 12 帧后被终止，下一次提交返回 OSError，输出对象进入关闭状态并删除未完成的 TS 文件。用例目录 logs/validation/x08-nvenc-encoder-exit-01。
+
+X08-02 内存步幅回归：同一组 12 张灰阶图分别用连续数组与隔列视图提交，NVENC 输出逐帧解码后像素及 PTS 完全一致。直接与原始 BGR 灰度比较最大差约 3.67，编码颜色转换后的同路径对照通过。证据 logs/validation/x08-nvenc-strided-01。
