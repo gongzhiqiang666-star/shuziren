@@ -49,7 +49,10 @@ class RtmpFaceReader(VideoFaceReader):
         command = [ffprobe, "-v", "error", "-select_streams", "v:0",
                    "-show_entries", "stream=width,height,avg_frame_rate", "-of", "json", rtmp_url]
         if cancel is None:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=15)
+            try:
+                result = subprocess.run(command, capture_output=True, text=True, timeout=15)
+            except subprocess.TimeoutExpired:
+                raise TimeoutError("RTMP 视频探测超时") from None
         else:
             with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as probe:
                 deadline = time.monotonic() + 15
