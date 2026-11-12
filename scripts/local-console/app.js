@@ -1859,6 +1859,11 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
     for (const reply of review.replies_without_playback_record) {
       evidence.set(reply.task_id, reply.question);
     }
+    for (const task of improvements.tasks) {
+      if (task.reply_task_id && !evidence.has(task.reply_task_id)) {
+        evidence.set(task.reply_task_id, task.reason);
+      }
+    }
     const sources = [
       ...rotation_faults.map(fault => ['fault_id', fault.event_id, `故障 ${fault.event_id}`]),
       ...Array.from(evidence, ([id, question]) => ['reply_task_id', id, `答复 ${id} · ${question}`]),
