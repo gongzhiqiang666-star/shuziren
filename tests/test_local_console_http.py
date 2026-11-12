@@ -384,6 +384,7 @@ class ConsoleHTTPTests(unittest.TestCase):
 
     def test_live_content_source_preserves_original_product_and_script(self):
         store = ProductStore(self.directory.name)
+        store.record_live_session('scene', 1, started_at=2, ended_at=3, status='stopped')
         product = store.save(title='茶杯', content='原商品资料', product_index=1)
         script_id = store.add_script(product, '原口播')
         store.record_rotation_completion('scene', 'task', {
@@ -480,6 +481,9 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(replay['schedule']['publication_id'], 'platform-001')
         self.assertTrue(replay['schedule']['withdrawn'])
+        self.assertEqual(self.call('/api/live/report?session_id=scene')[1]['content_summary'], {
+            'drafts': 2, 'tracked_drafts': 2, 'revised_drafts': 1, 'recorded_publications': 2,
+        })
         self.assertEqual(self.call(receipt_route, {**receipt, 'publication_id': 'platform-002'})[0], 409)
         self.assertEqual((source['sample_start'], source['sample_end']), (960, 1920))
         self.assertEqual(self.call('/api/live/content-source?session_id=other&task_id=task')[0], 400)

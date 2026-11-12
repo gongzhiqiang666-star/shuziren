@@ -1730,7 +1730,7 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
   try {
     const query = new URLSearchParams({session_id:sessionId});
     const [{session, products, controls, rotation_faults, observed_product_switches, queued_replies, lineup_baseline,
-      advice_acknowledgments, advice_actions, missing, preparation_applications}, review, improvements] =
+      advice_acknowledgments, advice_actions, missing, preparation_applications, content_summary}, review, improvements] =
       await Promise.all([request('/api/live/report?' + query), request('/api/live/review?' + query),
         request('/api/live/improvements?' + query)]);
     if (($('live-event-scene').value || liveSession.id) !== sessionId) return;
@@ -1748,6 +1748,12 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       ...rotation_faults.map(item => `${formatTime(item.occurred_at)} · 轮播故障 ${item.event_id} · ${item.reason}`),
       ...observed_product_switches.map(item => `${item.completed_at} · 口播商品变化 ${item.previous_product_id} → ${item.product_id} · 任务 ${item.task_id}`),
     ];
+    if (content_summary?.drafts) {
+      const {drafts, tracked_drafts, revised_drafts, recorded_publications} = content_summary;
+      lines.push(`短视频草稿 ${drafts} 条 · 已登记发布回执 ${recorded_publications} 条`);
+      if (tracked_drafts) lines.push(`有改稿记录的草稿 ${revised_drafts}/${tracked_drafts}`);
+      if (drafts > tracked_drafts) lines.push(`改稿次数未知 ${drafts - tracked_drafts} 条`);
+    }
     for (const application of preparation_applications) {
       if (!application.improvements.length) continue;
       lines.push(`已载入准备包 ${application.revision}`);

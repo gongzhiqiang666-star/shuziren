@@ -853,6 +853,17 @@ class ProductStore:
                              (session_id, task_id)).fetchone()
         return row['body'] if row else None
 
+    def live_content_summary(self, session_id):
+        with self.connect() as db:
+            row = db.execute("""
+                SELECT COUNT(*) AS drafts, COUNT(revision_count) AS tracked_drafts,
+                       COUNT(CASE WHEN revision_count > 0 THEN 1 END) AS revised_drafts,
+                       COUNT(publication_id) AS recorded_publications
+                FROM live_content_drafts LEFT JOIN live_content_receipts USING (session_id, task_id)
+                WHERE session_id=?
+            """, (session_id,)).fetchone()
+        return dict(row)
+
     def live_content_schedule(self, session_id, task_id):
         with self.connect() as db:
             row = db.execute("""
