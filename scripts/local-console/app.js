@@ -158,6 +158,39 @@ async function promotionSpendAction(save) {
     $('promotion-records').replaceChildren(...result.records.map(record => {
       const row = document.createElement('li');
       row.textContent = `${record.source} · ${record.period_start} 至 ${record.period_end} · 活动 ${record.campaign} · 素材 ${record.asset} · 支出 ${record.spend_minor} 分 · 归因口径 ${record.attribution ?? '未知'}`;
+      const form = document.createElement('form');
+      const budget = document.createElement('input');
+      budget.type = 'number';
+      budget.required = true;
+      budget.min = '0';
+      budget.max = String(Number.MAX_SAFE_INTEGER);
+      budget.step = '1';
+      const label = document.createElement('label');
+      label.append('预算上限（人民币分）', budget);
+      const button = document.createElement('button');
+      button.type = 'submit';
+      button.textContent = '预览预算';
+      const previewStatus = document.createElement('p');
+      previewStatus.setAttribute('role', 'status');
+      form.append(label, button, previewStatus);
+      row.append(form);
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (button.disabled || currentProduct !== product || consoleClosed) return;
+        const {product_id, source, period_start, period_end, campaign, asset} = record;
+        button.disabled = true;
+        try {
+          const {preview} = await request('/api/promotion/budget-preview', {
+            product_id, source, period_start, period_end, campaign, asset, budget_minor:budget.valueAsNumber,
+          });
+          const labels = {over_budget:'已超预算', at_limit:'已达上限', below_limit:'低于上限'};
+          previewStatus.textContent = `${labels[preview.status]} · 账单支出 ${preview.bill.spend_minor} 分 · 预算余额 ${preview.remaining_minor} 分`;
+        } catch (error) {
+          previewStatus.textContent = error.message;
+        } finally {
+          button.disabled = false;
+        }
+      });
       return row;
     }));
     status.textContent = save ? '投放费用已保存' : result.records.length ? '' : '暂无投放费用';
