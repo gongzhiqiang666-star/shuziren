@@ -8,6 +8,20 @@ from scripts.product_store import Conflict, ProductStore
 
 
 class LiveRotationTests(unittest.TestCase):
+    def test_stop_cancels_rtmp_worker_after_start(self):
+        with tempfile.TemporaryDirectory() as directory:
+            live = ConsoleLive(Mock(), directory)
+            live.status = {'id': 'scene', 'status': 'running', 'input_mode': 'rtmp'}
+            live.client = Mock()
+
+            def check_cancel():
+                self.assertTrue(live.cancel.is_set())
+                self.assertEqual(live.state()['status'], 'stopping')
+
+            live.client.close.side_effect = check_cancel
+            self.assertEqual(live.stop('scene')['status'], 'stopping')
+            live.client.close.assert_called_once_with()
+
     def test_preparation_improvements_are_bound_to_the_running_scene(self):
         with tempfile.TemporaryDirectory() as directory:
             store = ProductStore(directory)
