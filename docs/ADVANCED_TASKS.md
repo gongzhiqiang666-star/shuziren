@@ -163,3 +163,5 @@ A01-02 ZipVoice 新留样复核：虽然 PTS 严格递增，采集开头出现 8
 A01-02 ZipVoice 32 MB DirectShow 对照完成。35 秒回采得到 875 个视频包，非递增 PTS 0 个，超过 60 毫秒的间隔 0 个，缓冲丢帧告警为 False。轮播、插播及停播脚本退出 0。报告在 logs/validation/a01-zipvoice-live-buffer32-01/result.json。单次对照仍需重复验证和编号帧审计。
 
 A01-02 ZipVoice 32 MB 同配置第二轮退出 0。35 秒回采 875 个视频包，帧间隔 19–42 毫秒，缓冲丢帧告警为 False。报告在 logs/validation/a01-zipvoice-live-buffer32-02/result.json。重复验证覆盖短时回采，源帧编号连续性与长时结果仍待验。
+
+A01-02 ZipVoice 32 MB 编号回采未通过。35 秒发送、33 秒接收，共 825 帧，接收范围内缺 40 帧、重复 41 帧，口播区间缺 10 帧、重复 10 帧。视频 PTS 无重复，DirectShow 无缓冲丢帧告警，两条语音标记的音画偏差约 -7.27 和 31.73 毫秒。报告位于 logs/validation/a01-zipvoice-numbered32-01。下一次用同一配置对照发送端提交日志和设备接收，先定位帧编号损失。
