@@ -987,7 +987,7 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
   output.textContent = '正在读取场次报告';
   try {
     const query = new URLSearchParams({session_id:sessionId});
-    const [{session, products, controls, rotation_faults, observed_product_switches, queued_replies,
+    const [{session, products, controls, rotation_faults, observed_product_switches, queued_replies, lineup_baseline,
       advice_acknowledgments, advice_actions, missing}, review, improvements] =
       await Promise.all([request('/api/live/report?' + query), request('/api/live/review?' + query),
         request('/api/live/improvements?' + query)]);
@@ -1059,6 +1059,33 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       paragraph.textContent = line;
       return paragraph;
     }));
+    const baselineStatus = document.createElement('p');
+    const showBaseline = baseline => {
+      baselineStatus.textContent = `人工排品基线 · ${formatTime(Date.parse(baseline.captured_at) / 1000)} · ` +
+        baseline.lineup.map(item => `${item.title}（版本 ${item.version}）`).join(' → ');
+    };
+    if (lineup_baseline) {
+      showBaseline(lineup_baseline);
+      output.append(baselineStatus);
+    } else if (session.started_at != null && session.ended_at != null) {
+      const bind = document.createElement('button');
+      bind.type = 'button';
+      bind.textContent = '关联已保存的人工排品基线';
+      baselineStatus.setAttribute('role', 'status');
+      bind.addEventListener('click', async () => {
+        if (bind.disabled || consoleClosed) return;
+        bind.disabled = true;
+        try {
+          const {lineup_baseline: baseline} = await request(preparationRoute + '/trial', {session_id:sessionId});
+          showBaseline(baseline);
+          bind.remove();
+        } catch (error) {
+          baselineStatus.textContent = error.message;
+          bind.disabled = false;
+        }
+      });
+      output.append(bind, baselineStatus);
+    }
     for (const fault of rotation_faults) {
       const task = improvements.tasks.find(item => item.fault_id === fault.event_id);
       const form = document.createElement('form');
