@@ -840,7 +840,8 @@ function sourcingDecisionEditor(candidate) {
   const status = document.createElement('p');
   status.setAttribute('role', 'status');
   const evidence = document.createElement('p');
-  form.append(button, status, evidence);
+  const currentEvidence = document.createElement('p');
+  form.append(button, status, evidence, currentEvidence);
   panel.append(summary, form);
   function showEvidence(record) {
     const snapshot = record?.trial;
@@ -883,6 +884,12 @@ function sourcingDecisionEditor(candidate) {
         fields.some(key => original?.[key] !== trial?.[key]) ||
         Object.keys(sourcingTrialMetrics).some(key => original?.metrics?.[key] !== trial?.metrics?.[key])
       );
+      currentEvidence.textContent = trial ? [
+        `当前样品依据：${trial.sample_evidence}`,
+        `当前试卖依据：${trial.trial_evidence}`,
+        `样品成本：${trial.cost_minor == null ? '未知' : trial.cost_minor + ' 分'}`,
+        ...Object.entries(sourcingTrialMetrics).map(([key, label]) => `${label} ${trial.metrics?.[key] ?? '未知'}`),
+      ].join(' · ') : '尚无试样或试卖记录';
       status.textContent = changed ? '试样或试卖记录已更新，请核对后再保存采购结论' : '';
       loaded = true;
       button.disabled = false;
