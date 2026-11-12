@@ -1427,7 +1427,8 @@ class ProductStore:
             for row in db.execute("SELECT * FROM scripts WHERE product_id=? ORDER BY rowid", (product_id,)):
                 value = dict(row)
                 value["snapshot"] = json.loads(value["snapshot"])
-                roles = value["snapshot"].get('extra', {}).get('v122', {}).get('script_roles', [])
+                legacy = value["snapshot"].get('extra', {}).get('v122')
+                roles = legacy.get('script_roles', []) if isinstance(legacy, dict) else []
                 if isinstance(roles, list) and len(result) < len(roles) and roles[len(result)] == 'assistant':
                     value['legacy_role'] = 'assistant'
                 result.append(value)
