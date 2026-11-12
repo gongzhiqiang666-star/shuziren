@@ -39,7 +39,11 @@ class ConsoleHTTPTests(unittest.TestCase):
         status, error = self.call(route + '/import', upload)
         self.assertEqual(status, 400)
         self.assertIn('第 3 行', error['error'])
-        self.assertEqual(self.call(route + '?product_id=' + first['id']), (200, saved))
+        status, review = self.call(route + '?product_id=' + first['id'])
+        self.assertEqual(status, 200)
+        self.assertEqual(review['reports'][0]['counts'], saved['reports'][0]['counts'])
+        followup, = review['reports'][0]['followups']
+        self.assertEqual((followup['category'], followup['count']), ('fulfillment', 3))
         status, imported = self.call(route + '/import', {**upload, 'csv': csv})
         self.assertEqual((status, imported['imported']), (200, 1))
         self.assertEqual(imported['reports'][0]['counts'], {'quality': 0, 'fulfillment': 4})

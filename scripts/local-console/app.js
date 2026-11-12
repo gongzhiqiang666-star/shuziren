@@ -168,6 +168,11 @@ async function afterSalesAction(action) {
       const row = document.createElement('li');
       const counts = Object.entries(categories).map(([key, label]) => `${label} ${report.counts[key] ?? '未知'}`);
       row.textContent = [report.source, `${report.period_start} 至 ${report.period_end}`, ...counts].join(' · ');
+      for (const followup of report.followups ?? []) {
+        const suggestion = document.createElement('p');
+        suggestion.textContent = `${categories[followup.category]} ${followup.count} · ${followup.recommendation}`;
+        row.append(suggestion);
+      }
       return row;
     }));
     status.textContent = action === 'import' ? `已导入 ${result.imported} 行售后汇总`
