@@ -452,6 +452,11 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call(receipt_route, {**receipt, 'task_id': 'task'})[0], 409)
         self.assertEqual(self.call(receipt_route, receipt)[1]['schedule']['publication_id'], 'platform-001')
         self.assertEqual(self.call(receipt_route, receipt)[0], 200)
+        other_clip = {'session_id': 'scene', 'task_id': 'fingerprinted-task'}
+        self.assertEqual(self.call('/api/live/content-draft', {**body, **other_clip})[0], 200)
+        self.assertEqual(self.call(schedule_route, {**schedule, **other_clip})[0], 200)
+        self.assertEqual(self.call(receipt_route, {**receipt, **other_clip})[0], 409)
+        self.assertEqual(self.call(receipt_route, {**receipt, **other_clip, 'publication_id': 'platform-003'})[0], 200)
         self.assertEqual(self.call(receipt_route, {**receipt, 'publication_id': 'platform-002'})[0], 409)
         self.assertEqual(self.call(schedule_route, schedule)[0], 409)
         self.assertEqual(self.call(draft_route + 'assistant-task')[1]['draft']['saved_body'], body['body'])
