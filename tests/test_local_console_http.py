@@ -121,6 +121,19 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call('/api/render/cancel',{'task_id':0})[0],400)
         self.assertEqual(self.call('/api/render/video')[0],400)
 
+    def test_video_backend_is_validated_before_loading_the_runtime(self):
+        cases = [
+            ({'audio_device': 14, 'video_backend': 'tensorrt'}, '请选择本地驱动视频'),
+            ({'audio_device': 14, 'video_path': 'unused.mp4', 'video_backend': 'other'}, '本地视频推理后端无效'),
+            ({'audio_device': 14, 'video_path': 'unused.mp4', 'assistant_voice_id': 'voice'}, '本地视频模式的开播字段无效'),
+        ]
+        for payload, message in cases:
+            with self.subTest(payload=payload):
+                status, result = self.call('/api/live/start', payload)
+                self.assertEqual(status, 400)
+                self.assertEqual(result['error'], message)
+        self.assertEqual(self.call('/api/live/state')[1]['session']['status'], 'idle')
+
     def test_avatar_preparation_requires_config_and_valid_fields(self):
         self.assertEqual(self.call('/api/avatar-preparation/state')[1],{'task':None})
         self.assertEqual(self.call('/api/avatar-preparation/start',{})[0],400)

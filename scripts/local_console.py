@@ -367,6 +367,13 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if path == '/api/live/start':
                         if set(value) - {'audio_device', 'rotation_language', 'assistant_voice_id', 'video_path', 'video_backend'} or type(value.get('audio_device')) is not int or value['audio_device'] < 0:
                             raise ProductError('请选择音频输出设备')
+                        if 'video_path' in value:
+                            if set(value) - {'audio_device', 'video_path', 'video_backend'}:
+                                raise ProductError('本地视频模式的开播字段无效')
+                            if value.get('video_backend', 'cuda') not in ('cuda', 'tensorrt'):
+                                raise ProductError('本地视频推理后端无效')
+                        elif 'video_backend' in value:
+                            raise ProductError('请选择本地驱动视频')
                         assistant_voice_id = value.get('assistant_voice_id')
                         if assistant_voice_id is not None and (not isinstance(assistant_voice_id, str) or not assistant_voice_id):
                             raise ProductError('助播音色无效')
@@ -379,13 +386,9 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         if live_manager is None:
                             live_manager = ConsoleLive(tts(), store.directory)
                         if 'video_path' in value:
-                            if set(value) - {'audio_device', 'video_path', 'video_backend'}:
-                                raise ProductError('本地视频模式的开播字段无效')
                             return self.respond(202, {'session': live_manager.start_video(
                                 value['audio_device'], value['video_path'], backend=value.get('video_backend', 'cuda'),
                             )})
-                        if 'video_backend' in value:
-                            raise ProductError('请选择本地驱动视频')
                         return self.respond(202, {'session': live_manager.start(
                             value['audio_device'], language=language, assistant_voice_id=assistant_voice_id,
                         )})
