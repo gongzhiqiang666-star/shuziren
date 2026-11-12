@@ -45,6 +45,14 @@ class ConsoleHTTPTests(unittest.TestCase):
         assistant = self.call('/api/live/content-source?session_id=scene&task_id=assistant-task')[1]['source']
         self.assertEqual(assistant['segment'], {'type': 'assistant', 'content': '补充说明。'})
         self.assertEqual(assistant['facts_review'], 'version_current')
+        draft_route = '/api/live/content-draft?session_id=scene&task_id='
+        self.assertEqual(self.call(draft_route + 'task')[0], 409)
+        status, result = self.call(draft_route + 'assistant-task')
+        self.assertEqual(status, 200)
+        self.assertEqual(result['draft']['cover_text'], '新版茶杯')
+        self.assertEqual(result['draft']['narration'], '补充说明。')
+        self.assertEqual(result['draft']['source']['script_id'], segmented_id)
+        self.assertIsNone(result['draft']['language'])
         self.assertEqual((source['sample_start'], source['sample_end']), (960, 1920))
         self.assertEqual(self.call('/api/live/content-source?session_id=other&task_id=task')[0], 400)
 

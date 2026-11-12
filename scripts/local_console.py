@@ -334,13 +334,24 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     report['advice_acknowledgments'] = products().live_advice_acknowledgments(sessions[0])
                     report['advice_actions'] = products().live_advice_actions(sessions[0])
                     return self.respond(200, report)
-                if path == '/api/live/content-source':
+                if path in {'/api/live/content-source', '/api/live/content-draft'}:
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                     if (set(query) != {'session_id', 'task_id'}
                             or any(len(values) != 1 or not 1 <= len(values[0]) <= 64 for values in query.values())):
                         raise ProductError('需要有效的场次和口播任务编号')
-                    return self.respond(200, {'source': products().live_content_source(
-                        query['session_id'][0], query['task_id'][0])})
+                    source = products().live_content_source(query['session_id'][0], query['task_id'][0])
+                    if path == '/api/live/content-draft':
+                        if source['facts_review'] != 'version_current' or source['segment'] is None:
+                            raise Conflict('商品事实或片段来源需要重新核对')
+                        title = source['product_snapshot']['title']
+                        return self.respond(200, {'draft': {
+                            'title': f'{title}讲解片段', 'cover_text': title,
+                            'narration': source['segment']['content'],
+                            'language': (source['speech_provenance'] or {}).get('language'),
+                            'source': {key: source[key] for key in
+                                       ('session_id', 'task_id', 'product_id', 'product_version', 'script_id', 'segment_index')},
+                        }})
+                    return self.respond(200, {'source': source})
                 if path == '/api/live/rotation/events':
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                     sessions = query.get('session_id', [])
