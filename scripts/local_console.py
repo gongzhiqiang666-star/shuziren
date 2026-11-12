@@ -896,14 +896,20 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         if any(amount is not None and (type(amount) is not int or not 0 <= amount < 2**53)
                                for amount in (value[field] for field in fields)):
                             raise ProductError('金额须为非负整数分或未知')
-                        counts = products().summarize_business_metrics(**{
+                        data = products()
+                        counts = data.summarize_business_metrics(**{
                             key: value[key] for key in ('product_id', 'source', 'scope', 'period_start', 'period_end')
                         })
                         missing = [field for field in fields if value[field] is None]
                         net = None if missing else value['sales_minor'] - sum(value[field] for field in fields[1:])
+                        report_key = ('source', 'period_start', 'period_end')
+                        fulfillment = next((report['counts'].get('fulfillment')
+                                            for report in data.after_sales(value['product_id'])
+                                            if all(report[key] == value[key].strip() for key in report_key)), None)
                         return self.respond(200, {'review': {
                             **value, 'net_minor': str(net) if net is not None and abs(net) >= 2**53 else net,
                             'orders': browser_metrics(counts)['orders'], 'refunds': browser_metrics(counts)['refunds'],
+                            'fulfillment_after_sales': fulfillment,
                             'missing': missing, 'conclusion': 'uncertain',
                         }})
                     if path == "/api/live/content-withdraw":

@@ -496,7 +496,7 @@ settlementForm.addEventListener('submit', async event => {
     if (version !== summaryVersion) return;
     const basis = review.basis === 'settled' ? '已结算（按录入）' : '估算';
     const net = review.net_minor == null ? '未知' : `${review.net_minor} 分`;
-    output.textContent = `${basis} · 净收益 ${net} · 订单 ${review.orders ?? '未知'} · 退款 ${review.refunds ?? '未知'}`;
+    output.textContent = `${basis} · 净收益 ${net} · 订单 ${review.orders ?? '未知'} · 退款 ${review.refunds ?? '未知'} · 履约类售后 ${review.fulfillment_after_sales ?? '未知'}`;
   } catch (error) {
     if (version === summaryVersion) output.textContent = error.message;
   } finally {
