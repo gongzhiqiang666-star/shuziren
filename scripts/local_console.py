@@ -273,6 +273,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     ids=parse_qs(urlsplit(self.path).query).get('id',[])
                     if len(ids)!=1: raise VoiceError('请选择音色')
                     return self.respond(200,VoiceStore(store.directory).audio_path(ids[0]).read_bytes(),'audio/wav')
+                if path == "/api/live/preparation":
+                    return self.respond(200, products().live_preparation())
                 if path == "/api/products":
                     data = products()
                     return self.respond(200, {"products": data.list(), "selected": data.selected()})
@@ -519,6 +521,12 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if path == '/api/tts/cancel':
                         if set(value)!={'task_id'} or not isinstance(value['task_id'],str): raise ProductError('TTS取消字段无效')
                         return self.respond(200,{'task':tts().cancel(value['task_id'])})
+                    if path == "/api/live/preparation":
+                        if 'product_ids' not in value:
+                            return self.respond(400, {"error": "缺少本场商品列表"})
+                        data = products()
+                        data.save_live_preparation(**value)
+                        return self.respond(200, data.live_preparation())
                     if path == "/api/products":
                         allowed = {"title", "content", "product_index", "product_id", "version", "product_facts"}
                         if not {"title", "content", "product_index"} <= value.keys() or value.keys() - allowed:

@@ -76,6 +76,10 @@ def index_value(value):
 
 
 class ProductStore:
+    PREPARATION_FIELDS = {
+        'goal': '场次目标', 'audience': '目标人群', 'promotion': '活动条件',
+        'stock': '库存条件', 'shipping': '发货条件', 'constraints': '本场限制',
+    }
     def __init__(self, directory):
         self.path = Path(directory) / "products.sqlite3"
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -117,6 +121,8 @@ class ProductStore:
                     source TEXT NOT NULL, period_start TEXT NOT NULL, period_end TEXT NOT NULL,
                     scope TEXT NOT NULL, clicks INTEGER, orders INTEGER, refunds INTEGER, stock INTEGER,
                     PRIMARY KEY(product_id, source, period_start, period_end, scope));
+                CREATE TABLE IF NOT EXISTS live_preparation (
+                    singleton INTEGER PRIMARY KEY CHECK(singleton=1), draft TEXT NOT NULL);
             ''')
             db.execute('BEGIN IMMEDIATE')
             columns = {row[1] for row in db.execute('PRAGMA table_info(scripts)')}
@@ -138,6 +144,34 @@ class ProductStore:
                 yield db
         finally:
             db.close()
+
+    def live_preparation(self):
+        with self.connect() as db:
+            row = db.execute('SELECT draft FROM live_preparation WHERE singleton=1').fetchone()
+        draft = json.loads(row['draft']) if row else {'product_ids': [], **dict.fromkeys(self.PREPARATION_FIELDS, '')}
+        missing = [label for key, label in self.PREPARATION_FIELDS.items() if not draft[key]]
+        if not draft['product_ids']:
+            missing.insert(0, '本场商品')
+        return {'draft': draft, 'missing': missing}
+
+    def save_live_preparation(self, *, product_ids, **conditions):
+        if set(conditions) - self.PREPARATION_FIELDS.keys():
+            raise ProductError('存在未知的直播准备字段')
+        if not isinstance(product_ids, list) or any(not isinstance(item, str) for item in product_ids):
+            raise ProductError('本场商品应为商品 ID 列表')
+        if len(product_ids) != len(set(product_ids)):
+            raise ProductError('本场商品不能重复')
+        draft = {'product_ids': product_ids}
+        for key, label in self.PREPARATION_FIELDS.items():
+            value = conditions.get(key, '')
+            if not isinstance(value, str) or len(value) > 2000:
+                raise ProductError(label + '必须是 2000 字以内的文本')
+            draft[key] = value.strip()
+        for product_id in product_ids:
+            self.get(product_id)
+        with self.connect() as db:
+            db.execute('INSERT OR REPLACE INTO live_preparation VALUES (1, ?)',
+                       (json.dumps(draft, ensure_ascii=False),))
 
     def save_business_metrics(self, product_id, *, source, period_start, period_end, scope,
                               clicks=None, orders=None, refunds=None, stock=None):

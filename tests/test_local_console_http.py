@@ -19,6 +19,20 @@ from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_live_preparation_draft_and_missing_conditions(self):
+        route = '/api/live/preparation'
+        self.assertIn('本场商品', self.call(route)[1]['missing'])
+        _, response = self.call('/api/products', {'title': '茶杯', 'content': '测试', 'product_index': 1})
+        product_id = response['product']['id']
+        draft = {'product_ids': [product_id], 'goal': ' 介绍新品 '}
+        status, saved = self.call(route, draft)
+        self.assertEqual(status, 200)
+        self.assertEqual(saved['draft']['goal'], '介绍新品')
+        self.assertNotIn('本场商品', saved['missing'])
+        self.assertIn('发货条件', saved['missing'])
+        self.assertEqual(self.call(route, {**draft, 'product_ids': [product_id, product_id]})[0], 400)
+        self.assertEqual(self.call(route), (200, saved))
+
     def test_business_metrics_api_preserves_zero_and_unknown(self):
         _, response = self.call('/api/products', {'title': '茶杯', 'content': '经营数据', 'product_index': 1})
         product = response['product']
