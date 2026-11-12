@@ -204,11 +204,21 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if len(sessions) != 1 or not 1 <= len(sessions[0]) <= 64:
                         raise ProductError('场次无效')
                     return self.respond(200, {'events': products().live_control_events(sessions[0])})
-                if path == '/api/live/report':
+                if path in {'/api/live/report', '/api/live/review'}:
                     sessions = parse_qs(urlsplit(self.path).query, keep_blank_values=True).get('session_id', [])
                     if len(sessions) != 1 or not 1 <= len(sessions[0]) <= 64:
                         raise ProductError('场次无效')
-                    return self.respond(200, products().live_session_report(sessions[0]))
+                    report = products().live_session_report(sessions[0])
+                    if path == '/api/live/review':
+                        return self.respond(200, {
+                            'session_id': sessions[0], 'missing': report['missing'],
+                            'findings': [{
+                                'evidence': {'event_id': fault['event_id'], 'occurred_at': fault['occurred_at']},
+                                'fact': fault['reason'],
+                                'recommendation': '开播前复测该故障并记录复测结果',
+                            } for fault in report['rotation_faults']],
+                        })
+                    return self.respond(200, report)
                 if path == '/api/live/rotation/events':
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                     sessions = query.get('session_id', [])

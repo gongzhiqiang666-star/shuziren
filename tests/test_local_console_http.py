@@ -38,6 +38,12 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(report['session']['frames'], 225)
         self.assertEqual(report['session']['failure_reason'], '输出设备断开')
         self.assertEqual(report['rotation_faults'], [{'event_id': 1, 'occurred_at': 104, 'reason': '语音合成超时'}])
+        status, review = self.call('/api/live/review?session_id=scene')
+        self.assertEqual(status, 200)
+        finding, = review['findings']
+        self.assertEqual(finding['evidence'], {'event_id': 1, 'occurred_at': 104})
+        self.assertEqual(finding['fact'], '语音合成超时')
+        self.assertIn('questions_and_answers', review['missing'])
         product, next_product = report['products']
         self.assertEqual(product['completed_segments'], 2)
         self.assertEqual(next_product['completed_segments'], 1)
