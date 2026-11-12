@@ -104,9 +104,40 @@ function showProduct(product) {
   $('metrics-status').textContent = '';
   $('metrics-error').textContent = '';
   $('metrics-records').replaceChildren();
+  clearBusinessSummary();
 }
 const metricsRoute = '/api/products/business-metrics';
+const summaryFields = {source:'metrics-source', scope:'metrics-scope', period_start:'metrics-start', period_end:'metrics-end'};
+let summaryVersion = 0;
+function clearBusinessSummary() {
+  summaryVersion++;
+  $('metrics-summary').textContent = '';
+}
+for (const id of Object.values(summaryFields)) {
+  $(id).addEventListener('input', clearBusinessSummary);
+}
+$('metrics-query').addEventListener('click', async () => {
+  if (!currentProduct) return;
+  clearBusinessSummary();
+  const output = $('metrics-summary');
+  const params = new URLSearchParams({product_id:currentProduct.id});
+  for (const [field, id] of Object.entries(summaryFields)) {
+    const input = $(id);
+    if (!input.reportValidity()) return;
+    params.set(field, input.value);
+  }
+  const version = summaryVersion;
+  output.textContent = '正在查询经营汇总';
+  try {
+    const {summary} = await request(metricsRoute + '/summary?' + params);
+    if (version !== summaryVersion) return;
+    output.textContent = `点击 ${summary.clicks ?? '未知'} · 订单 ${summary.orders ?? '未知'} · 退款 ${summary.refunds ?? '未知'} · 期末库存 ${summary.closing_stock ?? '未知'}`;
+  } catch (error) {
+    if (version === summaryVersion) output.textContent = error.message;
+  }
+});
 function showBusinessMetrics(records) {
+  clearBusinessSummary();
   $('metrics-records').replaceChildren(...records.map(record => {
     const item = document.createElement('li');
     item.textContent = `${record.period_start} 至 ${record.period_end} · ${record.source} · ${record.scope} · 点击 ${record.clicks ?? '未知'} · 订单 ${record.orders ?? '未知'} · 退款 ${record.refunds ?? '未知'} · 库存 ${record.stock ?? '未知'}`;

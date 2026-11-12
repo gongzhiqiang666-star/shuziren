@@ -61,7 +61,9 @@
 <label for="metrics-refunds">退款数</label><input id="metrics-refunds" type="number" min="0" step="1">
 <label for="metrics-stock">库存</label><input id="metrics-stock" type="number" min="0" step="1">
 <button type="submit">保存经营数据</button>
+<button id="metrics-query" type="button" class="secondary">查询经营汇总</button>
 </form>
+<p id="metrics-summary" role="status"></p>
 <form id="business-import-form">
 <label for="metrics-csv">UTF-8 CSV 商家报表</label><input id="metrics-csv" type="file" accept=".csv,text/csv" required>
 <p class="hint">必填表头 source、period_start、period_end、scope。可选 clicks、orders、refunds、stock。</p>
