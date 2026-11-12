@@ -1231,6 +1231,29 @@ class ProductStore:
             """, (product_id,)).fetchall()
         return [dict(row) for row in rows]
 
+    def compare_promotion_spend(self, product_id, source, campaign, asset,
+                                baseline_start, baseline_end, trial_start, trial_end):
+        windows = ((baseline_start, baseline_end), (trial_start, trial_end))
+        keys = [self._business_metric_row(product_id, source=source, period_start=start,
+                                          period_end=end, scope='投放费用')[:4]
+                for start, end in windows]
+        if baseline_end >= trial_start:
+            raise ProductError('基线窗口须早于试验窗口且不能重叠')
+        with self.connect() as db:
+            db.execute('BEGIN')
+            bills = []
+            for key in keys:
+                row = db.execute("""
+                    SELECT * FROM promotion_spend WHERE product_id=? AND source=? AND period_start=?
+                        AND period_end=? AND campaign=? AND asset=?
+                """, (*key, campaign, asset)).fetchone()
+                if row is None:
+                    raise ProductError('缺少相同活动和素材的对应账单')
+                bills.append(dict(row))
+        return {'baseline': bills[0], 'trial': bills[1],
+                'spend_difference_minor': bills[1]['spend_minor'] - bills[0]['spend_minor'],
+                'conclusion': 'uncertain', 'missing': ['attributed_orders', 'attributed_refunds', 'net_result']}
+
     def compare_product_facts(self, product_ids, fact_names):
         now = datetime.now(timezone.utc)
         items = []

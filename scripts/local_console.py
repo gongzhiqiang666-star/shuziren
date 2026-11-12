@@ -469,6 +469,14 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if path.endswith('/decision'):
                         return self.respond(200, {'decision': products().sourcing_decision(ids[0])})
                     return self.respond(200, {'trial': products().sourcing_trial(ids[0])})
+                if path == "/api/promotion/compare":
+                    query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                    if (set(query) != {'product_id', 'source', 'campaign', 'asset',
+                                       'baseline_start', 'baseline_end', 'trial_start', 'trial_end'}
+                            or any(len(values) != 1 or not values[0] for values in query.values())):
+                        raise ProductError('请选择投放对象和两个账单窗口')
+                    return self.respond(200, {'comparison': products().compare_promotion_spend(
+                        **{key: values[0] for key, values in query.items()})})
                 if path == "/api/promotion/plans/actions":
                     ids = parse_qs(urlsplit(self.path).query).get('plan_id', [])
                     if len(ids) != 1 or not 1 <= len(ids[0]) <= 64:

@@ -55,6 +55,17 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual([entry['action'] for entry in actions], ['approved', 'paused'])
         self.assertEqual(self.call(plans + '?product_id=' + product['id']),
                          (200, {'plans': [{**result['plan'], 'status': 'paused'}]}))
+        comparison = {key: payload[key] for key in ('product_id', 'source', 'campaign', 'asset')}
+        comparison.update(baseline_start='2026-11-01', baseline_end='2026-11-03',
+                          trial_start='2026-11-04', trial_end='2026-11-06')
+        compare_url = '/api/promotion/compare?' + urlencode(comparison)
+        self.assertEqual(self.call(compare_url)[0], 400)
+        self.assertEqual(self.call(route, {**payload, 'period_start': '2026-11-04',
+                                           'period_end': '2026-11-06', 'spend_minor': 250})[0], 200)
+        status, response = self.call(compare_url)
+        self.assertEqual(status, 200)
+        self.assertEqual(response['comparison']['spend_difference_minor'], -150)
+        self.assertEqual(response['comparison']['conclusion'], 'uncertain')
 
     def test_sourcing_candidates_preserve_source_and_leave_missing_terms_unknown(self):
         route = '/api/sourcing/candidates'
