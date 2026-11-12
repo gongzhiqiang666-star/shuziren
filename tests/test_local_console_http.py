@@ -47,6 +47,13 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertIn('第 3 行', error['error'])
         self.assertIn('库存', error['error'])
         self.assertEqual(len(self.call(route + '?product_id=' + product['id'])[1]['records']), 2)
+        large_report = header + '人工盘点,2026-11-03,2026-11-03,商品,9007199254740993,0\n'
+        status, imported = self.call(route + '/import', {**upload, 'csv': large_report})
+        self.assertEqual(status, 200)
+        self.assertEqual(imported['records'][0]['clicks'], '9007199254740993')
+        self.assertEqual(imported['records'][0]['stock'], 0)
+        status, listed = self.call(route + '?product_id=' + product['id'])
+        self.assertEqual((status, listed['records']), (200, imported['records']))
 
     def test_business_metrics_summary_uses_corrected_complete_coverage(self):
         _, response = self.call('/api/products', {'title': '茶杯', 'content': '经营数据', 'product_index': 1})

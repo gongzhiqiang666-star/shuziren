@@ -70,6 +70,12 @@ class InstanceLock:
             self.stream = None
 
 
+def browser_metrics(values):
+    """Encode counts outside the JavaScript safe integer range losslessly."""
+    return {key: str(value) if type(value) is int and value >= 2**53 else value
+            for key, value in values.items()}
+
+
 def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=None):
     token = secrets.token_urlsafe(32)
     lock = threading.RLock()
@@ -274,17 +280,14 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     ids = parse_qs(urlsplit(self.path).query, keep_blank_values=True).get("product_id", [])
                     if len(ids) != 1 or not ids[0]:
                         raise ProductError("请选择有效商品")
-                    return self.respond(200, {"records": products().business_metrics(ids[0])})
+                    return self.respond(200, {"records": list(map(browser_metrics, products().business_metrics(ids[0])))})
                 if path == "/api/products/business-metrics/summary":
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                     fields = {"product_id", "source", "scope", "period_start", "period_end"}
                     if set(query) != fields or any(len(values) != 1 or not values[0] for values in query.values()):
                         raise ProductError("请选择商品、数据来源、统计口径和日期")
                     summary = products().summarize_business_metrics(**{key: values[0] for key, values in query.items()})
-                    # The browser cannot represent all SQLite counts as JSON numbers.
-                    summary = {key: str(value) if value is not None and value >= 2**53 else value
-                               for key, value in summary.items()}
-                    return self.respond(200, {"summary": summary})
+                    return self.respond(200, {"summary": browser_metrics(summary)})
                 if path == "/api/llm/state":
                     from scripts.console_llm import status
                     return self.respond(200, {**status(), "task":tasks().state()})
@@ -529,13 +532,14 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             raise ProductError("经营数据字段无效")
                         data = products()
                         data.save_business_metrics(**value)
-                        return self.respond(200, {"records": data.business_metrics(value["product_id"])})
+                        return self.respond(200, {"records": list(map(browser_metrics, data.business_metrics(value["product_id"])))})
                     if path == "/api/products/business-metrics/import":
                         if set(value) != {"product_id", "csv"} or not isinstance(value["product_id"], str):
                             raise ProductError("经营报表导入字段无效")
                         data = products()
                         count = data.import_business_metrics(value["product_id"], value["csv"])
-                        return self.respond(200, {"imported": count, "records": data.business_metrics(value["product_id"])})
+                        records = list(map(browser_metrics, data.business_metrics(value["product_id"])))
+                        return self.respond(200, {"imported": count, "records": records})
                     if path == "/api/llm/generate":
                         if set(value) != {"product_id", "version", "instructions"} or not isinstance(value['product_id'], str):
                             raise ProductError("生成字段无效")
