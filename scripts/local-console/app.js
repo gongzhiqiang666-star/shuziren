@@ -1876,7 +1876,6 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       }
     }
     for (const application of preparation_applications) {
-      if (!application.improvements.length) continue;
       lines.push(`已载入准备包 ${application.revision}`);
       for (const task of application.improvements) {
         const source = task.reply_task_id ? `答复 ${task.reply_task_id}` : `故障 ${task.fault_id}`;
