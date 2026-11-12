@@ -757,6 +757,9 @@ async function loadLive() {
     const context = item.context;
     const details = [item.evidence];
     if (context?.occurred_at != null) details.push(new Date(context.occurred_at * 1000).toLocaleString());
+    if (context?.fact_expired_at != null) {
+      details.push('商品事实到期 ' + new Date(context.fact_expired_at * 1000).toLocaleString());
+    }
     if (context?.product_id) {
       const title = savedProducts.find(product => product.id === context.product_id)?.title ?? context.product_id;
       details.push(`${title} · 商品版本 ${context.product_version} · 话术 ${context.script_id}`);

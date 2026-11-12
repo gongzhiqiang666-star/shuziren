@@ -533,6 +533,9 @@ class ConsoleLive:
                         'occurred_at': occurred_at,
                         **{key: failed_item[key] for key in ('product_id', 'product_version', 'script_id')}
                     } if failed_item else {'occurred_at': occurred_at}
+                    deadline = failed_item.get('fact_deadline') if failed_item else None
+                    if deadline is not None and occurred_at >= deadline:
+                        self.status['rotation_fault']['fact_expired_at'] = deadline
                     try:
                         self.tts.products.record_rotation_fault(session_id, occurred_at, str(error), item=failed_item)
                     except sqlite3.Error:
