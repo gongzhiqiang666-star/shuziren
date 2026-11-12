@@ -1866,10 +1866,16 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       if (content_summary.withdrawn_drafts) {
         lines.push(`已停止复用的草稿 ${content_summary.withdrawn_drafts} 条`);
       }
-      if (tracked_drafts) lines.push(`有改稿记录的草稿 ${revised_drafts}/${tracked_drafts}`);
+      if (tracked_drafts) {
+        const revisionRate = (100 * revised_drafts / tracked_drafts).toFixed(1);
+        lines.push(`改稿率 ${revisionRate}%（有改稿的草稿 ${revised_drafts}/${tracked_drafts}）`);
+      }
       if (drafts > tracked_drafts) lines.push(`改稿次数未知 ${drafts - tracked_drafts} 条`);
       if (content_summary.timed_drafts) {
         lines.push(`人工登记平均制作耗时 ${content_summary.average_production_seconds.toFixed(1)} 秒（${content_summary.timed_drafts} 条）`);
+      }
+      if (drafts > content_summary.timed_drafts) {
+        lines.push(`制作耗时未登记 ${drafts - content_summary.timed_drafts} 条`);
       }
       if (content_summary.paired_drafts) {
         lines.push(`人工基线减去复用耗时，平均 ${content_summary.average_seconds_saved.toFixed(1)} 秒（${content_summary.paired_drafts} 条）`);
