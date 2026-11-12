@@ -275,6 +275,13 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if len(ids) != 1 or not ids[0]:
                         raise ProductError("请选择有效商品")
                     return self.respond(200, {"records": products().business_metrics(ids[0])})
+                if path == "/api/products/business-metrics/summary":
+                    query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                    fields = {"product_id", "source", "scope", "period_start", "period_end"}
+                    if set(query) != fields or any(len(values) != 1 or not values[0] for values in query.values()):
+                        raise ProductError("请选择商品、数据来源、统计口径和日期")
+                    summary = products().summarize_business_metrics(**{key: values[0] for key, values in query.items()})
+                    return self.respond(200, {"summary": summary})
                 if path == "/api/llm/state":
                     from scripts.console_llm import status
                     return self.respond(200, {**status(), "task":tasks().state()})

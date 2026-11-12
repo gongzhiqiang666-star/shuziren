@@ -222,6 +222,34 @@ class ProductStore:
             """, (product_id,)).fetchall()
         return [dict(row) for row in rows]
 
+    def summarize_business_metrics(self, product_id, *, source, scope, period_start, period_end):
+        key = self._business_metric_row(product_id, source=source, scope=scope,
+                                        period_start=period_start, period_end=period_end)
+        _, source, period_start, period_end, scope = key[:5]
+        self.get(product_id)
+        with self.connect() as db:
+            rows = db.execute("""
+                SELECT * FROM product_business_metrics
+                WHERE product_id = ? AND source = ? AND scope = ?
+                  AND period_end >= ? AND period_start <= ?
+                ORDER BY period_start, period_end
+            """, (product_id, source, scope, period_start, period_end)).fetchall()
+        next_day = date.fromisoformat(period_start).toordinal()
+        end_day = date.fromisoformat(period_end).toordinal()
+        for row in rows:
+            start = date.fromisoformat(row['period_start']).toordinal()
+            end = date.fromisoformat(row['period_end']).toordinal()
+            if start != next_day or end > end_day:
+                raise ProductError('报表覆盖存在缺口、重叠或超出所选日期')
+            next_day = end + 1
+        if next_day != end_day + 1:
+            raise ProductError('报表未完整覆盖所选日期')
+        summary = {}
+        for name in ('clicks', 'orders', 'refunds'):
+            values = [row[name] for row in rows]
+            summary[name] = None if None in values else sum(values)
+        return {**summary, 'closing_stock': rows[-1]['stock']}
+
     def record_live_session(self, session_id, requested_at, *, started_at=None, ended_at=None,
                             status='preparing', frames=0):
         with self.connect() as db:

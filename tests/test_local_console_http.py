@@ -10,6 +10,7 @@ import tempfile
 import threading
 import unittest
 from urllib.error import HTTPError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from scripts.local_console import InstanceLock, create_server
@@ -46,6 +47,25 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertIn('第 3 行', error['error'])
         self.assertIn('库存', error['error'])
         self.assertEqual(len(self.call(route + '?product_id=' + product['id'])[1]['records']), 2)
+
+    def test_business_metrics_summary_uses_corrected_complete_coverage(self):
+        _, response = self.call('/api/products', {'title': '茶杯', 'content': '经营数据', 'product_index': 1})
+        route = '/api/products/business-metrics'
+        base = {'product_id': response['product']['id'], 'source': '商家报表', 'scope': '商品日统计'}
+        for day, orders, stock in [('2026-11-01', 5, 9), ('2026-11-02', 3, 7)]:
+            status, _ = self.call(route, {**base, 'period_start': day, 'period_end': day,
+                                          'orders': orders, 'stock': stock, 'refunds': 0})
+            self.assertEqual(status, 200)
+        period = {'period_start': '2026-11-01', 'period_end': '2026-11-02'}
+        summary_url = route + '/summary?' + urlencode({**base, **period})
+        expected = {'clicks': None, 'orders': 8, 'refunds': 0, 'closing_stock': 7}
+        self.assertEqual(self.call(summary_url), (200, {'summary': expected}))
+        correction = {**base, 'period_start': '2026-11-01', 'period_end': '2026-11-01',
+                      'orders': 6, 'refunds': 2, 'stock': 9}
+        self.assertEqual(self.call(route, correction)[0], 200)
+        self.assertEqual(self.call(summary_url), (200, {'summary': {**expected, 'orders': 9, 'refunds': 2}}))
+        self.assertEqual(self.call(route, {**base, **period, 'orders': 9})[0], 200)
+        self.assertEqual(self.call(summary_url)[0], 400)
 
     def test_rotation_event_pages_preserve_order_and_scene_isolation(self):
         store = ProductStore(self.directory.name)
