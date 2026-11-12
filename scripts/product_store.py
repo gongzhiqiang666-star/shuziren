@@ -40,7 +40,7 @@ def product_prompt_info(snapshot, *, now=None):
     return {"title": snapshot["title"], "content": json.dumps(verified, ensure_ascii=False)}
 
 
-def verified_product_facts(snapshot, *, now=None):
+def verified_product_facts(snapshot, *, now=None, include_expired=False):
     now = datetime.now(timezone.utc) if now is None else now
     facts = (snapshot.get("extra") or {}).get("product_facts")
     verified = {}
@@ -50,7 +50,8 @@ def verified_product_facts(snapshot, *, now=None):
                 continue
             try:
                 expires = fact.get("expires_at")
-                if expires is not None and datetime.fromisoformat(expires.replace("Z", "+00:00")) <= now:
+                if (expires is not None and datetime.fromisoformat(expires.replace("Z", "+00:00")) <= now
+                        and not include_expired):
                     continue
             except (AttributeError, TypeError, ValueError):
                 continue
@@ -370,6 +371,10 @@ class ProductStore:
             product = self.get(product_id)
             facts = verified_product_facts(product, now=now)
             customer_facts = {name: fact for name, fact in facts.items() if name not in INTERNAL_PRODUCT_FACTS}
+            missing = [] if customer_facts else ['补充并核对商品事实']
+            previously_verified = verified_product_facts(product, now=now, include_expired=True)
+            missing.extend(f'重新核对已过期的商品事实：{name}'
+                           for name in previously_verified if name not in facts and name not in INTERNAL_PRODUCT_FACTS)
             items.append({
                 'product_id': product_id, 'product_version': product['version'], 'title': product['title'],
                 'script_id': self.selected_script(product_id),
@@ -379,7 +384,7 @@ class ProductStore:
                                    for name, fact in customer_facts.items()],
                 'faq': [{'question': f"{name}是什么？", 'answer': fact['value'], 'source': fact['source']}
                         for name, fact in customer_facts.items()],
-                'missing': [] if customer_facts else ['补充并核对商品事实'],
+                'missing': missing,
                 'assets': ['核对商品展示图或实拍视频'],
             })
         selected_versions = {item['product_id']: item['product_version'] for item in items}

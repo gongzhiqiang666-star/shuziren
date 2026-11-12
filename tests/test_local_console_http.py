@@ -517,6 +517,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         store.save_live_preparation(product_ids=[product['id']])
         prepared, = self.call('/api/live/preparation/package')[1]['items']
         self.assertEqual(prepared['recommendation'], item['recommendation'])
+        self.assertIn('重新核对已过期的商品事实：售价', prepared['missing'])
+        self.assertNotIn('售价', [point['name'] for point in prepared['selling_points']])
         store.save(title='桌布', content='另一商品', product_index=2, product_facts={
             '库存': {'status': 'verified', 'value': 20, 'source': '旧盘点',
                    'expires_at': '2020-01-01T00:00:00Z'},
