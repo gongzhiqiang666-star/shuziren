@@ -789,3 +789,5 @@ V09 候选 b8ce9e7 正式 deploy --with-media 及 run --with-media 入口补验�
 V09-04 候选 b8ce9e7 安装目录打包回归 8 项通过，含旧商品与话术迁移、形象迁移保留及锁。复查本机 v179 包中排除 Python 环境的 JSON 未发现含 product_scripts 或 face_hand_live 的真实导出模板，真实样本待验。
 
 V09 候选 6930e9f 构建并隔离安装通过，439 文件通过清单校验，包 SHA-256 为 a6e44ffe2951c7e7d1b91d04931fef4a552f2fefcc5664aedbe34cce3834d834。安装目录运行 9 项打包回归通过，覆盖无效旧模板选中项拒绝及现有商品保留。该候选的干净 Windows 整机及实播待验。
+
+V09 候选 6930e9f 从本机隔离安装目录通过实播。重新审核、轮播、插播、接管恢复及停播完成，提交 940 帧，回采双轨解码与场次报告一致性通过。证据 logs/validation/n05-installed-live-6930e9f/result.json。干净 Windows 整机和发行版长稳待验。
