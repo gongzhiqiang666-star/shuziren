@@ -1,4 +1,6 @@
 """Generate one selected comment reply and hand it to the active local output."""
+import logging
+import sqlite3
 from collections import deque
 import json
 import threading
@@ -104,6 +106,11 @@ class ConsoleCommentReply:
                     if state['status'] not in {'running', 'succeeded'}:
                         raise LLMError('评论回复语音合成失败')
                 wait()
+            try:
+                live.tts.products.record_queued_reply(session_id, task['id'], product,
+                                                      comment['content'], text, time.time())
+            except sqlite3.Error:
+                logging.exception('记录已入队问答失败')
             with self.lock:
                 self.replied.append(comment['id'])
                 self.job.update(status='queued', text=text, task_id=task['id'])

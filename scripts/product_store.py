@@ -131,6 +131,10 @@ class ProductStore:
                     singleton INTEGER PRIMARY KEY CHECK(singleton=1), draft TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_rotation_faults (
                     session_id TEXT NOT NULL, occurred_at REAL NOT NULL, reason TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS live_queued_replies (
+                    session_id TEXT NOT NULL, task_id TEXT NOT NULL, product_id TEXT NOT NULL,
+                    product_version INTEGER NOT NULL, question TEXT NOT NULL, answer TEXT NOT NULL,
+                    queued_at REAL NOT NULL, PRIMARY KEY(session_id, task_id));
                 CREATE TABLE IF NOT EXISTS live_preparation_review (
                     revision TEXT PRIMARY KEY, review TEXT NOT NULL);
             ''')
@@ -408,6 +412,10 @@ class ProductStore:
                 SELECT rowid AS event_id, occurred_at, reason FROM live_rotation_faults
                 WHERE session_id = ? ORDER BY rowid
             """, (session_id,)).fetchall()
+            replies = db.execute("""
+                SELECT task_id, product_id, product_version, question, answer, queued_at
+                FROM live_queued_replies WHERE session_id = ? ORDER BY rowid
+            """, (session_id,)).fetchall()
             switches = db.execute("""
                 WITH sequence AS (
                     SELECT rowid AS cursor, task_id, product_id, completed_at,
@@ -421,10 +429,16 @@ class ProductStore:
             'products': [dict(row) for row in products],
             'controls': [{**dict(row), 'manual': bool(row['manual'])} for row in controls],
             'rotation_faults': [dict(row) for row in faults],
+            'queued_replies': [dict(row) for row in replies],
             'observed_product_switches': [dict(row) for row in switches],
             'missing': ['product_exposure', 'questions_and_answers', 'platform_product_switches',
                         'fault_events', 'attributed_sales'],
         }
+
+    def record_queued_reply(self, session_id, task_id, product, question, answer, queued_at):
+        with self.connect() as db:
+            db.execute('INSERT OR IGNORE INTO live_queued_replies VALUES (?, ?, ?, ?, ?, ?, ?)',
+                       (session_id, task_id, product['id'], product['version'], question, answer, queued_at))
 
     def record_rotation_fault(self, session_id, occurred_at, reason):
         with self.connect() as db:
