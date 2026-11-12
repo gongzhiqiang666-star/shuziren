@@ -148,6 +148,9 @@ class ProductStore:
                 CREATE TABLE IF NOT EXISTS promotion_plans (
                     id TEXT PRIMARY KEY, product_id TEXT NOT NULL REFERENCES products(id),
                     snapshot TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS promotion_plan_actions (
+                    plan_id TEXT NOT NULL REFERENCES promotion_plans(id), action TEXT NOT NULL,
+                    occurred_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS product_after_sales_tasks (
                     product_id TEXT NOT NULL, source TEXT NOT NULL, period_start TEXT NOT NULL,
                     period_end TEXT NOT NULL, category TEXT NOT NULL, evidence_count INTEGER NOT NULL,
@@ -1172,9 +1175,36 @@ class ProductStore:
     def promotion_plans(self, product_id):
         self.get(product_id)
         with self.connect() as db:
-            rows = db.execute('SELECT snapshot FROM promotion_plans WHERE product_id=? ORDER BY rowid DESC',
+            rows = db.execute('''SELECT snapshot, COALESCE((
+                SELECT action FROM promotion_plan_actions WHERE plan_id=promotion_plans.id ORDER BY rowid DESC LIMIT 1
+            ), 'draft') AS status FROM promotion_plans WHERE product_id=? ORDER BY rowid DESC''',
                               (product_id,)).fetchall()
-        return [json.loads(row['snapshot']) for row in rows]
+        return [{**json.loads(row['snapshot']), 'status': row['status']} for row in rows]
+
+    def update_promotion_plan(self, plan_id, action):
+        if action not in ('approved', 'paused'):
+            raise ProductError('投放方案操作无效')
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT snapshot FROM promotion_plans WHERE id=?', (plan_id,)).fetchone()
+            if not row:
+                raise ProductError('投放方案不存在')
+            snapshot = json.loads(row['snapshot'])
+            if action == 'approved':
+                bill = snapshot['bill']
+                keys = ('product_id', 'source', 'period_start', 'period_end', 'campaign', 'asset')
+                current = db.execute("""
+                    SELECT * FROM promotion_spend WHERE product_id=? AND source=? AND period_start=?
+                        AND period_end=? AND campaign=? AND asset=?
+                """, tuple(bill[key] for key in keys)).fetchone()
+                if current is None or dict(current) != bill:
+                    raise Conflict('账单已变化，请重新核对并保存方案')
+            previous = db.execute('SELECT action FROM promotion_plan_actions WHERE plan_id=? ORDER BY rowid DESC LIMIT 1',
+                                  (plan_id,)).fetchone()
+            if previous is None or previous['action'] != action:
+                db.execute('INSERT INTO promotion_plan_actions VALUES (?, ?, ?)',
+                           (plan_id, action, datetime.now(timezone.utc).isoformat()))
+        return {**snapshot, 'status': action}
 
     def promotion_spend(self, product_id):
         self.get(product_id)

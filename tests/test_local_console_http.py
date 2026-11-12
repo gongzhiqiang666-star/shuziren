@@ -44,8 +44,13 @@ class ConsoleHTTPTests(unittest.TestCase):
         status, result = self.call(plans, plan)
         self.assertEqual(status, 200)
         self.assertEqual(result['plan']['bill'], corrected)
+        action = {'plan_id': result['plan']['id'], 'action': 'approved'}
+        self.assertEqual(self.call(plans + '/action', action)[1]['plan']['status'], 'approved')
         self.assertEqual(self.call(route, {**corrected, 'spend_minor': 400})[0], 200)
-        self.assertEqual(self.call(plans + '?product_id=' + product['id']), (200, {'plans': [result['plan']]}))
+        self.assertEqual(self.call(plans + '/action', action)[0], 409)
+        self.assertEqual(self.call(plans + '/action', {**action, 'action': 'paused'})[1]['plan']['status'], 'paused')
+        self.assertEqual(self.call(plans + '?product_id=' + product['id']),
+                         (200, {'plans': [{**result['plan'], 'status': 'paused'}]}))
 
     def test_sourcing_candidates_preserve_source_and_leave_missing_terms_unknown(self):
         route = '/api/sourcing/candidates'

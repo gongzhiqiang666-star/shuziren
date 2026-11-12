@@ -790,6 +790,10 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         else:
                             data.revoke_live_advice_acknowledgment(value['session_id'], value['advice'], time())
                         return self.respond(200, {'acknowledged': acknowledge})
+                    if path == "/api/promotion/plans/action":
+                        if set(value) != {'plan_id', 'action'} or not isinstance(value['plan_id'], str):
+                            raise ProductError('投放方案操作字段无效')
+                        return self.respond(200, {'plan': products().update_promotion_plan(**value)})
                     if path == "/api/promotion/plans":
                         if set(value) != {'product_id', 'source', 'period_start', 'period_end', 'campaign', 'asset',
                                          'budget_minor', 'rationale'}:
