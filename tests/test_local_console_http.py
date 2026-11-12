@@ -108,6 +108,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(result['plan']['bill'], corrected)
         action = {'plan_id': result['plan']['id'], 'action': 'approved'}
         self.assertEqual(self.call(plans + '/action', action)[1]['plan']['status'], 'approved')
+        self.assertEqual(self.call(route, corrected)[0], 200)
+        self.assertEqual(self.call(plans + '?product_id=' + product['id'])[1]['plans'][0]['status'], 'approved')
         self.assertEqual(self.call(plans + '/action', action)[0], 200)
         self.assertEqual(self.call(route, {**corrected, 'spend_minor': 400})[0], 200)
         self.assertEqual(self.call(plans + '?product_id=' + product['id'])[1]['plans'][0]['status'], 'stale')
@@ -121,6 +123,11 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual([entry['action'] for entry in actions], ['approved', 'paused'])
         self.assertEqual(self.call(plans + '?product_id=' + product['id']),
                          (200, {'plans': [{**result['plan'], 'status': 'paused'}]}))
+        self.assertEqual(self.call(plans + '/action', action)[0], 409)
+        status, replacement = self.call(plans, plan)
+        self.assertEqual(status, 200)
+        self.assertEqual(replacement['plan']['bill']['spend_minor'], 400)
+        self.assertEqual(self.call(plans + '/action', {**action, 'plan_id': replacement['plan']['id']})[0], 200)
         comparison = {key: payload[key] for key in ('product_id', 'source', 'campaign', 'asset')}
         comparison.update(baseline_start='2026-11-01', baseline_end='2026-11-03',
                           trial_start='2026-11-04', trial_end='2026-11-06')
