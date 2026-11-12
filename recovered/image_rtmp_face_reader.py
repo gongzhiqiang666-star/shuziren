@@ -127,7 +127,8 @@ class RtmpFaceReader(VideoFaceReader):
             if cancel is not None and cancel.is_set():
                 return False
             if self.first_frame.is_set(): return True
-            if self.ffmpeg_process and self.ffmpeg_process.poll() is not None: return False
+            if self.capture_thread is not None and not self.capture_thread.is_alive():
+                return self.first_frame.is_set()
             time.sleep(.02)
         return False
 

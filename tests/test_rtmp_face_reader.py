@@ -88,6 +88,7 @@ class RtmpFirstFrameTests(unittest.TestCase):
                 reader.stop_event = threading.Event()
                 reader.first_frame = threading.Event()
                 reader.raw_frames_queue = queue.Queue()
+                reader.capture_thread = threading.Thread()
                 reader.ffmpeg_process = Mock(stdout=io.BytesIO(payload))
                 reader.ffmpeg_process.poll.return_value = 0
                 reader._capture_thread()
@@ -95,3 +96,14 @@ class RtmpFirstFrameTests(unittest.TestCase):
                 if payload:
                     self.assertEqual(reader.raw_frames_queue.get_nowait().tobytes(), payload)
                 self.assertIsNone(reader.raw_frames_queue.get_nowait())
+
+    def test_first_frame_wait_allows_capture_to_drain_exited_decoder(self):
+        reader = RtmpFaceReader.__new__(RtmpFaceReader)
+        reader.stop_event = threading.Event()
+        reader.first_frame = threading.Event()
+        reader.ffmpeg_process = Mock()
+        reader.ffmpeg_process.poll.return_value = 0
+        reader.capture_thread = Mock()
+        reader.capture_thread.is_alive.return_value = True
+        with patch('recovered.image_rtmp_face_reader.time.sleep', side_effect=lambda _: reader.first_frame.set()):
+            self.assertTrue(reader._wait_for_initial_frame(.5))
