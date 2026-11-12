@@ -4,6 +4,7 @@ import sys
 import os
 import wave
 import base64
+from datetime import datetime, timezone
 from unittest.mock import patch
 from pathlib import Path
 import tempfile
@@ -394,6 +395,14 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(second['recommendation']['role'], 'hold')
         self.assertIsNone(second['conditions']['库存'])
         self.assertEqual(second['recommendation']['reason'], '需核对可售库存')
+        with patch('scripts.product_store.datetime', wraps=datetime) as clock:
+            clock.now.return_value = datetime(2019, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+            before = self.call(route)[1]['products'][1]
+            clock.now.return_value = datetime(2020, 1, 1, tzinfo=timezone.utc)
+            at_expiry = self.call(route)[1]['products'][1]
+        self.assertEqual(before['recommendation']['role'], 'trial')
+        self.assertEqual(at_expiry['recommendation']['role'], 'hold')
+        self.assertEqual(before['product_version'], at_expiry['product_version'])
         self.assertIn('覆盖', second['business_metrics_gap'])
         self.assertNotIn('refund_review', first)
         store.save_business_metrics(product['id'], **window, orders=5, refunds=6)
