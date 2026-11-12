@@ -39,7 +39,14 @@ class RtmpFaceReader(VideoFaceReader):
         return self._probe_video_properties(rtmp_url, None)
 
     def _probe_video_properties(self, rtmp_url, cancel):
-        command = [shutil.which("ffprobe") or "ffprobe", "-v", "error", "-select_streams", "v:0",
+        configured_ffmpeg = os.environ.get("FFMPEG_EXE")
+        ffprobe = shutil.which("ffprobe") or "ffprobe"
+        if configured_ffmpeg:
+            ffmpeg = Path(configured_ffmpeg)
+            companion = ffmpeg.with_name("ffprobe" + ffmpeg.suffix)
+            if companion.is_file():
+                ffprobe = str(companion)
+        command = [ffprobe, "-v", "error", "-select_streams", "v:0",
                    "-show_entries", "stream=width,height,avg_frame_rate", "-of", "json", rtmp_url]
         if cancel is None:
             result = subprocess.run(command, capture_output=True, text=True, timeout=15)
