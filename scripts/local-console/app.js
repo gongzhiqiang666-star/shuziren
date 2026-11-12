@@ -362,7 +362,11 @@ afterSalesCompare.addEventListener('submit', async event => {
     if (currentProduct !== product || version !== afterSalesComparisonVersion) return;
     const lines = Object.entries(afterSalesCategories).map(([key, label]) =>
       `${label} ${comparison.baseline.counts[key] ?? '未知'} → ${comparison.trial.counts[key] ?? '未知'}（差值 ${comparison.differences[key] ?? '未知'}）`);
-    result.textContent = [...lines, '效果结论：不确定'].join(' · ');
+    const window = ({period_start, period_end}) => `${period_start} 至 ${period_end}`;
+    result.textContent = [
+      `来源 ${comparison.source} · 基线 ${window(comparison.baseline)} · 试验 ${window(comparison.trial)}`,
+      ...lines, '效果结论：不确定',
+    ].join(' · ');
   } catch (error) {
     if (currentProduct === product && version === afterSalesComparisonVersion) result.textContent = error.message;
   } finally {
