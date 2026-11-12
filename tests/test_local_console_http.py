@@ -78,6 +78,7 @@ class ConsoleHTTPTests(unittest.TestCase):
                 advice, = self.call(route)[1]['advice']
                 self.assertEqual(advice['code'], 'repeated_question')
                 self.assertIn('2 次', advice['evidence'])
+                self.assertEqual(advice['context']['task_id'], 'b')
             with patch('time.time', return_value=401):
                 self.assertEqual(self.call(route)[1]['advice'], [])
 

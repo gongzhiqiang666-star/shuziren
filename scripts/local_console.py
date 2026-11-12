@@ -113,7 +113,8 @@ def live_advice(session, repeated_questions=()):
     for question in repeated_questions:
         advice.append({'code': 'repeated_question', 'evidence': f"同商品重复提问 {question['occurrences']} 次：{question['question']}",
                        'recommendation': '核对商品事实后，可补讲或补充 FAQ',
-                       'context': {'product_id': question['product_id'], 'occurred_at': question['last_queued_at']}})
+                       'context': {'product_id': question['product_id'], 'occurred_at': question['last_queued_at'],
+                                   'task_id': question['task_id']}})
     return advice
 
 

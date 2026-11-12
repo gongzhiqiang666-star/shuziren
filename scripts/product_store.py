@@ -144,6 +144,8 @@ class ProductStore:
                     session_id TEXT NOT NULL, task_id TEXT NOT NULL, product_id TEXT NOT NULL,
                     product_version INTEGER NOT NULL, question TEXT NOT NULL, answer TEXT NOT NULL,
                     queued_at REAL NOT NULL, PRIMARY KEY(session_id, task_id));
+                CREATE INDEX IF NOT EXISTS live_queued_replies_session_time
+                    ON live_queued_replies(session_id, queued_at);
                 CREATE TABLE IF NOT EXISTS live_unqueued_replies (
                     session_id TEXT NOT NULL, product_id TEXT NOT NULL, product_version INTEGER NOT NULL,
                     question TEXT NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL, occurred_at REAL NOT NULL);
@@ -486,10 +488,15 @@ class ProductStore:
     def recent_repeated_live_questions(self, session_id, since):
         with self.connect() as db:
             rows = db.execute("""
-                SELECT product_id, TRIM(question) AS question, COUNT(*) AS occurrences,
-                       MAX(queued_at) AS last_queued_at
-                FROM live_queued_replies WHERE session_id=? AND queued_at>=?
-                GROUP BY product_id, TRIM(question) HAVING COUNT(*) >= 2
+                WITH recent AS (
+                    SELECT product_id, TRIM(question) AS question, task_id, queued_at,
+                           COUNT(*) OVER (PARTITION BY product_id, TRIM(question)) AS occurrences,
+                           ROW_NUMBER() OVER (PARTITION BY product_id, TRIM(question)
+                                              ORDER BY queued_at DESC, rowid DESC) AS position
+                    FROM live_queued_replies WHERE session_id=? AND queued_at>=?
+                )
+                SELECT product_id, question, task_id, occurrences, queued_at AS last_queued_at
+                FROM recent WHERE occurrences >= 2 AND position=1
                 ORDER BY last_queued_at DESC, product_id, question LIMIT 5
             """, (session_id, since)).fetchall()
         return [dict(row) for row in rows]
