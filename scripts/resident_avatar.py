@@ -137,6 +137,7 @@ class ResidentAvatar:
         for key in ['inference_ms','prepare_ms','paste_ms']:stats[key].clear()
         stats['frames']=stats['batches']=0
         feature_seconds=time.perf_counter()-started
+        report_stage('prepare', self.frame_offset)
         sequence=self.synth._generate_frame_sequence(len(features));first,_=self.synth._load_single_frame(sequence[0])
         from scripts.raw_video_writer import RawVideoWriter
         writer=RawVideoWriter(self.internal/'env/ffmpeg/bin/ffmpeg.exe',output,audio,first.shape[1],first.shape[0]) if frame_channel is None else None
