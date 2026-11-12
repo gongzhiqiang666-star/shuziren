@@ -85,4 +85,13 @@ class ContinuousAVSink:
             if self.process.stdin:
                 try:self.process.stdin.close()
                 except (OSError,ValueError):pass
-        self.log.close();self.output.unlink(missing_ok=True)
+        self.log.close()
+        # Windows can briefly retain the encoder's file handle after process exit.
+        for attempt in range(10):
+            try:
+                self.output.unlink(missing_ok=True)
+                break
+            except PermissionError as error:
+                if getattr(error, 'winerror', None) not in (32, 33) or attempt == 9:
+                    raise
+                time.sleep(.05)
