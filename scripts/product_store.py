@@ -1260,7 +1260,7 @@ class ProductStore:
             trial['metrics'] = json.loads(metrics)
         return trial
 
-    def save_sourcing_decision(self, candidate_id, decision, rationale, constraints):
+    def save_sourcing_decision(self, candidate_id, decision, rationale, constraints, expected_trial=_UNCHANGED):
         if decision not in ('adopt', 'continue', 'drop'):
             raise ProductError('采购辅助结论无效')
         rationale = text(rationale, '结论依据', 2000)
@@ -1271,10 +1271,13 @@ class ProductStore:
             if not candidate:
                 raise ProductError('采购候选不存在')
             trial = db.execute('SELECT * FROM sourcing_trials WHERE candidate_id=?', (candidate_id,)).fetchone()
+            trial_snapshot = self._decode_sourcing_trial(trial)
+            if expected_trial is not _UNCHANGED and expected_trial != trial_snapshot:
+                raise Conflict('试样或试卖记录已变化，请重新读取后核对')
             if decision == 'adopt' and (not trial or trial['verdict'] != 'pass' or trial['cost_minor'] is None):
                 raise Conflict('采用前需要商家核验通过的样品及已知样品成本')
             snapshot = {'candidate_id': candidate_id, 'decision': decision, 'rationale': rationale,
-                        'constraints': constraints, 'trial': self._decode_sourcing_trial(trial),
+                        'constraints': constraints, 'trial': trial_snapshot,
                         'candidate': {**dict(candidate), 'details': json.loads(candidate['details'])},
                         'recorded_at': datetime.now(timezone.utc).isoformat()}
             db.execute('INSERT OR REPLACE INTO sourcing_decisions VALUES (?, ?)',

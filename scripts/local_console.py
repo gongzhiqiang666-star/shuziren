@@ -860,7 +860,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         data.save_promotion_spend(**value)
                         return self.respond(200, {'records': data.promotion_spend(value['product_id'])})
                     if path == "/api/sourcing/decision":
-                        if set(value) != {'candidate_id', 'decision', 'rationale', 'constraints'} or (
+                        if set(value) - {'expected_trial'} != {'candidate_id', 'decision', 'rationale', 'constraints'} or (
                                 not isinstance(value['candidate_id'], str) or not 1 <= len(value['candidate_id']) <= 64):
                             raise ProductError('采购辅助结论字段无效')
                         return self.respond(200, {'decision': products().save_sourcing_decision(**value)})

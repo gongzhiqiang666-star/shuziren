@@ -861,6 +861,7 @@ function sourcingDecisionEditor(candidate) {
       evidence.append(' · ' + metrics.join(' · '));
     }
   }
+  let reviewedTrial = null;
   let loaded = false;
   let loading = false;
   panel.addEventListener('toggle', async () => {
@@ -871,6 +872,7 @@ function sourcingDecisionEditor(candidate) {
       const [{decision: record}, {trial}] = await Promise.all([
         request(route + '?' + query), request('/api/sourcing/trial?' + query),
       ]);
+      reviewedTrial = trial;
       decision.value = record?.decision ?? 'continue';
       rationale.value = record?.rationale ?? '';
       constraints.value = record?.constraints ?? '';
@@ -896,10 +898,11 @@ function sourcingDecisionEditor(candidate) {
     button.disabled = true;
     try {
       const {decision: record} = await request(route, {candidate_id:candidate.id, decision:decision.value,
-        rationale:rationale.value, constraints:constraints.value});
+        rationale:rationale.value, constraints:constraints.value, expected_trial:reviewedTrial});
       showEvidence(record);
       status.textContent = '采购辅助结论已保存';
     } catch (error) {
+      loaded = false;
       status.textContent = error.message;
     } finally {
       button.disabled = false;
