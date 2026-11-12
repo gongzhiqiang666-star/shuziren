@@ -359,7 +359,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual([item['recommendation']['role'] for item in recommendations[-2:]], ['trial', 'hold'])
         store.save(title='低库存商品', content='商品说明', product_index=7, product_facts={
             '库存': {'status': 'verified', 'source': '盘点', 'value': 2},
-            '低库存阈值': {'status': 'verified', 'source': '商家确认', 'value': 2},
+            '低库存阈值': {'status': 'verified', 'source': '商家确认', 'value': 2,
+                           'expires_at': '2099-01-01T00:00:00Z'},
         })
         low_stock = self.call('/api/products/selection-evidence')[1]['products'][-1]
         self.assertIn('已核对库存 2', low_stock['stock_review'])
@@ -368,6 +369,13 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(prepared['stock_review'], low_stock['stock_review'])
         self.assertNotIn('低库存阈值', [item['name'] for item in prepared['selling_points']])
         self.assertNotIn('低库存阈值是什么？', [item['question'] for item in prepared['faq']])
+        with patch('scripts.product_store.datetime', wraps=datetime) as clock:
+            clock.now.return_value = datetime(2099, 1, 1, tzinfo=timezone.utc)
+            expired = self.call('/api/products/selection-evidence')[1]['products'][-1]
+            expired_package = self.call('/api/live/preparation/package')[1]
+        self.assertNotIn('stock_review', expired)
+        self.assertIsNone(expired_package['items'][0]['stock_review'])
+        self.assertEqual(expired['conditions']['库存']['value'], 2)
 
     def test_product_selection_evidence_preserves_zero_and_missing_conditions(self):
         store = ProductStore(self.directory.name)
