@@ -13,6 +13,25 @@ from scripts.speech_assembler import Utterance
 
 
 class SessionLifecycleTests(unittest.TestCase):
+    def test_silent_speech_counts_submitted_pcm_and_resets_after_recovery(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            sink = Mock(clock_mode='audio')
+            receiver = Mock()
+            observer = Mock()
+            session = ContinuousSession('s', Mock(), receiver, sink, Path(temporary), on_present=observer)
+            sources = ['idle-0'] * 134 + ['speech'] * 126 + ['idle-260']
+            receiver.take.side_effect = [
+                SimpleNamespace(session_id='s', frame_index=index, task_id=source, image=None)
+                for index, source in enumerate(sources)
+            ]
+            quiet = bytes(1920)
+            audible = b'\x01' + bytes(1919)
+            with (patch.object(session, '_produce'),
+                  patch.object(session.pcm, 'read', side_effect=[quiet] * 259 + [audible, quiet])):
+                session.run(frames=len(sources))
+            counts = [call.args[0]['silent_speech_frames'] for call in observer.call_args_list]
+            self.assertEqual(counts, [0] * 126 + list(range(1, 126)) + [0, 0])
+
     def test_queue_snapshot_preserves_manual_capacity(self):
         with tempfile.TemporaryDirectory() as temporary:
             session = ContinuousSession('s', Mock(), Mock(), Mock(), Path(temporary))
