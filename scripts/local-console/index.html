@@ -92,6 +92,19 @@
 </form>
 <p id="settlement-review-result" role="status"></p>
 </details>
+<details>
+<summary>投放费用</summary>
+<form id="promotion-form">
+<p class="hint">使用上方来源和日期区间，费用以人民币分录入。</p>
+<label>活动编号<input name="campaign" required maxlength="120"></label>
+<label>素材编号<input name="asset" required maxlength="120"></label>
+<label>支出<input name="spend_minor" type="number" min="0" step="1" required></label>
+<label>归因口径<textarea name="attribution" maxlength="500"></textarea></label>
+<button type="submit">保存投放费用</button>
+<button id="promotion-read" type="button" class="secondary">读取投放费用</button>
+</form>
+<p id="promotion-status" role="status"></p><ul id="promotion-records"></ul>
+</details>
 <details id="after-sales-panel">
 <summary>售后原因汇总</summary>
 <form id="after-sales-form">

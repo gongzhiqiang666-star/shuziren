@@ -102,6 +102,9 @@ function showProduct(product) {
   $('business-metrics-form').reset();
   $('business-import-form').reset();
   $('settlement-review-form').reset();
+  $('promotion-form').reset();
+  $('promotion-status').textContent = '';
+  $('promotion-records').replaceChildren();
   $('after-sales-form').reset();
   $('after-sales-import-form').reset();
   $('after-sales-compare').reset();
@@ -125,6 +128,47 @@ for (const id of Object.values(summaryFields)) {
   $(id).addEventListener('input', clearBusinessSummary);
 }
 const settlementForm = $('settlement-review-form');
+const promotionForm = $('promotion-form');
+async function promotionSpendAction(save) {
+  const product = currentProduct;
+  const buttons = Array.from(promotionForm.querySelectorAll('button'));
+  if (!product || consoleClosed || buttons.some(button => button.disabled)) return;
+  const status = $('promotion-status');
+  const route = '/api/promotion/spend';
+  buttons.forEach(button => { button.disabled = true; });
+  status.textContent = '';
+  try {
+    let result;
+    if (save) {
+      const {spend_minor, attribution, ...fields} = Object.fromEntries(new FormData(promotionForm));
+      const spend = Number(spend_minor);
+      if (!Number.isSafeInteger(spend)) throw new Error('支出必须是可准确表示的整数分');
+      const payload = {...fields, product_id:product.id, spend_minor:spend};
+      if (attribution.trim()) payload.attribution = attribution;
+      for (const key of ['source', 'period_start', 'period_end']) {
+        const input = $(summaryFields[key]);
+        if (!input.reportValidity()) return;
+        payload[key] = input.value;
+      }
+      result = await request(route, payload);
+    } else {
+      result = await request(route + '?' + new URLSearchParams({product_id:product.id}));
+    }
+    if (currentProduct !== product) return;
+    $('promotion-records').replaceChildren(...result.records.map(record => {
+      const row = document.createElement('li');
+      row.textContent = `${record.source} · ${record.period_start} 至 ${record.period_end} · 活动 ${record.campaign} · 素材 ${record.asset} · 支出 ${record.spend_minor} 分 · 归因口径 ${record.attribution ?? '未知'}`;
+      return row;
+    }));
+    status.textContent = save ? '投放费用已保存' : result.records.length ? '' : '暂无投放费用';
+  } catch (error) {
+    if (currentProduct === product) status.textContent = error.message;
+  } finally {
+    buttons.forEach(button => { button.disabled = false; });
+  }
+}
+promotionForm.addEventListener('submit', event => { event.preventDefault(); promotionSpendAction(true); });
+$('promotion-read').addEventListener('click', () => promotionSpendAction(false));
 const afterSalesForm = $('after-sales-form');
 const afterSalesImportForm = $('after-sales-import-form');
 const afterSalesCategories = {quality:'质量', size:'尺码', expectation:'预期不符', fulfillment:'履约', other:'其他'};
