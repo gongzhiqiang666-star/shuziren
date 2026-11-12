@@ -79,6 +79,19 @@
 <button type="submit">导入报表</button>
 </form>
 <p id="metrics-status" role="status"></p><p id="metrics-error" role="alert"></p><ul id="metrics-records"></ul>
+<details>
+<summary>退款后复盘</summary>
+<form id="settlement-review-form">
+<p class="hint">使用上方统计区间。金额单位为人民币分，留空表示未知。销售额填写扣除退款前的金额。</p>
+<label for="settlement-basis">金额依据</label><select id="settlement-basis" name="basis"><option value="estimate">估算</option><option value="settled">已结算</option></select>
+<label for="settlement-sales">销售额</label><input id="settlement-sales" name="sales_minor" type="number" min="0" step="1">
+<label for="settlement-cost">成本</label><input id="settlement-cost" name="cost_minor" type="number" min="0" step="1">
+<label for="settlement-fees">费用</label><input id="settlement-fees" name="fees_minor" type="number" min="0" step="1">
+<label for="settlement-refunds">退款损失</label><input id="settlement-refunds" name="refund_loss_minor" type="number" min="0" step="1">
+<button type="submit">计算复盘</button>
+</form>
+<p id="settlement-review-result" role="status"></p>
+</details>
 </section>
 <section>
 <h2>直播准备</h2>

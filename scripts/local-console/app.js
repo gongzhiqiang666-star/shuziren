@@ -101,6 +101,7 @@ function showProduct(product) {
   $('business-metrics').hidden = !product;
   $('business-metrics-form').reset();
   $('business-import-form').reset();
+  $('settlement-review-form').reset();
   $('metrics-status').textContent = '';
   $('metrics-error').textContent = '';
   $('metrics-records').replaceChildren();
@@ -112,10 +113,47 @@ let summaryVersion = 0;
 function clearBusinessSummary() {
   summaryVersion++;
   $('metrics-summary').textContent = '';
+  $('settlement-review-result').textContent = '';
 }
 for (const id of Object.values(summaryFields)) {
   $(id).addEventListener('input', clearBusinessSummary);
 }
+const settlementForm = $('settlement-review-form');
+settlementForm.addEventListener('input', clearBusinessSummary);
+settlementForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  if (!currentProduct) return;
+  const button = settlementForm.querySelector('button');
+  if (button.disabled) return;
+  clearBusinessSummary();
+  const output = $('settlement-review-result');
+  const payload = {product_id:currentProduct.id, currency:'CNY'};
+  for (const [field, id] of Object.entries(summaryFields)) {
+    const input = $(id);
+    if (!input.reportValidity()) return;
+    payload[field] = input.value;
+  }
+  for (const [field, value] of new FormData(settlementForm)) {
+    payload[field] = field === 'basis' ? value : value === '' ? null : Number(value);
+    if (field !== 'basis' && payload[field] !== null && !Number.isSafeInteger(payload[field])) {
+      output.textContent = '金额必须是可准确表示的整数分';
+      return;
+    }
+  }
+  const version = summaryVersion;
+  button.disabled = true;
+  try {
+    const {review} = await request('/api/products/settlement-review', payload);
+    if (version !== summaryVersion) return;
+    const basis = review.basis === 'settled' ? '已结算（按录入）' : '估算';
+    const net = review.net_minor == null ? '未知' : `${review.net_minor} 分`;
+    output.textContent = `${basis} · 净收益 ${net} · 订单 ${review.orders ?? '未知'} · 退款 ${review.refunds ?? '未知'}`;
+  } catch (error) {
+    if (version === summaryVersion) output.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
 $('metrics-query').addEventListener('click', async () => {
   if (!currentProduct) return;
   clearBusinessSummary();
