@@ -3,6 +3,7 @@ import hashlib
 import os
 from pathlib import Path
 import struct
+import threading
 import time
 import tempfile
 import wave
@@ -53,7 +54,16 @@ class ResidentAvatar:
 
         images, detections = self.rtmp_reader.read_ahead(len(indices))
         if len(images) != len(indices):
-            raise RuntimeError('RTMP 输入已中断')
+            size = (self.rtmp_reader.width, self.rtmp_reader.height)
+            self.rtmp_reader.reconnect(threading.Event())
+            if (self.rtmp_reader.width, self.rtmp_reader.height) != size:
+                raise RuntimeError('RTMP 重连后输入尺寸发生变化')
+            remaining = len(indices) - len(images)
+            resumed_images, resumed_detections = self.rtmp_reader.read_ahead(remaining)
+            images.extend(resumed_images)
+            detections.extend(resumed_detections)
+            if len(images) != len(indices):
+                raise RuntimeError('RTMP 重连后未收到足够画面')
         return images, [face_slot_from_detection(faces[0] if faces else None) for faces in detections]
 
     def start(self,session):
