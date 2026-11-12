@@ -133,3 +133,10 @@ class ReceivedVoiceTests(unittest.TestCase):
         self.assertTrue(result['speech_frame_continuity_passed'])
         self.assertEqual(result['repeated_frame_indices'], {1: 1})
         self.assertEqual(result['missing_frame_ranges'], [[2, 2]])
+
+    def test_nonadjacent_replay_is_counted_as_duplicate_and_reorder(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            result = self.fixture(Path(temporary), .02, replace_frame=(3, 1))
+        self.assertEqual(result['repeated_frame_indices'], {1: 1})
+        self.assertEqual(result['reordered_frames'], 1)
+        self.assertEqual(result['missing_frame_ranges'], [[3, 3]])
