@@ -1078,6 +1078,36 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
     const sourceText = document.createElement('pre');
     sourceText.style.whiteSpace = 'pre-wrap';
     details.append(summary, sourceText);
+    const draftButton = document.createElement('button');
+    draftButton.type = 'button';
+    draftButton.textContent = '生成短视频文案初稿';
+    draftButton.hidden = true;
+    const draftStatus = document.createElement('p');
+    draftStatus.setAttribute('role', 'status');
+    const draftLabel = document.createElement('label');
+    draftLabel.hidden = true;
+    const draftText = document.createElement('textarea');
+    draftText.rows = 8;
+    draftLabel.append('短视频文案初稿（本页可编辑和复制）', draftText);
+    details.append(draftButton, draftStatus, draftLabel);
+    const params = new URLSearchParams({session_id:sessionId, task_id:event.task_id});
+    draftButton.addEventListener('click', async () => {
+      if (draftButton.disabled || consoleClosed) return;
+      draftButton.disabled = true;
+      draftStatus.textContent = '正在生成文案初稿';
+      try {
+        const {draft} = await request('/api/live/content-draft?' + params);
+        draftText.value = [`标题：${draft.title}`, `封面文字：${draft.cover_text}`,
+          `语言：${draft.language ?? '未记录'}`, '', draft.narration].join('\n');
+        draftLabel.hidden = false;
+        draftButton.hidden = true;
+        draftStatus.textContent = '';
+      } catch (error) {
+        draftStatus.textContent = error.message;
+      } finally {
+        draftButton.disabled = false;
+      }
+    });
     item.append(details);
     let loaded = false;
     let loading = false;
@@ -1086,8 +1116,8 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
       loading = true;
       sourceText.textContent = '正在读取口播来源';
       try {
-        const params = new URLSearchParams({session_id:sessionId, task_id:event.task_id});
         const {source} = await request('/api/live/content-source?' + params);
+        draftButton.hidden = source.facts_review !== 'version_current' || source.segment == null;
         const snapshot = source.product_snapshot;
         const speech = source.speech_provenance;
         const speechDetails = [
