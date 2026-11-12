@@ -41,6 +41,12 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(item['faq'], [{'question': '材质是什么？', 'answer': '陶瓷', 'source': '商品标签'}])
         self.assertIn('发货条件', package['missing'])
         self.assertEqual(set(package['segments']), {'opening', 'transition', 'closing'})
+        review = {'revision': package['revision'], 'review': '商家确认：陶瓷杯。'}
+        self.assertEqual(self.call(route + '/review', review)[0], 200)
+        self.assertEqual(self.call(route + '/package')[1]['review'], review['review'])
+        self.assertEqual(self.call(route, {'product_ids': [product['id']], 'goal': '新品介绍'})[0], 200)
+        self.assertIsNone(self.call(route + '/package')[1]['review'])
+        self.assertEqual(self.call(route + '/review', review)[0], 409)
 
     def test_live_preparation_draft_and_missing_conditions(self):
         route = '/api/live/preparation'

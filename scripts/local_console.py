@@ -523,6 +523,11 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if path == '/api/tts/cancel':
                         if set(value)!={'task_id'} or not isinstance(value['task_id'],str): raise ProductError('TTS取消字段无效')
                         return self.respond(200,{'task':tts().cancel(value['task_id'])})
+                    if path == "/api/live/preparation/review":
+                        if set(value) != {'revision', 'review'}:
+                            return self.respond(400, {"error": "需要准备包版本和审阅稿"})
+                        products().save_live_preparation_review(**value)
+                        return self.respond(200, {"saved": True})
                     if path == "/api/live/preparation":
                         if 'product_ids' not in value:
                             return self.respond(400, {"error": "缺少本场商品列表"})

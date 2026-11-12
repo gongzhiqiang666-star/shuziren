@@ -246,6 +246,20 @@ const preparationFields = ['goal', 'audience', 'promotion', 'stock', 'shipping',
 const preparationForm = $('preparation-form');
 const preparationSave = preparationForm.querySelector('button[type="submit"]');
 const preparationPreview = $('preparation-preview');
+const preparationReviewSave = $('preparation-review-save');
+let preparationRevision;
+preparationReviewSave.addEventListener('click', async () => {
+  preparationReviewSave.disabled = true;
+  $('preparation-error').textContent = '';
+  try {
+    await request(preparationRoute + '/review', {revision:preparationRevision, review:$('preparation-package').value});
+    $('preparation-status').textContent = '审阅稿已保存';
+  } catch (error) {
+    $('preparation-error').textContent = error.message;
+  } finally {
+    preparationReviewSave.disabled = false;
+  }
+});
 let savedPreparationHasProducts = false;
 function updatePreparationPreview(draft) {
   savedPreparationHasProducts = draft.product_ids.length > 0;
@@ -256,7 +270,7 @@ preparationPreview.addEventListener('click', async () => {
   preparationSave.disabled = true;
   $('preparation-error').textContent = '';
   try {
-    const {items, segments, missing} = await request(preparationRoute + '/package');
+    const {items, segments, missing, revision, review} = await request(preparationRoute + '/package');
     const lines = ['开场', segments.opening];
     for (const [index, item] of items.entries()) {
       if (index) lines.push('', '转场', segments.transition);
@@ -268,7 +282,8 @@ preparationPreview.addEventListener('click', async () => {
     }
     lines.push('', '收尾', segments.closing);
     if (missing.length) lines.push('', '场次待补条件', ...missing);
-    $('preparation-package').value = lines.join('\n');
+    preparationRevision = revision;
+    $('preparation-package').value = review ?? lines.join('\n');
     $('preparation-package-panel').hidden = false;
   } catch (error) {
     $('preparation-error').textContent = error.message;

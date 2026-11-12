@@ -1,6 +1,7 @@
 """Single-machine product/script persistence with immutable generation snapshots."""
 from contextlib import contextmanager
 import csv
+import hashlib
 import io
 import json
 from datetime import date, datetime, timezone
@@ -128,6 +129,8 @@ class ProductStore:
                     PRIMARY KEY(product_id, source, period_start, period_end, scope));
                 CREATE TABLE IF NOT EXISTS live_preparation (
                     singleton INTEGER PRIMARY KEY CHECK(singleton=1), draft TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS live_preparation_review (
+                    revision TEXT PRIMARY KEY, review TEXT NOT NULL);
             ''')
             db.execute('BEGIN IMMEDIATE')
             columns = {row[1] for row in db.execute('PRAGMA table_info(scripts)')}
@@ -196,11 +199,23 @@ class ProductStore:
                 'missing': [] if facts else ['补充并核对商品事实'],
                 'assets': ['核对商品展示图或实拍视频'],
             })
-        return {**preparation, 'items': items, 'segments': {
+        package = {**preparation, 'items': items, 'segments': {
             'opening': '欢迎来到直播间，接下来为大家逐一介绍本场商品。',
             'transition': '接下来介绍下一件商品。',
             'closing': '感谢观看，本场商品介绍到这里。',
         }}
+        revision = hashlib.sha256(json.dumps(package, sort_keys=True, ensure_ascii=False).encode('utf-8')).hexdigest()
+        with self.connect() as db:
+            row = db.execute('SELECT review FROM live_preparation_review WHERE revision=?',
+                             (revision,)).fetchone()
+        return {**package, 'revision': revision, 'review': row['review'] if row else None}
+
+    def save_live_preparation_review(self, revision, review):
+        review = text(review, '准备包审阅稿', 100000)
+        if revision != self.build_live_preparation()['revision']:
+            raise Conflict('准备包内容已变化，请重新预览后保存')
+        with self.connect() as db:
+            db.execute('INSERT OR REPLACE INTO live_preparation_review VALUES (?, ?)', (revision, review))
 
     def save_business_metrics(self, product_id, *, source, period_start, period_end, scope,
                               clicks=None, orders=None, refunds=None, stock=None):
