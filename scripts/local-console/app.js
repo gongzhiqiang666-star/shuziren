@@ -2087,7 +2087,12 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
     scheduleSave.textContent = '保存本机排期';
     const scheduleStatus = document.createElement('p');
     scheduleStatus.setAttribute('role', 'status');
-    scheduleForm.append(scheduleSave, scheduleStatus);
+    const revisionStatus = document.createElement('p');
+    scheduleForm.append(scheduleSave, scheduleStatus, revisionStatus);
+    function showRevisionCount(schedule) {
+      revisionStatus.textContent = !schedule ? '' : schedule.revision_count == null
+        ? '历史改稿次数未记录' : `已保存改稿 ${schedule.revision_count} 次`;
+    }
     details.append(scheduleForm);
     const receiptForm = document.createElement('form');
     receiptForm.hidden = true;
@@ -2134,6 +2139,7 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
       scheduleSave.disabled = true;
       try {
         const {schedule, facts_review} = await request('/api/live/content-schedule?' + params);
+        showRevisionCount(schedule);
         for (const [key, input] of Object.entries(scheduleFields)) input.value = schedule?.[key] ?? '';
         scheduleStatus.textContent = schedule && !schedule.draft_matches ? '文案已修改，请重新核对并保存排期' : '';
         scheduleSave.disabled = facts_review !== 'version_current' || Boolean(schedule?.withdrawn);
@@ -2154,6 +2160,7 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
           session_id:sessionId, task_id:params.get('task_id'), ...fields,
         });
         scheduleFields.publish_at.value = schedule.publish_at;
+        showRevisionCount(schedule);
         scheduleStatus.textContent = '本机排期已保存，等待人工发布';
         showPublicationReceipt(schedule);
       } catch (error) {
