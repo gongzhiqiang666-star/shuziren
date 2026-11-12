@@ -752,9 +752,13 @@ async function loadLive() {
   const {session, advice} = await request('/api/live/state');
   liveSession = session;
   $('live-advice').hidden = !advice.length;
-  $('live-advice-list').replaceChildren(...advice.map(item => {
+  const adviceList = $('live-advice-list');
+  const adviceLines = advice.map(item => `${item.evidence} · ${item.recommendation}`);
+  const unchanged = adviceList.children.length === adviceLines.length &&
+    adviceLines.every((line, index) => adviceList.children[index].textContent === line);
+  if (!unchanged) adviceList.replaceChildren(...adviceLines.map(line => {
     const row = document.createElement('li');
-    row.textContent = `${item.evidence} · ${item.recommendation}`;
+    row.textContent = line;
     return row;
   }));
   if (previousSession !== liveSession.id && !$('live-event-scene').value) {
