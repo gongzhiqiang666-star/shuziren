@@ -2,6 +2,7 @@
 import argparse
 from contextlib import redirect_stdout
 import json
+import os
 from pathlib import Path
 import sys
 import traceback
@@ -12,7 +13,10 @@ def main():
     parser=argparse.ArgumentParser()
     for name in ['runtime-root','avatar-directory','engine-cache']:parser.add_argument('--'+name,required=True,type=Path)
     args=parser.parse_args();engine=None;sender=None
-    def emit(value):print(json.dumps(value,ensure_ascii=False),flush=True)
+    # Native inference libraries can write directly to stdout, bypassing redirect_stdout.
+    protocol = os.fdopen(os.dup(sys.stdout.fileno()), 'w', encoding='utf-8', buffering=1)
+    os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
+    def emit(value):print(json.dumps(value,ensure_ascii=False),file=protocol,flush=True)
     try:
         with redirect_stdout(sys.stderr):engine=ResidentAvatar(args.runtime_root,args.avatar_directory,args.engine_cache)
         for line in sys.stdin:
@@ -32,7 +36,7 @@ def main():
                     sender=FrameSender(request['channel']);result={'attached':True}
                 elif request['operation']=='idle':
                     if sender is None:raise ValueError('Attach frame receiver before idle output')
-                    stdout=sys.stdout
+                    stdout=protocol
                     def idle_progress(value):stdout.write(json.dumps(value)+'\n');stdout.flush()
                     with redirect_stdout(sys.stderr):result=engine.idle(request['session_id'],request['task_id'],request['timing'],sender,idle_progress)
                 elif request['operation']=='inspect':
@@ -42,7 +46,7 @@ def main():
                     streaming=request['operation']=='stream'
                     if streaming and sender is None:raise ValueError('Attach frame receiver before streaming')
                     # Preserve structured progress on stdout while model prints go to stderr.
-                    stdout=sys.stdout
+                    stdout=protocol
                     def progress(value):stdout.write(json.dumps(value)+'\n');stdout.flush()
                     with redirect_stdout(sys.stderr):result=engine.render(request['session_id'],request['task_id'],request['audio'],request.get('output'),request['pcm_sha256'],progress,timing=request.get('timing'),frame_channel=sender if streaming else None)
                 else:raise ValueError('Unknown worker operation')
@@ -55,6 +59,7 @@ def main():
         if sender:sender.close()
         if engine:
             with redirect_stdout(sys.stderr):engine.close()
+        protocol.close()
     return 0
 
 
