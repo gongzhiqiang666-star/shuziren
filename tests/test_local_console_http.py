@@ -19,6 +19,22 @@ from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_live_advice_only_reports_current_explicit_faults(self):
+        route = '/api/live/advice'
+        self.assertEqual(self.call(route), (200, {'session_id': None, 'advice': []}))
+        with (patch('scripts.local_console.ConsoleLive') as live,
+              patch('scripts.local_console.preflight', return_value={'runtime_root': self.directory.name}),
+              patch('scripts.tts_tasks.TTSTasks')):
+            live.return_value.start.return_value = {'id': 'scene'}
+            self.assertEqual(self.call('/api/live/start', {'audio_device': 1})[0], 202)
+            live.return_value.state.return_value = {'id': 'scene', 'status': 'running', 'rotation_error': '合成超时'}
+            status, payload = self.call(route)
+            self.assertEqual((status, payload['session_id']), (200, 'scene'))
+            advice, = payload['advice']
+            self.assertEqual((advice['code'], advice['evidence']), ('rotation_error', '合成超时'))
+            live.return_value.state.return_value['rotation_error'] = None
+            self.assertEqual(self.call(route)[1]['advice'], [])
+
     def test_live_comparison_requires_distinct_ended_sessions(self):
         store = ProductStore(self.directory.name)
         store.record_live_session('baseline', 1, started_at=2, ended_at=3, status='stopped')
