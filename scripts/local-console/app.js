@@ -2199,9 +2199,17 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
       try {
         if (!productionSeconds.reportValidity() || !baselineSeconds.reportValidity()) return;
         const payload = {session_id:sessionId, task_id:event.task_id, body:draftText.value};
-        if (productionSeconds.value !== '') payload.production_seconds = productionSeconds.valueAsNumber;
-        if (baselineSeconds.value !== '') payload.baseline_seconds = baselineSeconds.valueAsNumber;
+        for (const [field, input] of Object.entries({
+          production_seconds: productionSeconds, baseline_seconds: baselineSeconds,
+        })) {
+          if (input.value !== input.defaultValue) payload[field] = input.value === '' ? null : input.valueAsNumber;
+        }
         await request('/api/live/content-draft', payload);
+        for (const [field, input] of Object.entries({
+          production_seconds: productionSeconds, baseline_seconds: baselineSeconds,
+        })) {
+          if (Object.hasOwn(payload, field)) input.defaultValue = payload[field] ?? '';
+        }
         draftStatus.textContent = '文案已保存';
         withdrawDraft.hidden = false;
         await loadSchedule();
@@ -2247,6 +2255,8 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         baselineLabel.hidden = !draft.editable;
         productionSeconds.value = draft.production_seconds ?? '';
         baselineSeconds.value = draft.baseline_seconds ?? '';
+        productionSeconds.defaultValue = productionSeconds.value;
+        baselineSeconds.defaultValue = baselineSeconds.value;
         draftButton.hidden = true;
         withdrawDraft.hidden = draft.saved_body == null || Boolean(draft.withdrawn);
         draftStatus.textContent = draft.withdrawn ? '文案已停止复用，仅供回查'

@@ -10,6 +10,9 @@ import sqlite3
 import uuid
 
 
+_UNCHANGED = object()
+
+
 class ProductError(ValueError):
     pass
 
@@ -957,8 +960,13 @@ class ProductStore:
             if not result.rowcount:
                 raise Conflict('该账号的作品编号已关联其他排期')
 
-    def save_live_content_draft(self, session_id, task_id, body, production_seconds=None, baseline_seconds=None):
+    def save_live_content_draft(self, session_id, task_id, body, production_seconds=_UNCHANGED,
+                                baseline_seconds=_UNCHANGED):
         body = text(body, '短视频文案', 100000)
+        update_production = production_seconds is not _UNCHANGED
+        update_baseline = baseline_seconds is not _UNCHANGED
+        production_seconds = production_seconds if update_production else None
+        baseline_seconds = baseline_seconds if update_baseline else None
         if production_seconds is not None and (
                 type(production_seconds) is not int or not 0 <= production_seconds <= 2**31 - 1):
             raise ProductError('制作耗时须为非负整数秒')
@@ -974,10 +982,11 @@ class ProductStore:
                 VALUES (?, ?, ?, 0, ?, ?)
                 ON CONFLICT(session_id, task_id) DO UPDATE SET
                     revision_count=revision_count + (body <> excluded.body), body=excluded.body,
-                    production_seconds=COALESCE(excluded.production_seconds, production_seconds),
-                    baseline_seconds=COALESCE(excluded.baseline_seconds, baseline_seconds)
+                    production_seconds=CASE WHEN ? THEN excluded.production_seconds ELSE production_seconds END,
+                    baseline_seconds=CASE WHEN ? THEN excluded.baseline_seconds ELSE baseline_seconds END
                 WHERE live_content_drafts.withdrawn=0
-            """, (session_id, task_id, body, production_seconds, baseline_seconds))
+            """, (session_id, task_id, body, production_seconds, baseline_seconds,
+                  update_production, update_baseline))
             if not result.rowcount:
                 raise Conflict('该文案已停止复用')
         return body

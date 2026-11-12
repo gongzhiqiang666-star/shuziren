@@ -470,6 +470,16 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call(schedule_route, schedule)[0], 409)
         self.assertEqual(self.call(draft_route + 'assistant-task')[1]['draft']['saved_body'], body['body'])
         self.assertEqual(self.call('/api/live/content-draft', {**body, 'task_id': 'task'})[0], 409)
+        self.assertEqual(self.call('/api/live/content-draft', {
+            **body, **other_clip, 'baseline_seconds': None,
+        })[0], 200)
+        summary = self.call('/api/live/report?session_id=scene')[1]['content_summary']
+        self.assertEqual(summary['average_production_seconds'], 42)
+        self.assertEqual(summary['paired_drafts'], 0)
+        self.assertIsNone(summary['average_seconds_saved'])
+        self.assertEqual(self.call('/api/live/content-draft', {
+            **body, **other_clip, 'baseline_seconds': 65,
+        })[0], 200)
         current = store.get(product['id'])
         store.save(title='再次更新', content='新资料', product_index=1,
                    product_id=product['id'], version=current['version'])
