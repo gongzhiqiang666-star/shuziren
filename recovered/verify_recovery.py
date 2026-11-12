@@ -1036,6 +1036,7 @@ def verify_zipvoice_lifecycle():
         original_torch=sys.modules.get("torch");module_name="bin.voice_infer.zipvoice.bin.infer_zipvoice"
         original_generate=sys.modules.get(module_name);events=[]
         fake_torch=types.SimpleNamespace(
+            no_grad=contextlib.nullcontext,
             cuda=types.SimpleNamespace(is_available=lambda:False,empty_cache=lambda:None))
         def fake_load(self):
             events.append("load");self.model=object();self.vocoder=object();self.tokenizer=object();self.feature_extractor=object();return self.model
