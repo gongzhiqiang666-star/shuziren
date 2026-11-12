@@ -34,6 +34,10 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(comparison['baseline']['completed_segments'], 0)
         self.assertEqual(comparison['trial']['completed_segments'], 1)
+        self.assertEqual(comparison['baseline']['products'], [])
+        product, = comparison['trial']['products']
+        self.assertEqual((product['product_id'], product['product_version'], product['script_id']),
+                         ('product', 1, 'script'))
         self.assertEqual(comparison['trial']['duration_seconds'], 1)
         self.assertEqual(comparison['trial']['completed_segments_per_minute'], 60)
         store.record_live_session('failed-start', 7, ended_at=8, status='failed')
