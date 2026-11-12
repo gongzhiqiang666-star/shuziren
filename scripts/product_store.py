@@ -1208,6 +1208,8 @@ class ProductStore:
             bill = plan['bill']
             current = bills.get(tuple(bill[key] for key in keys))
             plan['status'] = 'stale' if row['status'] != 'paused' and (row['invalidated'] or current != bill) else row['status']
+            if plan['status'] == 'paused' and (row['invalidated'] or current != bill):
+                plan['requires_new_plan'] = True
             plans.append(plan)
         return plans
 

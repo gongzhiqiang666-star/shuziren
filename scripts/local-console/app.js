@@ -146,8 +146,8 @@ async function loadPromotionPlans(product) {
     pause.type = 'button';
     pause.textContent = '暂停本机方案';
     const showStatus = value => {
-      status.textContent = labels[value];
-      approve.disabled = value === 'approved' || value === 'stale';
+      status.textContent = plan.requires_new_plan ? '本机已暂停，账单已变更，请重新保存方案' : labels[value];
+      approve.disabled = value === 'approved' || value === 'stale' || Boolean(plan.requires_new_plan);
       pause.disabled = value !== 'approved' && value !== 'stale';
     };
     showStatus(plan.status);
@@ -156,6 +156,7 @@ async function loadPromotionPlans(product) {
       approve.disabled = pause.disabled = true;
       try {
         const {plan: updated} = await request('/api/promotion/plans/action', {plan_id:plan.id, action});
+        if (updated.status === 'paused' && plan.status === 'stale') plan.requires_new_plan = true;
         plan.status = updated.status;
         showStatus(plan.status);
       } catch (error) {

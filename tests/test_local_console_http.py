@@ -122,7 +122,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         actions = self.call(plans + '/actions?plan_id=' + action['plan_id'])[1]['actions']
         self.assertEqual([entry['action'] for entry in actions], ['approved', 'paused'])
         self.assertEqual(self.call(plans + '?product_id=' + product['id']),
-                         (200, {'plans': [{**result['plan'], 'status': 'paused'}]}))
+                         (200, {'plans': [{**result['plan'], 'status': 'paused', 'requires_new_plan': True}]}))
         self.assertEqual(self.call(plans + '/action', action)[0], 409)
         status, replacement = self.call(plans, plan)
         self.assertEqual(status, 200)
