@@ -298,6 +298,9 @@ class ConsoleLive:
                         deadline = float('inf')
                     elif event.get('event') == 'stopped':
                         final_frames = event['frames']
+                    elif event.get('event') == 'progress':
+                        with self.lock:
+                            self.status['frames'] = event['frames']
                     elif event.get('event') == 'seek':
                         if not stopping:
                             deadline = float('inf')

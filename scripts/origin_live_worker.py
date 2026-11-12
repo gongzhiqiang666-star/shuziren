@@ -83,9 +83,15 @@ def main():
                 break
             if time.monotonic() >= deadline:
                 raise RuntimeError("本地视频首帧输出超时")
+        next_progress = time.monotonic() + 1
         while not stopped.wait(.1):
             if not manager.worker_thread.is_alive() or not manager.player.running:
                 raise RuntimeError("本地视频播放意外停止")
+            now = time.monotonic()
+            if now >= next_progress:
+                frames = manager.player.get_playback_stats_snapshot()["output_frames"]
+                print(json.dumps({"event": "progress", "frames": frames}), flush=True)
+                next_progress = now + 1
             try:
                 command = commands.get_nowait()
             except Empty:

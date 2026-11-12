@@ -217,3 +217,5 @@ A01-05 本地视频直驱 HTTP 补验使用 V09 独立媒体目录时未启动�
 A01-05 独立媒体目录本地视频直驱复验：补齐 WeNet 与 silence.npy 后，场次启动、跳转 2000 ms 回执和停播通过。自动化误将运行状态的帧数当作实时计数，等待超时后正常停播；持久化终态为 stopped、1885 帧、无失败原因，证明跳转后持续输出。证据 logs/validation/a01-direct-seek-03/products.sqlite3。此轮直接调用控制台管理器，HTTP 跳转及接收端画面待验。
 
 A01-05 本地视频直驱 HTTP 复验通过。独立媒体目录带原视频 WeNet 和 silence.npy，选择 WASAPI 虚拟声卡，CUDA 开播、跳转 2000 ms、继续输出及停播完成，最终提交 63 帧。证据 logs/validation/a01-direct-http-seek-04/result.json。接收端画面与原声逐值对照仍待验。
+
+A01-05 视频直驱运行帧数通过本机 HTTP 短测。使用独立媒体目录、CUDA 和 WASAPI 虚拟音频输出，运行中帧数从 1 增至 26，跳转至 2000 ms 后增至 51，停播最终为 59。证据 logs/validation/a01-direct-progress-01/result.json。接收端画面及原声对照、30 分钟连续性和动态口型画质仍待验。
