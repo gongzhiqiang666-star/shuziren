@@ -1445,6 +1445,8 @@ class ProductStore:
                 if '发货条件' not in facts:
                     missing.append('发货条件')
                 role, reason = 'hold', '需核对' + '和'.join(missing)
+            elif lineup_role in ('试播', '测试'):
+                role, reason = 'trial', '商家已核对试播角色，库存与发货条件齐备'
             elif suitability == '适播' and '目标人群' in facts:
                 if lineup_role == '主推' and {'售价', '成本'} <= facts.keys():
                     role, reason = 'primary', '商家已核对主推角色，适播、人群、库存、发货、售价与成本依据齐备'
