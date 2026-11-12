@@ -32,6 +32,7 @@ def main():
     parser.add_argument('--interactions', type=int, default=None, help='Set to 0 to exercise start/stop only')
     parser.add_argument('--capture-seconds', type=int, default=35)
     parser.add_argument('--capture-buffer-mb', type=int, default=16)
+    parser.add_argument('--camera-device', help='Require this explicit virtual camera for rotation')
     args = parser.parse_args()
     if args.capture_buffer_mb < 1:
         parser.error('--capture-buffer-mb must be positive')
@@ -197,8 +198,12 @@ def main():
             session_id = call('/api/live/start', {
                 'audio_device': device['id'], 'rotation_language': args.rotation_language,
                 'assistant_voice_id': assistant,
+                **({'camera_device': args.camera_device} if args.camera_device else {}),
             }, 202)['session']['id']
-            live(lambda state: state['id'] == session_id and state['status'] == 'running')
+            running = live(lambda state: state['id'] == session_id and state['status'] == 'running')
+            if args.camera_device:
+                assert running['requested_camera_device'] == running['camera_device'] == args.camera_device
+                report['camera_device'] = running['camera_device']
             if old_session:
                 call('/api/live/stop', {'session_id': old_session}, 409)
             if cycle == 0 and interactions:
