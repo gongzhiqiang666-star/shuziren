@@ -767,13 +767,32 @@ async function loadLive() {
     }
     return [...details, item.recommendation].join(' · ');
   });
-  const unchanged = adviceList.children.length === adviceLines.length &&
-    adviceLines.every((line, index) => adviceList.children[index].textContent === line);
-  if (!unchanged) adviceList.replaceChildren(...adviceLines.map(line => {
+  const adviceKey = JSON.stringify([session.id, advice, adviceLines]);
+  if (adviceList.dataset.key !== adviceKey) {
+    adviceList.dataset.key = adviceKey;
+    adviceList.replaceChildren(...adviceLines.map((line, index) => {
     const row = document.createElement('li');
-    row.textContent = line;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = '标记已核对';
+    const status = document.createElement('span');
+    status.setAttribute('role', 'status');
+    button.addEventListener('click', async () => {
+      if (button.disabled || consoleClosed) return;
+      button.disabled = true;
+      status.textContent = '';
+      try {
+        await request('/api/live/advice/acknowledge', {session_id:session.id, advice:advice[index]});
+        button.textContent = '已核对';
+      } catch (error) {
+        status.textContent = error.message;
+        button.disabled = false;
+      }
+    });
+    row.append(line, ' ', button, ' ', status);
     return row;
-  }));
+    }));
+  }
   if (previousSession !== liveSession.id && !$('live-event-scene').value) {
     resetRotationEvents();
     $('live-report-output').replaceChildren();
@@ -841,7 +860,8 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
   output.textContent = '正在读取场次报告';
   try {
     const query = new URLSearchParams({session_id:sessionId});
-    const [{session, products, controls, rotation_faults, observed_product_switches, queued_replies, missing}, review, improvements] =
+    const [{session, products, controls, rotation_faults, observed_product_switches, queued_replies,
+      advice_acknowledgments, missing}, review, improvements] =
       await Promise.all([request('/api/live/report?' + query), request('/api/live/review?' + query),
         request('/api/live/improvements?' + query)]);
     if (($('live-event-scene').value || liveSession.id) !== sessionId) return;
@@ -868,6 +888,9 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       );
     }
     if (session.failure_reason) lines.push('场次失败原因：' + session.failure_reason);
+    for (const entry of advice_acknowledgments) {
+      lines.push(`${formatTime(entry.acknowledged_at)} · 已核对运营提醒 · ${entry.advice.evidence}`);
+    }
     if (missing.length) lines.push('数据缺口：' + missing.map(key => labels[key] ?? key).join('、'));
     const faultIds = new Set(rotation_faults.map(fault => fault.event_id));
     for (const finding of review.findings) {
