@@ -75,7 +75,7 @@
 | ID | 用户功能 | 原入口/主要证据 | 当前重建模块 | 当前状态 | 完成前必须验证 |
 |---|---|---|---|---|---|
 | LIV-001 | 数字人直播启动、停止和资源回收 | `Api.start_live`→`LiveManager` | `main.py`, `digital_live_manager.py`, `live_manager_runtime.py` | 静态验证通过 | Windows 长稳、反复启停、设备/模型异常和内存显存 |
-| LIV-002 | 文件/摄像头/视频/RTMP 驱动 | `VideoStreamManager` 各 reader | `image_*_reader.py`, `frame_player_*` | 静态验证通过 | Windows 摄像头、RTMP 断流、格式和分辨率矩阵 |
+| LIV-002 | 文件/摄像头/视频/RTMP 驱动 | `VideoStreamManager` 各 reader | `image_*_reader.py`、`frame_player_*`、控制台 RTMP 媒体子进程 | 静态验证通过 | RTMP 本机 SRS 至控制台轮播、回采及停播通过，见 A01-05。摄像头有效画面、RTMP 断流恢复和格式分辨率矩阵待验 |
 | LIV-003 | TTS 队列、弹幕打断、淡入淡出和静音续接 | `live_manager.pyd` 调度链 | `live_manager_runtime.py`, `image_infer_audio.py`、`scripts/live_speech_ingress.py` | 静态验证通过 | V05-01b真实逐句交接局部通过；V05-02常驻WeNet/UNet驱动两句190帧、182272采样完整，形象序列连续、重组特征SHA一致；V05-03a累计采样/821帧PTS核验通过；03b形象预热与8帧有界原始帧接收/停止局部通过；实际定时音画输出、控制台/设备、实时压力、竞态、长稳及人工质量仍待验 |
 | LIV-004 | 手动口播与模拟提问 | `Api.speak/simulate_question` | `main.py`, `digital_live_manager.py`, `face_hand_live_manager.py` | 静态验证通过 | 三种直播模式、停止竞态和前端反馈 |
 | LIV-005 | 弹幕采集启动/停止 | `start_danmu_capture/stop_danmu_capture` | `danmu_bridge.py`, `ws_capture.py` | 开发中 | 抖音/淘宝/快手/Shopee/PDD 真实房间 |
