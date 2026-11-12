@@ -222,7 +222,10 @@ class ProductStore:
                 'missing': [] if facts else ['补充并核对商品事实'],
                 'assets': ['核对商品展示图或实拍视频'],
             })
-        package = {**preparation, 'items': items, 'improvements': self.live_improvements(adopted_only=True), 'segments': {
+        selected_ids = set(preparation['draft']['product_ids'])
+        improvements = [task for task in self.live_improvements(adopted_only=True)
+                        if task['product_id'] is None or task['product_id'] in selected_ids]
+        package = {**preparation, 'items': items, 'improvements': improvements, 'segments': {
             'opening': '欢迎来到直播间，接下来为大家逐一介绍本场商品。',
             'transition': '接下来介绍下一件商品。',
             'closing': '感谢观看，本场商品介绍到这里。',

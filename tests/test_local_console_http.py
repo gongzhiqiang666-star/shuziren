@@ -24,7 +24,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         store.record_live_session('scene', 100, started_at=101, ended_at=110, status='failed', frames=225,
                                   failure_reason='输出设备断开')
         store.record_live_session('other', 200)
-        item = {'product_id': 'product', 'product_version': 2, 'script_id': 'script'}
+        product = store.save(title='茶杯', content='验收商品', product_index=1)
+        item = {'product_id': product['id'], 'product_version': 2, 'script_id': 'script'}
         store.record_rotation_completion('scene', 'first', item, 0)
         store.record_rotation_completion('scene', 'first', item, 0)
         store.record_rotation_completion('scene', 'second', item, 1)
@@ -67,12 +68,15 @@ class ConsoleHTTPTests(unittest.TestCase):
             'reason': '语音合成超时', 'occurred_at': 104, **item,
         }])
         self.assertEqual(self.call(task_route + '?session_id=scene'), (200, saved))
-        product = store.save(title='茶杯', content='验收商品', product_index=1)
         store.save_live_preparation(product_ids=[product['id']])
         package_route = '/api/live/preparation/package'
         self.assertEqual(self.call(package_route)[1]['improvements'], [])
         self.assertEqual(self.call(task_route, {**task, 'adopted': True})[0], 200)
         self.assertEqual(self.call(package_route)[1]['improvements'][0]['fault_id'], 1)
+        unrelated = store.save(title='桌布', content='另一场商品', product_index=2)
+        store.save_live_preparation(product_ids=[unrelated['id']])
+        self.assertEqual(self.call(package_route)[1]['improvements'], [])
+        store.save_live_preparation(product_ids=[product['id']])
         self.assertEqual(self.call(task_route, {**task, 'adopted': False})[0], 200)
         self.assertEqual(self.call(package_route)[1]['improvements'], [])
         self.assertIn('questions_and_answers', review['missing'])
@@ -87,14 +91,14 @@ class ConsoleHTTPTests(unittest.TestCase):
         pending, = review['replies_without_playback_record']
         self.assertEqual(pending['task_id'], 'second-reply')
         self.assertEqual(pending['product_version'], 3)
-        product, next_product = report['products']
-        self.assertEqual(product['completed_segments'], 2)
+        first_product, next_product = report['products']
+        self.assertEqual(first_product['completed_segments'], 2)
         self.assertEqual(next_product['completed_segments'], 1)
         switch, = report['observed_product_switches']
         self.assertEqual((switch['previous_product_id'], switch['product_id'], switch['task_id']),
-                         ('product', 'next-product', 'third'))
+                         (product['id'], 'next-product', 'third'))
         self.assertIn('platform_product_switches', report['missing'])
-        self.assertEqual(product['product_version'], 2)
+        self.assertEqual(first_product['product_version'], 2)
         self.assertEqual(report['controls'], [{'revision': 1, 'manual': True, 'occurred_at': 103}])
         self.assertIn('attributed_sales', report['missing'])
         self.assertEqual(self.call('/api/live/report?session_id=unknown')[0], 400)
