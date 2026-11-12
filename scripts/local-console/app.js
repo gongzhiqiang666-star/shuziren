@@ -927,16 +927,30 @@ $('selection-evidence-form').addEventListener('submit', async event => {
         add.type = 'button';
         add.className = 'secondary';
         add.textContent = '加入直播准备草稿';
-        add.addEventListener('click', () => {
-          const current = savedProducts.find(item => item.id === product.product_id);
-          const checkbox = Array.from($('preparation-products').querySelectorAll('input'))
-            .find(input => input.value === product.product_id);
-          if (current?.version !== product.product_version || !checkbox || preparationSave.disabled) {
-            status.textContent = '商品列表或准备草稿已变化，请重新读取后再加入';
-            return;
+        add.addEventListener('click', async () => {
+          if (add.disabled || consoleClosed) return;
+          add.disabled = true;
+          try {
+            const {products: latest} = await request('/api/products/selection-evidence');
+            if (consoleClosed || !add.isConnected) return;
+            const current = latest.find(item => item.product_id === product.product_id);
+            const checkbox = Array.from($('preparation-products').querySelectorAll('input'))
+              .find(input => input.value === product.product_id);
+            if (current?.product_version !== product.product_version || !checkbox || preparationSave.disabled) {
+              status.textContent = '商品列表或准备草稿已变化，请重新读取后再加入';
+              return;
+            }
+            if (current.recommendation.role === 'hold') {
+              status.textContent = `建议暂缓 · ${current.recommendation.reason}`;
+              return;
+            }
+            checkbox.checked = true;
+            status.textContent = `${product.title} 已勾选，请核对并保存准备草稿`;
+          } catch (error) {
+            status.textContent = error.message;
+          } finally {
+            add.disabled = false;
           }
-          checkbox.checked = true;
-          status.textContent = `${product.title} 已勾选，请核对并保存准备草稿`;
         });
         block.append(add);
       }
