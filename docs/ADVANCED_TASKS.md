@@ -213,3 +213,5 @@ A01-05 本机独立 Chrome 补验完成 RTMP 开播与停播。浏览器枚举�
 A01-05 摄像头输入环境复核：当前 FFmpeg DirectShow 仅枚举 Tblive Virtual Camera 视频端及 VB-Audio CABLE Output 音频端，未找到独立物理摄像头。人脸接口 4 项回归通过，实际有效画面和断开恢复保留待验。
 
 A01-05 本地视频直驱 HTTP 补验使用 V09 独立媒体目录时未启动。工作进程缺少 bin.image_infer_v2.wenet.compute_ctc_att_bnf，场次在 0 帧退出。证据 logs/validation/a01-direct-http-seek-01 的场次日志。下一步核对独立媒体打包所需的原视频 WeNet 支持，再复测跳转。
+
+A01-05 独立媒体目录本地视频直驱复验：补齐 WeNet 与 silence.npy 后，场次启动、跳转 2000 ms 回执和停播通过。自动化误将运行状态的帧数当作实时计数，等待超时后正常停播；持久化终态为 stopped、1885 帧、无失败原因，证明跳转后持续输出。证据 logs/validation/a01-direct-seek-03/products.sqlite3。此轮直接调用控制台管理器，HTTP 跳转及接收端画面待验。
