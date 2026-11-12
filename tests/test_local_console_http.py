@@ -412,6 +412,12 @@ class ConsoleHTTPTests(unittest.TestCase):
         status, result = self.call(route, {**payload, 'sales_minor': 1000})
         self.assertEqual(status, 200)
         self.assertEqual(result['review']['net_minor'], -4000)
+        limit = 2**53 - 1
+        status, result = self.call(route, {**payload, 'sales_minor': 0, 'cost_minor': limit,
+                                           'fees_minor': limit, 'refund_loss_minor': limit})
+        self.assertEqual(status, 200)
+        self.assertEqual(result['review']['net_minor'], str(-3 * limit))
+        self.assertEqual(self.call(route, {**payload, 'sales_minor': limit + 1})[0], 400)
         status, error = self.call(route, {**payload, 'period_end': '2026-11-02'})
         self.assertEqual(status, 400)
         self.assertIn('覆盖', error['error'])
