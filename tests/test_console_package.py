@@ -10,6 +10,7 @@ from zipfile import ZipFile
 
 from scripts.console_package import MANIFEST, REQUIRED, digest, install
 from scripts.console_data_migration import migrate_data, migrate_v122_products
+from scripts.avatar_store import AvatarStore
 from scripts.local_console import InstanceLock
 from scripts.local_console_config import ConfigStore
 from scripts.product_store import ProductStore
@@ -17,6 +18,35 @@ from scripts.voice_store import VoiceStore, fingerprint
 
 
 class ConsolePackageTests(unittest.TestCase):
+    def test_shop_migration_preserves_prepared_avatar(self):
+        try:
+            import cv2
+            import numpy as np
+        except ImportError:
+            self.skipTest('OpenCV is required for the prepared avatar fixture')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            prepared = root / 'prepared'
+            (prepared / 'frames').mkdir(parents=True)
+            (prepared / 'positions').mkdir()
+            frame = prepared / 'frames/000000.jpg'
+            self.assertTrue(cv2.imwrite(str(frame), np.zeros((32, 24, 3), np.uint8)))
+            (prepared / 'positions/000000.txt').write_text(
+                'fps: 25\nwidth: 24\nheight: 32\nis_no_face: False\nbounding_box: [2, 20, 3, 22]\n',
+                encoding='utf-8')
+            source = root / 'source'
+            original = AvatarStore(source)
+            avatar = original.import_prepared(prepared, '测试形象')
+            original.select(avatar['id'])
+            migrated = migrate_data(source, root / 'install', 'pilot')
+            shop = AvatarStore(migrated['data_directory'])
+            self.assertEqual(shop.selected_id(), avatar['id'])
+            self.assertEqual(shop.get(avatar['id']), original.get(avatar['id']))
+            target = shop.root / avatar['id']
+            for relative in ('frames/000000.jpg', 'positions/000000.txt'):
+                self.assertEqual((target / relative).read_bytes(),
+                                 (original.root / avatar['id'] / relative).read_bytes())
+
     def test_legacy_product_payload_preserves_selection_and_scripts_atomically(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
