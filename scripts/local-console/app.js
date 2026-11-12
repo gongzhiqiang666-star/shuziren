@@ -813,8 +813,9 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
   output.textContent = '正在读取场次报告';
   try {
     const query = new URLSearchParams({session_id:sessionId});
-    const [{session, products, controls, rotation_faults, observed_product_switches, queued_replies, missing}, review] =
-      await Promise.all([request('/api/live/report?' + query), request('/api/live/review?' + query)]);
+    const [{session, products, controls, rotation_faults, observed_product_switches, queued_replies, missing}, review, improvements] =
+      await Promise.all([request('/api/live/report?' + query), request('/api/live/review?' + query),
+        request('/api/live/improvements?' + query)]);
     if (($('live-event-scene').value || liveSession.id) !== sessionId) return;
     const formatTime = value => value == null ? '未记录' : new Date(value * 1000).toLocaleString();
     const labels = {product_exposure:'商品曝光', questions_and_answers:'问答', platform_product_switches:'平台切品',
@@ -867,6 +868,47 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       paragraph.textContent = line;
       return paragraph;
     }));
+    for (const fault of rotation_faults) {
+      const task = improvements.tasks.find(item => item.fault_id === fault.event_id);
+      const form = document.createElement('form');
+      const heading = document.createElement('h4');
+      heading.textContent = `故障 ${fault.event_id} 的改进任务`;
+      const owner = document.createElement('input');
+      owner.required = true;
+      owner.maxLength = 120;
+      owner.value = task?.owner ?? '';
+      const goal = document.createElement('textarea');
+      goal.required = true;
+      goal.maxLength = 2000;
+      goal.value = task?.goal ?? '';
+      const ownerLabel = document.createElement('label');
+      ownerLabel.append('负责人', owner);
+      const goalLabel = document.createElement('label');
+      goalLabel.append('改进目标', goal);
+      const button = document.createElement('button');
+      button.type = 'submit';
+      button.textContent = '保存改进任务';
+      const status = document.createElement('p');
+      status.setAttribute('role', 'status');
+      form.append(heading, ownerLabel, goalLabel, button, status);
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (button.disabled || consoleClosed) return;
+        button.disabled = true;
+        status.textContent = '';
+        try {
+          await request('/api/live/improvements', {
+            session_id:sessionId, fault_id:fault.event_id, owner:owner.value, goal:goal.value,
+          });
+          status.textContent = '改进任务已保存';
+        } catch (error) {
+          status.textContent = error.message;
+        } finally {
+          button.disabled = false;
+        }
+      });
+      output.append(form);
+    }
   } catch (error) {
     output.replaceChildren();
     throw error;
