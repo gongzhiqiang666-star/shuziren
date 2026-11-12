@@ -440,6 +440,13 @@ class ConsoleLive:
             self.status.pop('last_rotation_product_id', None)
             return self.state()
 
+    def _check_rotation_item(self, item):
+        products = self.tts.products
+        if products.get(item['product_id'])['version'] != item['product_version']:
+            raise Conflict('轮播商品已修改，请重新设置轮播')
+        if products.selected_script(item['product_id']) != item['script_id']:
+            raise Conflict('选用话术已变化，请重新设置轮播')
+
     def _rotate(self, session_id, stop):
         pending = None
         startup_recorded = False
@@ -464,6 +471,7 @@ class ConsoleLive:
                             pending = None
                         elif state['status'] == 'succeeded' and not self.session.queue_full():
                             item = rotation['items'][rotation['index']]
+                            self._check_rotation_item(item)
                             voice_id = item.get('shift_voice_id', self.ingress.context['voice_id'])
                             if 'segments' in item:
                                 segment = item['segments'][rotation['segment']]
@@ -479,12 +487,9 @@ class ConsoleLive:
                     elif not state or state['status'] != 'running':
                         self._tick_rotation_shift(rotation, time.monotonic())
                         item = rotation['items'][rotation['index']]
-                        if self.tts.products.get(item['product_id'])['version'] != item['product_version']:
-                            raise Conflict('轮播商品已修改，请重新设置轮播')
+                        self._check_rotation_item(item)
                         options = {'rotation_voice_id': item['shift_voice_id']} if 'shift_voice_id' in item else {}
                         if 'segments' in item:
-                            if self.tts.products.selected_script(item['product_id']) != item['script_id']:
-                                raise Conflict('选用话术已变化，请重新设置轮播')
                             segment = item['segments'][rotation['segment']]
                             if segment['type'] == 'pause':
                                 if rotation.get('pause_until') is None:

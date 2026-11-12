@@ -128,3 +128,19 @@ class LiveRotationTests(unittest.TestCase):
             self.assertNotIn('rotation_retry_products',live.state())
             self.assertEqual(tts.start.call_count,2)
             tts.start.assert_called_with('product','script','voice',language='vi-VN',use_cache=True,rotation=True)
+
+            live.enqueue.reset_mock()
+            live.configure_rotation('scene', ['product'])
+            tts.start.side_effect = None
+            tts.start.return_value = {'id': 'changed'}
+
+            def change_selected_script():
+                tts.products.selected_script.return_value = 'replacement'
+                tts.state.return_value = {'id': 'changed', 'status': 'succeeded'}
+                return False
+
+            ticks = iter((lambda: False, change_selected_script, lambda: True))
+            with self.assertLogs(level='ERROR'):
+                live._rotate('scene', Mock(wait=lambda _: next(ticks)()))
+            live.enqueue.assert_not_called()
+            self.assertEqual(live.state()['rotation_error'], '选用话术已变化，请重新设置轮播')
