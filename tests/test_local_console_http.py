@@ -31,6 +31,7 @@ class ConsoleHTTPTests(unittest.TestCase):
             status, payload = self.call(route)
             self.assertEqual((status, payload['session_id']), (200, 'scene'))
             advice, = payload['advice']
+            self.assertEqual(self.call('/api/live/state')[1]['advice'], payload['advice'])
             self.assertEqual((advice['code'], advice['evidence']), ('rotation_error', '合成超时'))
             live.return_value.state.return_value['rotation_error'] = None
             self.assertEqual(self.call(route)[1]['advice'], [])
@@ -369,7 +370,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call('/api/taobao/explain', {'capture_id':'old','goods_id':123456})[0], 400)
 
     def test_live_routes_reject_stale_or_unauthorized_actions(self):
-        self.assertEqual(self.call('/api/live/state')[1], {'session': {'status': 'idle'}})
+        self.assertEqual(self.call('/api/live/state')[1], {'session': {'status': 'idle'}, 'advice': []})
         self.assertEqual(self.call('/api/live/rotation/events?session_id=scene&after=7')[1],
                          {'session': None, 'events': [], 'next_cursor': 7})
         self.assertEqual(self.call('/api/live/rotation/events?session_id=scene&after=-1')[0], 400)

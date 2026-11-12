@@ -76,6 +76,19 @@ def browser_metrics(values):
             for key, value in values.items()}
 
 
+def live_advice(session):
+    if session['status'] != 'running':
+        return []
+    return [
+        {'code': field, 'evidence': session[field], 'recommendation': recommendation}
+        for field, recommendation in (
+            ('rotation_error', '检查故障原因并核对轮播配置，再决定是否重试'),
+            ('insert_error', '核对插播素材与语音输出，再决定是否重试'),
+        )
+        if session.get(field)
+    ]
+
+
 def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=None):
     token = secrets.token_urlsafe(32)
     lock = threading.RLock()
@@ -202,19 +215,11 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                                               "listening_port": self.server.server_port,
                                               "live_status": live_label(), "data_directory": str(store.directory.resolve())})
                 if path == '/api/live/state':
-                    return self.respond(200, {'session': live_manager.state() if live_manager else {'status': 'idle'}})
+                    session = live_manager.state() if live_manager else {'status': 'idle'}
+                    return self.respond(200, {'session': session, 'advice': live_advice(session)})
                 if path == '/api/live/advice':
                     session = live_manager.state() if live_manager else {'status': 'idle'}
-                    advice = []
-                    if session['status'] == 'running':
-                        for field, recommendation in (
-                            ('rotation_error', '检查故障原因并核对轮播配置，再决定是否重试'),
-                            ('insert_error', '核对插播素材与语音输出，再决定是否重试'),
-                        ):
-                            if session.get(field):
-                                advice.append({'code': field, 'evidence': session[field],
-                                               'recommendation': recommendation})
-                    return self.respond(200, {'session_id': session.get('id'), 'advice': advice})
+                    return self.respond(200, {'session_id': session.get('id'), 'advice': live_advice(session)})
                 if path == '/api/live/history':
                     return self.respond(200, {'sessions': products().recent_live_sessions()})
                 if path == '/api/live/control/events':

@@ -749,7 +749,14 @@ async function loadLive() {
   clearTimeout(liveTimer);
   if (consoleClosed) return;
   const previousSession = liveSession.id;
-  liveSession = (await request('/api/live/state')).session;
+  const {session, advice} = await request('/api/live/state');
+  liveSession = session;
+  $('live-advice').hidden = !advice.length;
+  $('live-advice-list').replaceChildren(...advice.map(item => {
+    const row = document.createElement('li');
+    row.textContent = `${item.evidence} · ${item.recommendation}`;
+    return row;
+  }));
   if (previousSession !== liveSession.id && !$('live-event-scene').value) {
     resetRotationEvents();
     $('live-report-output').replaceChildren();
