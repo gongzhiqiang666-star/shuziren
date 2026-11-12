@@ -34,6 +34,13 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(comparison['baseline']['completed_segments'], 0)
         self.assertEqual(comparison['trial']['completed_segments'], 1)
+        self.assertEqual(comparison['trial']['duration_seconds'], 1)
+        self.assertEqual(comparison['trial']['completed_segments_per_minute'], 60)
+        store.record_live_session('failed-start', 7, ended_at=8, status='failed')
+        status, comparison_with_failed_start = self.call(route + 'failed-start')
+        self.assertEqual(status, 200)
+        self.assertIsNone(comparison_with_failed_start['trial']['duration_seconds'])
+        self.assertIsNone(comparison_with_failed_start['trial']['completed_segments_per_minute'])
         self.assertEqual(comparison['conclusion'], 'uncertain')
         self.assertIn('refund_lag', comparison['missing'])
 

@@ -223,9 +223,15 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         session = report['session']
                         if session['ended_at'] is None:
                             raise ProductError('请选择已结束的场次')
+                        started_at = session['started_at']
+                        duration = None if started_at is None else session['ended_at'] - started_at
+                        completed = sum(item['completed_segments'] for item in report['products'])
                         comparison[role] = {
                             'session': session,
-                            'completed_segments': sum(item['completed_segments'] for item in report['products']),
+                            'duration_seconds': duration if duration and duration > 0 else None,
+                            'completed_segments': completed,
+                            'completed_segments_per_minute': completed * 60 / duration
+                            if duration and duration > 0 else None,
                             'rotation_faults': len(report['rotation_faults']),
                             'played_replies': sum(item['played_at'] is not None for item in report['queued_replies']),
                         }

@@ -954,7 +954,9 @@ $('live-compare-form').addEventListener('submit', event => {
     const lines = ['baseline', 'trial'].map(role => {
       const result = comparison[role];
       const label = role === 'baseline' ? '基线' : '试验';
-      return `${label} · 输出 ${result.session.frames} 帧 · 已播 ${result.completed_segments} 段 · 轮播故障 ${result.rotation_faults} 次 · 本机已播问答 ${result.played_replies} 条`;
+      const duration = result.duration_seconds == null ? '未知' : `${result.duration_seconds.toFixed(1)} 秒`;
+      const rate = result.completed_segments_per_minute == null ? '未知' : result.completed_segments_per_minute.toFixed(2);
+      return `${label} · 时长 ${duration} · 输出 ${result.session.frames} 帧 · 已播 ${result.completed_segments} 段（每分钟 ${rate}）· 轮播故障 ${result.rotation_faults} 次 · 本机已播问答 ${result.played_replies} 条`;
     });
     const gaps = {audience:'人群', traffic:'流量', promotion:'活动', refund_lag:'退款滞后'};
     lines.push('结论：不确定', '待补数据：' + comparison.missing.map(key => gaps[key] ?? key).join('、'));
