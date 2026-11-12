@@ -53,6 +53,11 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(result['draft']['narration'], '补充说明。')
         self.assertEqual(result['draft']['source']['script_id'], segmented_id)
         self.assertIsNone(result['draft']['language'])
+        self.assertIsNone(result['draft']['saved_body'])
+        body = {'session_id': 'scene', 'task_id': 'assistant-task', 'body': '运营修改后的文案'}
+        self.assertEqual(self.call('/api/live/content-draft', body), (200, {'body': body['body']}))
+        self.assertEqual(self.call(draft_route + 'assistant-task')[1]['draft']['saved_body'], body['body'])
+        self.assertEqual(self.call('/api/live/content-draft', {**body, 'task_id': 'task'})[0], 409)
         self.assertEqual((source['sample_start'], source['sample_end']), (960, 1920))
         self.assertEqual(self.call('/api/live/content-source?session_id=other&task_id=task')[0], 400)
 

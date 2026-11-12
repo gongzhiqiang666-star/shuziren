@@ -1088,18 +1088,36 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
     draftLabel.hidden = true;
     const draftText = document.createElement('textarea');
     draftText.rows = 8;
-    draftLabel.append('短视频文案初稿（本页可编辑和复制）', draftText);
-    details.append(draftButton, draftStatus, draftLabel);
+    draftText.maxLength = 100000;
+    draftLabel.append('短视频文案', draftText);
+    const saveDraft = document.createElement('button');
+    saveDraft.type = 'button';
+    saveDraft.textContent = '保存文案';
+    saveDraft.hidden = true;
+    details.append(draftButton, draftStatus, draftLabel, saveDraft);
     const params = new URLSearchParams({session_id:sessionId, task_id:event.task_id});
+    saveDraft.addEventListener('click', async () => {
+      if (saveDraft.disabled || consoleClosed) return;
+      saveDraft.disabled = true;
+      try {
+        await request('/api/live/content-draft', {session_id:sessionId, task_id:event.task_id, body:draftText.value});
+        draftStatus.textContent = '文案已保存';
+      } catch (error) {
+        draftStatus.textContent = error.message;
+      } finally {
+        saveDraft.disabled = false;
+      }
+    });
     draftButton.addEventListener('click', async () => {
       if (draftButton.disabled || consoleClosed) return;
       draftButton.disabled = true;
       draftStatus.textContent = '正在生成文案初稿';
       try {
         const {draft} = await request('/api/live/content-draft?' + params);
-        draftText.value = [`标题：${draft.title}`, `封面文字：${draft.cover_text}`,
+        draftText.value = draft.saved_body ?? [`标题：${draft.title}`, `封面文字：${draft.cover_text}`,
           `语言：${draft.language ?? '未记录'}`, '', draft.narration].join('\n');
         draftLabel.hidden = false;
+        saveDraft.hidden = false;
         draftButton.hidden = true;
         draftStatus.textContent = '';
       } catch (error) {

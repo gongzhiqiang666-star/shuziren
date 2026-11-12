@@ -131,6 +131,10 @@ class ProductStore:
                     singleton INTEGER PRIMARY KEY CHECK(singleton=1), draft TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_rotation_faults (
                     session_id TEXT NOT NULL, occurred_at REAL NOT NULL, reason TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS live_content_drafts (
+                    session_id TEXT NOT NULL, task_id TEXT NOT NULL, body TEXT NOT NULL,
+                    PRIMARY KEY(session_id, task_id),
+                    FOREIGN KEY(session_id, task_id) REFERENCES live_rotation_events(session_id, task_id));
                 CREATE TABLE IF NOT EXISTS live_advice_acknowledgments (
                     session_id TEXT NOT NULL, advice TEXT NOT NULL, acknowledged_at REAL NOT NULL,
                     PRIMARY KEY(session_id, advice));
@@ -647,6 +651,24 @@ class ProductStore:
             if 0 <= index < len(segments) and segments[index]['type'] != 'pause':
                 source['segment'] = segments[index]
         return source
+
+    def live_content_draft_body(self, session_id, task_id):
+        with self.connect() as db:
+            row = db.execute('SELECT body FROM live_content_drafts WHERE session_id=? AND task_id=?',
+                             (session_id, task_id)).fetchone()
+        return row['body'] if row else None
+
+    def save_live_content_draft(self, session_id, task_id, body):
+        body = text(body, '短视频文案', 100000)
+        source = self.live_content_source(session_id, task_id)
+        if source['facts_review'] != 'version_current' or source['segment'] is None:
+            raise Conflict('商品事实或片段来源需要重新核对')
+        with self.connect() as db:
+            db.execute("""
+                INSERT INTO live_content_drafts VALUES (?, ?, ?)
+                ON CONFLICT(session_id, task_id) DO UPDATE SET body=excluded.body
+            """, (session_id, task_id, body))
+        return body
 
     @staticmethod
     def decode(row):

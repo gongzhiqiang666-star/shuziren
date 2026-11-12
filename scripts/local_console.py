@@ -345,6 +345,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             raise Conflict('商品事实或片段来源需要重新核对')
                         title = source['product_snapshot']['title']
                         return self.respond(200, {'draft': {
+                            'saved_body': products().live_content_draft_body(source['session_id'], source['task_id']),
                             'title': f'{title}讲解片段', 'cover_text': title,
                             'narration': source['segment']['content'],
                             'language': (source['speech_provenance'] or {}).get('language'),
@@ -699,6 +700,12 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         else:
                             data.revoke_live_advice_acknowledgment(value['session_id'], value['advice'], time())
                         return self.respond(200, {'acknowledged': acknowledge})
+                    if path == "/api/live/content-draft":
+                        if set(value) != {'session_id', 'task_id', 'body'} or any(
+                                not isinstance(value[key], str) or not 1 <= len(value[key]) <= 64
+                                for key in ('session_id', 'task_id')):
+                            raise ProductError('短视频草稿字段无效')
+                        return self.respond(200, {'body': products().save_live_content_draft(**value)})
                     if path == "/api/live/improvements":
                         required = {'session_id', 'fault_id', 'owner', 'goal'}
                         if set(value) - {'adopted'} != required or not isinstance(value['session_id'], str):
