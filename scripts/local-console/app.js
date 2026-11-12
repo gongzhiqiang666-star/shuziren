@@ -1091,6 +1091,7 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         const snapshot = source.product_snapshot;
         sourceText.textContent = snapshot
           ? [`商品快照 · ${snapshot.title} · 版本 ${snapshot.version}`, snapshot.content,
+            '', '按原话术还原的片段', source.segment?.content ?? '片段文本无法还原',
             '', '原话术全文', source.script_text].join('\n')
           : '这条口播记录缺少原商品快照或话术。';
         loaded = true;

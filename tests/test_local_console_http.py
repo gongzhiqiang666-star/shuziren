@@ -33,6 +33,13 @@ class ConsoleHTTPTests(unittest.TestCase):
         source = result['source']
         self.assertEqual(source['product_snapshot'], product)
         self.assertEqual(source['script_text'], '原口播')
+        self.assertEqual(source['segment'], {'type': 'host', 'content': '原口播'})
+        segmented_id = store.add_script(store.get(product['id']), '主讲。{助：补充说明。}')
+        store.record_rotation_completion('scene', 'assistant-task', {
+            'product_id': product['id'], 'product_version': product['version'] + 1, 'script_id': segmented_id,
+        }, 1)
+        assistant = self.call('/api/live/content-source?session_id=scene&task_id=assistant-task')[1]['source']
+        self.assertEqual(assistant['segment'], {'type': 'assistant', 'content': '补充说明。'})
         self.assertEqual((source['sample_start'], source['sample_end']), (960, 1920))
         self.assertEqual(self.call('/api/live/content-source?session_id=other&task_id=task')[0], 400)
 

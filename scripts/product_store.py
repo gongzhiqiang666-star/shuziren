@@ -616,6 +616,16 @@ class ProductStore:
         source = dict(row)
         snapshot = source.pop('snapshot')
         source['product_snapshot'] = json.loads(snapshot) if snapshot else None
+        source['segment'] = None
+        if source['script_text'] is not None:
+            from recovered.slice_content import slice_content
+
+            segments = slice_content(source['script_text'])
+            if not any(segment['type'] in {'assistant', 'pause'} for segment in segments):
+                segments = [{'type': 'host', 'content': source['script_text']}]
+            index = source['segment_index']
+            if 0 <= index < len(segments) and segments[index]['type'] != 'pause':
+                source['segment'] = segments[index]
         return source
 
     @staticmethod
