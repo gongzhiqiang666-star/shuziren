@@ -241,8 +241,63 @@ async function showScripts() {
     return item;
   }));
 }
+const preparationRoute = '/api/live/preparation';
+const preparationFields = ['goal', 'audience', 'promotion', 'stock', 'shipping', 'constraints'];
+const preparationForm = $('preparation-form');
+const preparationSave = preparationForm.querySelector('button[type="submit"]');
+function preparationProductIds() {
+  return Array.from($('preparation-products').querySelectorAll('input:checked'), input => input.value);
+}
+function showPreparationProducts(ids) {
+  $('preparation-products').replaceChildren(...savedProducts.map(product => {
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.value = product.id;
+    input.checked = ids.includes(product.id);
+    label.append(input, ' ', product.title);
+    return label;
+  }));
+}
+function showPreparationMissing(missing) {
+  $('preparation-missing').replaceChildren(...missing.map(condition => {
+    const item = document.createElement('li');
+    item.textContent = condition;
+    return item;
+  }));
+}
+async function loadPreparation() {
+  try {
+    const {draft, missing} = await request(preparationRoute);
+    showPreparationProducts(draft.product_ids);
+    for (const field of preparationFields) $('preparation-' + field).value = draft[field];
+    showPreparationMissing(missing);
+    preparationSave.disabled = false;
+  } catch (error) {
+    $('preparation-error').textContent = error.message;
+  }
+}
+preparationForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  if (preparationSave.disabled) return;
+  preparationSave.disabled = true;
+  $('preparation-error').textContent = '';
+  $('preparation-status').textContent = '';
+  try {
+    const draft = {product_ids:preparationProductIds()};
+    for (const field of preparationFields) draft[field] = $('preparation-' + field).value;
+    const {missing} = await request(preparationRoute, draft);
+    showPreparationMissing(missing);
+    $('preparation-status').textContent = missing.length ? '草稿已保存，以下条件待补' : '草稿已保存，条件已填齐';
+  } catch (error) {
+    $('preparation-error').textContent = error.message;
+  } finally {
+    preparationSave.disabled = false;
+  }
+});
 async function loadProducts() {
   const result = await request('/api/products'); savedProducts = result.products;
+  showPreparationProducts(preparationProductIds());
   const selectedRotation = new Set(Array.from($('live-products').selectedOptions, option => option.value));
   $('live-products').replaceChildren(...savedProducts.map(product =>
     new Option(`${product.product_index} · ${product.title}`, product.id, false, selectedRotation.has(product.id))));
@@ -827,4 +882,4 @@ async function taobaoGoods(explain) {
 $('taobao-goods-refresh').addEventListener('click', () => taobaoGoods(false));
 $('taobao-explain').addEventListener('click', () => taobaoGoods(true));
 window.addEventListener('pagehide', () => clearTimeout(taobaoTimer));
-action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender);await loadLive();await loadTaobao(); });
+action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await loadPreparation(); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender);await loadLive();await loadTaobao(); });
