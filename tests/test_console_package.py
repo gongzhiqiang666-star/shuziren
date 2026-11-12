@@ -80,6 +80,14 @@ class ConsolePackageTests(unittest.TestCase):
             self.assertFalse((target / 'console.log').exists())
             with self.assertRaises(FileExistsError):
                 migrate_data(source, managed)
+            shop_result = migrate_data(source, managed, 'pilot')
+            shop = managed / 'data/shops/shop-pilot'
+            self.assertEqual(Path(shop_result['data_directory']), shop)
+            self.assertEqual(ProductStore(shop).selected_script(product['id']), script)
+            self.assertEqual(ConfigStore(shop).load(), config)
+            self.assertEqual(ProductStore(target).selected(), product['id'])
+            with self.assertRaises(FileExistsError):
+                migrate_data(source, managed, 'pilot')
 
     def test_install_validates_hash_and_never_overwrites_directory(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -74,30 +74,39 @@ def copy_media(source, target, store, kind):
 
 
 @contextmanager
-def new_managed_data(root):
+def new_managed_data(root, shop_id=None):
     from scripts.local_console import InstanceLock
+    from scripts.local_console_config import shop_data_directory
 
     with InstanceLock(root / '.deployment'):
         target = root / 'data'
+        if shop_id is not None:
+            target = shop_data_directory(target, shop_id)
+            if not target.is_relative_to(root):
+                raise ValueError('Shop data directory must be inside the managed installation')
         if target.exists() or target.is_symlink():
             raise FileExistsError('Managed data directory already exists')
         with tempfile.TemporaryDirectory(prefix='.migration-', dir=root) as temporary:
             snapshot = Path(temporary) / 'data'
             snapshot.mkdir()
             yield snapshot
+            target.parent.mkdir(parents=True, exist_ok=True)
             snapshot.rename(target)
 
 
-def migrate_data(source, root):
+def migrate_data(source, root, shop_id=None):
     from scripts.local_console import InstanceLock
+    from scripts.local_console_config import shop_data_directory
 
     source = source.resolve(strict=True)
     root = root.resolve()
     target = root / 'data'
+    if shop_id is not None:
+        target = shop_data_directory(target, shop_id)
     if not source.is_dir() or source.is_relative_to(root) or root.is_relative_to(source):
         raise ValueError('Source and managed installation must be separate directories')
     with InstanceLock(source):
-        with new_managed_data(root) as snapshot:
+        with new_managed_data(root, shop_id) as snapshot:
             paths = ('console.json', 'products.sqlite3', 'voices/voices.sqlite3', 'avatars/avatars.sqlite3')
             present = [name for name in paths if (source / name).exists() or (source / name).is_symlink()]
             if not present:

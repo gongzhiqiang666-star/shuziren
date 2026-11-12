@@ -283,6 +283,7 @@ def main():
     migration = commands.add_parser('migrate-data')
     migration.add_argument('--root', type=Path, required=True)
     migration.add_argument('--source', type=Path, required=True)
+    migration.add_argument('--shop-id', help='将源数据迁移到独立的店铺目录')
     legacy = commands.add_parser('migrate-v122-assets')
     legacy.add_argument('--root', type=Path, required=True)
     legacy.add_argument('--runtime', type=Path, required=True)
@@ -303,7 +304,7 @@ def main():
         return 0
     if args.command == 'migrate-data':
         from scripts.console_data_migration import migrate_data
-        print(json.dumps(migrate_data(args.source, args.root), ensure_ascii=False))
+        print(json.dumps(migrate_data(args.source, args.root, args.shop_id), ensure_ascii=False))
         return 0
     if args.command == 'run':
         return run_release(args.root, args.port, args.with_media, args.shop_id)
