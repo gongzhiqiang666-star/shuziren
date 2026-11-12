@@ -469,6 +469,11 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if path.endswith('/decision'):
                         return self.respond(200, {'decision': products().sourcing_decision(ids[0])})
                     return self.respond(200, {'trial': products().sourcing_trial(ids[0])})
+                if path == "/api/promotion/spend":
+                    ids = parse_qs(urlsplit(self.path).query).get('product_id', [])
+                    if len(ids) != 1 or not 1 <= len(ids[0]) <= 64:
+                        raise ProductError('请选择投放商品')
+                    return self.respond(200, {'records': products().promotion_spend(ids[0])})
                 if path == "/api/sourcing/candidates":
                     return self.respond(200, {'candidates': products().sourcing_candidates()})
                 if path == "/api/products/guide":
@@ -783,6 +788,13 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         else:
                             data.revoke_live_advice_acknowledgment(value['session_id'], value['advice'], time())
                         return self.respond(200, {'acknowledged': acknowledge})
+                    if path == "/api/promotion/spend":
+                        required = {'product_id', 'source', 'period_start', 'period_end', 'campaign', 'asset', 'spend_minor'}
+                        if set(value) - {'attribution'} != required:
+                            raise ProductError('投放费用字段无效')
+                        data = products()
+                        data.save_promotion_spend(**value)
+                        return self.respond(200, {'records': data.promotion_spend(value['product_id'])})
                     if path == "/api/sourcing/decision":
                         if set(value) != {'candidate_id', 'decision', 'rationale', 'constraints'} or (
                                 not isinstance(value['candidate_id'], str) or not 1 <= len(value['candidate_id']) <= 64):

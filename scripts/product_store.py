@@ -140,6 +140,11 @@ class ProductStore:
                     cost_minor INTEGER, verdict TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS sourcing_decisions (
                     candidate_id TEXT PRIMARY KEY REFERENCES sourcing_candidates(id), snapshot TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS promotion_spend (
+                    product_id TEXT NOT NULL REFERENCES products(id), source TEXT NOT NULL,
+                    period_start TEXT NOT NULL, period_end TEXT NOT NULL, campaign TEXT NOT NULL,
+                    asset TEXT NOT NULL, spend_minor INTEGER NOT NULL, attribution TEXT,
+                    PRIMARY KEY(product_id, source, period_start, period_end, campaign, asset));
                 CREATE TABLE IF NOT EXISTS product_after_sales_tasks (
                     product_id TEXT NOT NULL, source TEXT NOT NULL, period_start TEXT NOT NULL,
                     period_end TEXT NOT NULL, category TEXT NOT NULL, evidence_count INTEGER NOT NULL,
@@ -1117,6 +1122,35 @@ class ProductStore:
         with self.connect() as db:
             row = db.execute('SELECT snapshot FROM sourcing_decisions WHERE candidate_id=?', (candidate_id,)).fetchone()
         return json.loads(row['snapshot']) if row else None
+
+    def save_promotion_spend(self, product_id, source, period_start, period_end, campaign, asset,
+                             spend_minor, attribution=None):
+        if not isinstance(product_id, str) or not 1 <= len(product_id) <= 64:
+            raise ProductError('商品编号无效')
+        key = self._business_metric_row(product_id, source=source, period_start=period_start,
+                                        period_end=period_end, scope='投放费用')[:4]
+        campaign = text(campaign, '活动编号', 120)
+        asset = text(asset, '素材编号', 120)
+        if type(spend_minor) is not int or not 0 <= spend_minor < 2**53:
+            raise ProductError('支出须为非负整数分')
+        if attribution is not None:
+            attribution = text(attribution, '归因口径', 500)
+        self.get(product_id)
+        with self.connect() as db:
+            db.execute("""
+                INSERT INTO promotion_spend VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(product_id, source, period_start, period_end, campaign, asset)
+                DO UPDATE SET spend_minor=excluded.spend_minor, attribution=excluded.attribution
+            """, (*key, campaign, asset, spend_minor, attribution))
+
+    def promotion_spend(self, product_id):
+        self.get(product_id)
+        with self.connect() as db:
+            rows = db.execute("""
+                SELECT * FROM promotion_spend WHERE product_id=?
+                ORDER BY period_end DESC, source, campaign, asset
+            """, (product_id,)).fetchall()
+        return [dict(row) for row in rows]
 
     def compare_product_facts(self, product_ids, fact_names):
         now = datetime.now(timezone.utc)

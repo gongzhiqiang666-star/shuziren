@@ -19,6 +19,18 @@ from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_promotion_spend_preserves_missing_attribution_and_corrects_bill(self):
+        store = ProductStore(self.directory.name)
+        product = store.save(title='茶杯', content='商品说明', product_index=1)
+        route = '/api/promotion/spend'
+        payload = {'product_id': product['id'], 'source': '商家账单', 'period_start': '2026-11-01',
+                   'period_end': '2026-11-03', 'campaign': 'campaign-1', 'asset': 'clip-1', 'spend_minor': 0}
+        self.assertEqual(self.call(route, payload), (200, {'records': [{**payload, 'attribution': None}]}))
+        corrected = {**payload, 'spend_minor': 320, 'attribution': '账单记录窗口，订单归因未核对'}
+        self.assertEqual(self.call(route, corrected)[0], 200)
+        self.assertEqual(self.call(route + '?product_id=' + product['id']), (200, {'records': [corrected]}))
+        self.assertEqual(self.call(route, {**payload, 'spend_minor': -1})[0], 400)
+
     def test_sourcing_candidates_preserve_source_and_leave_missing_terms_unknown(self):
         route = '/api/sourcing/candidates'
         candidate = {'name': '陶瓷杯', 'supplier': '样品供应商', 'source': '商家报价单',
