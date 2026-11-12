@@ -416,7 +416,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             raise Conflict('暂无场次')
                         return self.respond(202, {'session': live_manager.seek_video(value['session_id'], value['position_ms'])})
                     if path == '/api/live/rotation':
-                        if (set(value) - {'session_id', 'product_ids', 'shift_durations', 'shift_voice_ids'}
+                        if (set(value) - {'session_id', 'product_ids', 'shift_durations', 'shift_voice_ids', 'preparation'}
                                 or not isinstance(value.get('session_id'), str)):
                             raise ProductError('商品轮播字段无效')
                         ids = value.get('product_ids')
@@ -424,9 +424,23 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             raise ProductError('请选择最多20个不同商品')
                         if live_manager is None:
                             raise Conflict('暂无场次')
+                        preparation = value.get('preparation')
+                        expected_items = None
+                        if preparation is not None:
+                            if (not isinstance(preparation, dict) or set(preparation) != {'revision', 'items'}
+                                    or not isinstance(preparation['revision'], str)):
+                                raise ProductError('准备包轮播配置无效')
+                            current = products().live_preparation_rotation(preparation['revision'])
+                            expected_items = [
+                                {key: item[key] for key in ('product_id', 'product_version', 'script_id')}
+                                for item in current['items']
+                            ]
+                            if ids != [item['product_id'] for item in expected_items] or preparation['items'] != expected_items:
+                                raise Conflict('准备包轮播配置已变化，请重新核对')
                         return self.respond(200, {'session': live_manager.configure_rotation(
                             value['session_id'], ids, shift_durations=value.get('shift_durations'),
                             shift_voice_ids=value.get('shift_voice_ids'),
+                            expected_items=expected_items,
                         )})
                     if path == '/api/live/control':
                         if set(value) != {'session_id', 'manual', 'revision'} or not isinstance(value['session_id'], str) or type(value['manual']) is not bool or type(value['revision']) is not int:

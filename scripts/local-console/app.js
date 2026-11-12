@@ -248,6 +248,29 @@ const preparationSave = preparationForm.querySelector('button[type="submit"]');
 const preparationPreview = $('preparation-preview');
 const preparationReviewSave = $('preparation-review-save');
 let preparationRevision;
+let preparedRotation = null;
+$('preparation-apply').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  $('preparation-error').textContent = '';
+  try {
+    const {revision, items} = await request(preparationRoute + '/rotation', {revision:preparationRevision});
+    const missing = items.filter(item => !item.script_id);
+    if (missing.length) throw new Error('请先选用话术：' + missing.map(item => item.title).join('、'));
+    preparedRotation = {revision, items:items.map(({product_id, product_version, script_id}) =>
+      ({product_id, product_version, script_id}))};
+    const ids = new Set(items.map(item => item.product_id));
+    for (const option of $('live-products').options) option.selected = ids.has(option.value);
+    rotationSelectionEdited = true;
+    renderShiftFields();
+    renderLiveButtons();
+    $('preparation-status').textContent = '已载入轮播顺序：' + items.map(item => item.title).join(' → ');
+  } catch (error) {
+    $('preparation-error').textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
 preparationReviewSave.addEventListener('click', async () => {
   preparationReviewSave.disabled = true;
   $('preparation-error').textContent = '';
@@ -754,11 +777,13 @@ async function liveAction(work) {
 }
 $('live-audio').addEventListener('change', renderLiveButtons);
 $('live-video-path').addEventListener('input', renderLiveButtons);
-$('live-products').addEventListener('change', () => { rotationSelectionEdited = true; renderShiftFields(); renderLiveButtons(); });
+$('live-products').addEventListener('change', () => { preparedRotation = null; rotationSelectionEdited = true; renderShiftFields(); renderLiveButtons(); });
 $('live-shifts-enabled').addEventListener('change', renderShiftFields);
 $('live-rotation-start').addEventListener('click', () => liveAction(() => {
-  const product_ids = Array.from($('live-products').selectedOptions, option => option.value);
+  const product_ids = preparedRotation ? preparedRotation.items.map(item => item.product_id)
+    : Array.from($('live-products').selectedOptions, option => option.value);
   const payload = {session_id:liveSession.id, product_ids};
+  if (preparedRotation) payload.preparation = preparedRotation;
   if ($('live-shifts-enabled').checked) {
     payload.shift_durations = product_ids.map(id => Number(shiftDrafts.get(id)?.seconds || 0));
     if (payload.shift_durations.some(seconds => !Number.isInteger(seconds) || seconds < 1 || seconds > 86400)) {

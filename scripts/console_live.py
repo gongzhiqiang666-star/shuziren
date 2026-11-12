@@ -390,7 +390,8 @@ class ConsoleLive:
             return (self.status['id'], control['control_revision'], self.ingress.context['voice_id'],
                     self.tts.products.get(self.ingress.context['product_id']), self.status['rotation_language'])
 
-    def configure_rotation(self, session_id, product_ids, *, shift_durations=None, shift_voice_ids=None):
+    def configure_rotation(self, session_id, product_ids, *, shift_durations=None, shift_voice_ids=None,
+                           expected_items=None):
         if shift_durations is not None and (
             not isinstance(shift_durations, list) or len(shift_durations) != len(product_ids)
             or not all(type(duration) in (int, float) and 0 < duration <= 86400
@@ -413,6 +414,8 @@ class ConsoleLive:
                 if not script_id:
                     raise Conflict(f'请先为商品「{product["title"]}」选用话术')
                 item = {'product_id': product_id, 'product_version': product['version'], 'script_id': script_id}
+                if expected_items is not None and item != expected_items[index]:
+                    raise Conflict('商品或话术已变化，请重新核对轮播配置')
                 if shift_durations is not None:
                     item['duration_seconds'] = shift_durations[index]
                 if shift_voice_ids is not None and shift_voice_ids[index] is not None:

@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from scripts.console_live import ConsoleLive
+from scripts.product_store import Conflict
 
 
 class LiveRotationTests(unittest.TestCase):
@@ -29,6 +30,10 @@ class LiveRotationTests(unittest.TestCase):
             live.status = {'id': 'scene', 'status': 'running'}
             live.session = Mock()
             live.session.control_state.return_value = {}
+            stale = [{'product_id': 'first', 'product_version': 1, 'script_id': 'old-script'}]
+            with self.assertRaisesRegex(Conflict, '商品或话术已变化'):
+                live.configure_rotation('scene', ['first'], expected_items=stale)
+            self.assertIsNone(live.rotation)
             live.configure_rotation('scene', ['first', 'second'], shift_durations=[3, 5],
                                     shift_voice_ids=[None, 'next-host'])
             tts.voices.get.assert_called_once_with('next-host')

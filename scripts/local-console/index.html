@@ -91,6 +91,7 @@
 <label for="preparation-package">准备包审阅稿</label>
 <textarea id="preparation-package" rows="14" maxlength="100000"></textarea>
 <button id="preparation-review-save" type="button">保存审阅稿</button>
+<button id="preparation-apply" type="button" class="secondary">载入轮播配置</button>
 </div>
 </section>
 <section id="voice-panel"><h2>参考音色</h2><p>导入有权使用的清晰人声录音，1至30秒。对应文本应与录音内容一致。</p><form id="voice-form"><label for="voice-name">音色名称</label><input id="voice-name" required maxlength="100"><label for="voice-source">音频文件完整路径</label><input id="voice-source" required placeholder="填写本机音频文件的绝对路径"><label for="voice-transcript">录音对应文本</label><textarea id="voice-transcript" required rows="3" maxlength="10000"></textarea><div class="actions"><button type="submit">导入音色</button><button id="reload-voices" class="secondary" type="button">重读音色</button></div></form><h3>麦克风录制</h3><p>按上方名称和对应文本保存，最长30秒。停止后先试听，确认后再保存。</p><div class="actions"><button id="record-start" type="button">开始录音</button><button id="record-stop" type="button" class="secondary">停止录音</button><button id="record-discard" type="button" class="secondary">放弃录音</button><button id="record-save" type="button">保存录音为音色</button></div><p id="record-status" role="status">尚未录音</p><audio id="record-preview" controls></audio><label for="voice-list">选择音色</label><select id="voice-list"><option value="">请选择音色</option></select><p id="voice-info"></p><audio id="voice-preview" controls preload="metadata"></audio><p id="voice-message" role="status"></p><p id="voice-error" role="alert"></p></section>
