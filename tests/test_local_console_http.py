@@ -169,6 +169,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         status, recorded = self.call(decision_route, decision)
         self.assertEqual(status, 200)
         self.assertEqual(recorded['decision']['trial'], passed)
+        self.assertEqual(recorded['decision']['candidate'], {'id': result['id'], **candidate})
         self.assertEqual(self.call(trial_route, trial)[0], 200)
         self.assertEqual(self.call(decision_route + '?candidate_id=' + result['id']), (200, recorded))
 

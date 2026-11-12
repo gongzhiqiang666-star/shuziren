@@ -1267,7 +1267,7 @@ class ProductStore:
         constraints = text(constraints, '资金及库存约束', 2000)
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            candidate = db.execute('SELECT id FROM sourcing_candidates WHERE id=?', (candidate_id,)).fetchone()
+            candidate = db.execute('SELECT * FROM sourcing_candidates WHERE id=?', (candidate_id,)).fetchone()
             if not candidate:
                 raise ProductError('采购候选不存在')
             trial = db.execute('SELECT * FROM sourcing_trials WHERE candidate_id=?', (candidate_id,)).fetchone()
@@ -1275,6 +1275,7 @@ class ProductStore:
                 raise Conflict('采用前需要商家核验通过的样品及已知样品成本')
             snapshot = {'candidate_id': candidate_id, 'decision': decision, 'rationale': rationale,
                         'constraints': constraints, 'trial': self._decode_sourcing_trial(trial),
+                        'candidate': {**dict(candidate), 'details': json.loads(candidate['details'])},
                         'recorded_at': datetime.now(timezone.utc).isoformat()}
             db.execute('INSERT OR REPLACE INTO sourcing_decisions VALUES (?, ?)',
                        (candidate_id, json.dumps(snapshot, ensure_ascii=False)))
