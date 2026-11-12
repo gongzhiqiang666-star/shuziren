@@ -770,7 +770,7 @@ class ProductStore:
             return [self.decode(row) for row in db.execute("SELECT * FROM products ORDER BY rowid")]
 
     def product_selection_evidence(self):
-        fields = ('适播性', '目标人群', '售价', '成本', '库存', '发货条件')
+        fields = ('适播性', '目标人群', '售价', '成本', '库存', '发货条件', '排品角色')
         now = datetime.now(timezone.utc)
         result = []
         for product in self.list():
@@ -784,7 +784,10 @@ class ProductStore:
             elif type(stock) is not int or stock < 0 or '发货条件' not in facts:
                 role, reason = 'hold', '需核对可售库存和发货条件'
             elif suitability == '适播' and '目标人群' in facts:
-                role, reason = 'support', '已有适播、人群、库存及发货依据，可作为辅助商品'
+                if facts.get('排品角色', {}).get('value') == '主推' and {'售价', '成本'} <= facts.keys():
+                    role, reason = 'primary', '商家已核对主推角色，适播、人群、库存、发货、售价与成本依据齐备'
+                else:
+                    role, reason = 'support', '已有适播、人群、库存及发货依据，可作为辅助商品'
             else:
                 role, reason = 'trial', '库存与发货条件已核对，可小范围试播'
             result.append({

@@ -274,7 +274,7 @@ $('selection-evidence-form').addEventListener('submit', async event => {
       }
       block.append(title, facts);
       const suggestion = document.createElement('p');
-      const roles = {hold:'暂缓', trial:'试播', support:'辅助'};
+      const roles = {hold:'暂缓', trial:'试播', support:'辅助', primary:'主推'};
       suggestion.textContent = `建议${roles[product.recommendation.role]} · ${product.recommendation.reason}`;
       block.append(suggestion);
       if (scope) {

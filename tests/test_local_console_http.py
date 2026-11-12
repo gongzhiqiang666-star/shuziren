@@ -19,6 +19,20 @@ from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_product_selection_requires_verified_primary_role_and_commercial_facts(self):
+        store = ProductStore(self.directory.name)
+        values = {'适播性': '适播', '目标人群': '家庭', '库存': 20, '发货条件': '48小时内',
+                  '排品角色': '主推', '售价': '99元', '成本': '50元'}
+        for index, omit in enumerate((None, '成本', '排品角色'), start=1):
+            store.save(title=f'商品{index}', content='商品说明', product_index=index, product_facts={
+                key: {'status': 'verified', 'source': '商家确认', 'value': value}
+                for key, value in values.items() if key != omit
+            })
+        status, response = self.call('/api/products/selection-evidence')
+        self.assertEqual(status, 200)
+        self.assertEqual([item['recommendation']['role'] for item in response['products']],
+                         ['primary', 'support', 'support'])
+
     def test_product_selection_evidence_preserves_zero_and_missing_conditions(self):
         store = ProductStore(self.directory.name)
         product = store.save(title='茶杯', content='商品说明', product_index=1, product_facts={
