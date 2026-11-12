@@ -209,8 +209,13 @@ def import_v122_products(snapshot, source):
     return imported
 
 
-def migrate_v122_products(root, source):
+def migrate_v122_products(root, source, shop_id=None):
+    from scripts.local_console_config import shop_data_directory
+
     root = root.resolve()
-    with new_managed_data(root) as snapshot:
+    target = root / 'data'
+    if shop_id is not None:
+        target = shop_data_directory(target, shop_id)
+    with new_managed_data(root, shop_id) as snapshot:
         imported = import_v122_products(snapshot, source)
-    return {'status': 'ok', 'data_directory': str(root / 'data'), 'products': imported}
+    return {'status': 'ok', 'data_directory': str(target), 'products': imported}

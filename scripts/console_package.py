@@ -295,10 +295,11 @@ def main():
     legacy_products = commands.add_parser('migrate-v122-products')
     legacy_products.add_argument('--root', type=Path, required=True)
     legacy_products.add_argument('--source', type=Path, required=True)
+    legacy_products.add_argument('--shop-id', help='将旧商品与话术迁移到独立的店铺目录')
     args = parser.parse_args()
     if args.command == 'migrate-v122-products':
         from scripts.console_data_migration import migrate_v122_products
-        print(json.dumps(migrate_v122_products(args.root, args.source), ensure_ascii=False))
+        print(json.dumps(migrate_v122_products(args.root, args.source, args.shop_id), ensure_ascii=False))
         return 0
     if args.command == 'migrate-v122-assets':
         from scripts.console_data_migration import migrate_v122_assets
