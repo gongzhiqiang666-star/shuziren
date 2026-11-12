@@ -468,6 +468,11 @@ class ConsoleHTTPTests(unittest.TestCase):
         }), (200, {'withdrawn': True}))
         self.assertTrue(self.call(draft_route + 'assistant-task')[1]['draft']['withdrawn'])
         self.assertTrue(self.call(schedule_route + '?session_id=scene&task_id=assistant-task')[1]['schedule']['withdrawn'])
+        status, replay = self.call(receipt_route, receipt)
+        self.assertEqual(status, 200)
+        self.assertEqual(replay['schedule']['publication_id'], 'platform-001')
+        self.assertTrue(replay['schedule']['withdrawn'])
+        self.assertEqual(self.call(receipt_route, {**receipt, 'publication_id': 'platform-002'})[0], 409)
         self.assertEqual((source['sample_start'], source['sample_end']), (960, 1920))
         self.assertEqual(self.call('/api/live/content-source?session_id=other&task_id=task')[0], 400)
 
