@@ -1198,6 +1198,20 @@ class ConsoleHTTPTests(unittest.TestCase):
             live.return_value.start.assert_called_once_with(
                 14, language='zh-CN', assistant_voice_id=None, camera_device='OBS Virtual Camera')
 
+    def test_live_start_forwards_rtmp_input_to_rotation_manager(self):
+        self.store.save({'version': 1, 'runtime_root': self.directory.name, 'port': 5158})
+        with (patch('scripts.local_console.ConsoleLive') as live,
+              patch('scripts.local_console.preflight', return_value={'runtime_root': self.directory.name}),
+              patch('scripts.tts_tasks.TTSTasks')):
+            live.return_value.start.return_value = {'id': 'scene', 'input_mode': 'rtmp'}
+            status, response = self.call('/api/live/start', {
+                'audio_device': 14, 'rtmp_url': ' rtmps://localhost:1935/live/test ',
+            })
+            self.assertEqual(status, 202)
+            self.assertEqual(response['session'], {'id': 'scene', 'input_mode': 'rtmp'})
+            live.return_value.start.assert_called_once_with(
+                14, language='zh-CN', assistant_voice_id=None, rtmp_url='rtmps://localhost:1935/live/test')
+
     def test_avatar_preparation_requires_config_and_valid_fields(self):
         self.assertEqual(self.call('/api/avatar-preparation/state')[1],{'task':None})
         self.assertEqual(self.call('/api/avatar-preparation/start',{})[0],400)
