@@ -131,6 +131,11 @@ class ProductStore:
                     product_id TEXT NOT NULL REFERENCES products(id), source TEXT NOT NULL,
                     period_start TEXT NOT NULL, period_end TEXT NOT NULL,
                     counts TEXT NOT NULL, PRIMARY KEY(product_id, source, period_start, period_end));
+                CREATE TABLE IF NOT EXISTS product_after_sales_tasks (
+                    product_id TEXT NOT NULL, source TEXT NOT NULL, period_start TEXT NOT NULL,
+                    period_end TEXT NOT NULL, category TEXT NOT NULL, evidence_count INTEGER NOT NULL,
+                    owner TEXT NOT NULL, goal TEXT NOT NULL,
+                    PRIMARY KEY(product_id, source, period_start, period_end, category));
                 CREATE TABLE IF NOT EXISTS live_preparation (
                     singleton INTEGER PRIMARY KEY CHECK(singleton=1), draft TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_lineup_baseline (
@@ -297,7 +302,8 @@ class ProductStore:
         selected_ids = set(preparation['draft']['product_ids'])
         improvements = [task for task in self.live_improvements(adopted_only=True)
                         if task['product_id'] is None or task['product_id'] in selected_ids]
-        package = {**preparation, 'items': items, 'improvements': improvements, 'segments': {
+        package = {**preparation, 'items': items, 'improvements': improvements,
+                   'after_sales_tasks': self.after_sales_tasks(preparation['draft']['product_ids']), 'segments': {
             'opening': '欢迎来到直播间，接下来为大家逐一介绍本场商品。',
             'transition': '接下来介绍下一件商品。',
             'closing': '感谢观看，本场商品介绍到这里。',
@@ -874,6 +880,40 @@ class ProductStore:
             raise ProductError('售后 CSV 没有数据行')
         self._write_after_sales(product_id, rows)
         return len(rows)
+
+    def save_after_sales_task(self, product_id, source, period_start, period_end, category, owner, goal):
+        if not isinstance(product_id, str) or not 1 <= len(product_id) <= 64:
+            raise ProductError('商品编号无效')
+        owner = text(owner, '负责人', 120)
+        goal = text(goal, '改进目标', 2000)
+        category = text(category, '售后原因', 32)
+        key = self._business_metric_row(product_id, source=source, period_start=period_start,
+                                        period_end=period_end, scope='售后原因')[:4]
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            report = db.execute("""
+                SELECT counts FROM product_after_sales
+                WHERE product_id=? AND source=? AND period_start=? AND period_end=?
+            """, key).fetchone()
+            count = json.loads(report['counts']).get(category, 0) if report else 0
+            if not count:
+                raise Conflict('当前报表没有该售后原因的记录')
+            db.execute("""
+                INSERT INTO product_after_sales_tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(product_id, source, period_start, period_end, category) DO UPDATE SET
+                    evidence_count=excluded.evidence_count, owner=excluded.owner, goal=excluded.goal
+            """, (*key, category, count, owner, goal))
+
+    def after_sales_tasks(self, product_ids):
+        if not product_ids:
+            return []
+        placeholders = ', '.join('?' for _ in product_ids)
+        with self.connect() as db:
+            rows = db.execute(f"""
+                SELECT * FROM product_after_sales_tasks WHERE product_id IN ({placeholders})
+                ORDER BY product_id, period_end DESC, source, category
+            """, product_ids).fetchall()
+        return [dict(row) for row in rows]
 
     def after_sales(self, product_id):
         self.get(product_id)

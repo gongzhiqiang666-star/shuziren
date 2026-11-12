@@ -48,6 +48,17 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual((status, imported['imported']), (200, 1))
         self.assertEqual(imported['reports'][0]['counts'], {'quality': 0, 'fulfillment': 4})
         self.assertEqual(imported['reports'][0]['followups'][0]['count'], 4)
+        task = {key: report[key] for key in ('product_id', 'source', 'period_start', 'period_end')}
+        task.update(category='fulfillment', owner='运营', goal='核对发货承诺')
+        self.assertEqual(self.call(route + '/task', {**task, 'category': 'quality'})[0], 409)
+        status, tasks = self.call(route + '/task', task)
+        self.assertEqual(status, 200)
+        self.assertEqual(tasks['tasks'], [{**task, 'evidence_count': 4}])
+        store.save_live_preparation(product_ids=[first['id']])
+        package_route = '/api/live/preparation/package'
+        self.assertEqual(self.call(package_route)[1]['after_sales_tasks'], tasks['tasks'])
+        store.save_live_preparation(product_ids=[second['id']])
+        self.assertEqual(self.call(package_route)[1]['after_sales_tasks'], [])
 
     def test_product_guide_compares_only_verified_current_facts(self):
         store = ProductStore(self.directory.name)
