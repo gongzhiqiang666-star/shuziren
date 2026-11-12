@@ -60,6 +60,9 @@ class ConsoleHTTPTests(unittest.TestCase):
         schedule = {'session_id': 'scene', 'task_id': 'assistant-task', 'account': '店铺账号',
                     'audience': '公开', 'publish_at': '2027-01-01T09:00:00+08:00'}
         self.assertEqual(self.call(schedule_route, schedule)[0], 409)
+        self.assertEqual(self.call('/api/live/content-withdraw', {
+            'session_id': 'scene', 'task_id': 'task',
+        })[0], 409)
         self.assertEqual(self.call('/api/live/content-draft', body), (200, {'body': body['body']}))
         self.assertEqual(self.call(schedule_route, {**schedule, 'publish_at': '2027-01-01T09:00'})[0], 400)
         status, saved_schedule = self.call(schedule_route, schedule)
@@ -85,6 +88,11 @@ class ConsoleHTTPTests(unittest.TestCase):
                          (200, {'draft': {'saved_body': body['body'], 'editable': False}}))
         self.assertEqual(self.call('/api/live/content-draft', body)[0], 409)
         self.assertEqual(self.call(schedule_route, schedule)[0], 409)
+        self.assertEqual(self.call('/api/live/content-withdraw', {
+            'session_id': 'scene', 'task_id': 'assistant-task',
+        }), (200, {'withdrawn': True}))
+        self.assertTrue(self.call(draft_route + 'assistant-task')[1]['draft']['withdrawn'])
+        self.assertTrue(self.call(schedule_route + '?session_id=scene&task_id=assistant-task')[1]['schedule']['withdrawn'])
         self.assertEqual((source['sample_start'], source['sample_end']), (960, 1920))
         self.assertEqual(self.call('/api/live/content-source?session_id=other&task_id=task')[0], 400)
 

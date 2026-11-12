@@ -345,6 +345,9 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             source['session_id'], source['task_id']), 'facts_review': source['facts_review']})
                     if path == '/api/live/content-draft':
                         saved_body = products().live_content_draft_body(source['session_id'], source['task_id'])
+                        if products().live_content_draft_withdrawn(source['session_id'], source['task_id']):
+                            return self.respond(200, {'draft': {'saved_body': saved_body, 'editable': False,
+                                                                 'withdrawn': True}})
                         if source['facts_review'] != 'version_current' or source['segment'] is None:
                             if saved_body is not None:
                                 return self.respond(200, {'draft': {'saved_body': saved_body, 'editable': False}})
@@ -719,6 +722,13 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         else:
                             data.revoke_live_advice_acknowledgment(value['session_id'], value['advice'], time())
                         return self.respond(200, {'acknowledged': acknowledge})
+                    if path == "/api/live/content-withdraw":
+                        if set(value) != {'session_id', 'task_id'} or any(
+                                not isinstance(value[key], str) or not 1 <= len(value[key]) <= 64
+                                for key in ('session_id', 'task_id')):
+                            raise ProductError('停止复用字段无效')
+                        products().withdraw_live_content_draft(**value)
+                        return self.respond(200, {'withdrawn': True})
                     if path == "/api/live/content-receipt":
                         if set(value) != {'session_id', 'task_id', 'publication_id'} or any(
                                 not isinstance(value[key], str) or not 1 <= len(value[key]) <= 64

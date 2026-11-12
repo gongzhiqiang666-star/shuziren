@@ -166,6 +166,8 @@ class ProductStore:
                     revision TEXT PRIMARY KEY, review TEXT NOT NULL);
             ''')
             db.execute('BEGIN IMMEDIATE')
+            if 'withdrawn' not in {row[1] for row in db.execute('PRAGMA table_info(live_content_drafts)')}:
+                db.execute('ALTER TABLE live_content_drafts ADD COLUMN withdrawn INTEGER NOT NULL DEFAULT 0')
             if 'revoked_at' not in {row[1] for row in db.execute('PRAGMA table_info(live_advice_acknowledgments)')}:
                 db.execute('ALTER TABLE live_advice_acknowledgments ADD COLUMN revoked_at REAL')
             fault_columns = {row[1] for row in db.execute('PRAGMA table_info(live_rotation_faults)')}
@@ -671,12 +673,12 @@ class ProductStore:
         with self.connect() as db:
             row = db.execute("""
                 SELECT live_content_schedule.account, audience, publish_at, planned_body=body AS draft_matches,
-                       publication_id
+                       publication_id, withdrawn
                 FROM live_content_schedule JOIN live_content_drafts USING (session_id, task_id)
                 LEFT JOIN live_content_receipts USING (session_id, task_id)
                 WHERE session_id=? AND task_id=?
             """, (session_id, task_id)).fetchone()
-        return {**dict(row), 'draft_matches': bool(row['draft_matches'])} if row else None
+        return {**dict(row), 'draft_matches': bool(row['draft_matches']), 'withdrawn': bool(row['withdrawn'])} if row else None
 
     def save_live_content_schedule(self, session_id, task_id, account, audience, publish_at):
         account = text(account, '发布账号', 120)
@@ -698,13 +700,26 @@ class ProductStore:
             result = db.execute("""
                 INSERT INTO live_content_schedule
                 SELECT session_id, task_id, ?, ?, ?, body FROM live_content_drafts
-                WHERE session_id=? AND task_id=?
+                WHERE session_id=? AND task_id=? AND withdrawn=0
                 ON CONFLICT(session_id, task_id) DO UPDATE SET
                     account=excluded.account, audience=excluded.audience,
                     publish_at=excluded.publish_at, planned_body=excluded.planned_body
             """, (account, audience, scheduled.astimezone(timezone.utc).isoformat(), session_id, task_id))
             if not result.rowcount:
+                raise Conflict('请先保存可复用的短视频文案')
+
+    def withdraw_live_content_draft(self, session_id, task_id):
+        with self.connect() as db:
+            result = db.execute('UPDATE live_content_drafts SET withdrawn=1 WHERE session_id=? AND task_id=?',
+                                (session_id, task_id))
+            if not result.rowcount:
                 raise Conflict('请先保存短视频文案')
+
+    def live_content_draft_withdrawn(self, session_id, task_id):
+        with self.connect() as db:
+            row = db.execute('SELECT withdrawn FROM live_content_drafts WHERE session_id=? AND task_id=?',
+                             (session_id, task_id)).fetchone()
+        return bool(row and row['withdrawn'])
 
     def record_live_content_receipt(self, session_id, task_id, publication_id):
         publication_id = text(publication_id, '平台作品编号', 200)
@@ -732,10 +747,13 @@ class ProductStore:
         if source['facts_review'] != 'version_current' or source['segment'] is None:
             raise Conflict('商品事实或片段来源需要重新核对')
         with self.connect() as db:
-            db.execute("""
-                INSERT INTO live_content_drafts VALUES (?, ?, ?)
+            result = db.execute("""
+                INSERT INTO live_content_drafts (session_id, task_id, body) VALUES (?, ?, ?)
                 ON CONFLICT(session_id, task_id) DO UPDATE SET body=excluded.body
+                WHERE live_content_drafts.withdrawn=0
             """, (session_id, task_id, body))
+            if not result.rowcount:
+                raise Conflict('该文案已停止复用')
         return body
 
     @staticmethod
