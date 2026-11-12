@@ -37,7 +37,11 @@ class ContinuousAVSink:
         if frame_index!=self.frames or image.shape!=(self.height,self.width,3) or image.dtype!=np.uint8 or len(pcm)!=1920:
             raise ValueError('Expected next BGR frame and exactly 960 PCM samples')
         started=time.perf_counter_ns()
-        video=av.VideoFrame.from_ndarray(image,format='bgr24');video.pts=frame_index;video.time_base=Fraction(1,25)
+        if image.flags.c_contiguous and hasattr(av.VideoFrame, 'from_numpy_buffer'):
+            video = av.VideoFrame.from_numpy_buffer(image, format='bgr24')
+        else:
+            video = av.VideoFrame.from_ndarray(image, format='bgr24')
+        video.pts=frame_index;video.time_base=Fraction(1,25)
         audio=av.AudioFrame.from_ndarray(np.frombuffer(pcm,dtype='<i2').reshape(1,-1),format='s16',layout='mono')
         audio.sample_rate=24000;audio.pts=self.samples;audio.time_base=Fraction(1,24000)
         prepared=time.perf_counter_ns()
