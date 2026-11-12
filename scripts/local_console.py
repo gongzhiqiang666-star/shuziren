@@ -79,8 +79,14 @@ def browser_metrics(values):
 def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=None):
     token = secrets.token_urlsafe(32)
     lock = threading.RLock()
+    product_lock = threading.Lock()
+    product_store = None
     def products():
-        return ProductStore(store.directory)
+        nonlocal product_store
+        with product_lock:
+            if product_store is None:
+                product_store = ProductStore(store.directory)
+            return product_store
     task_manager = None
     tts_manager = None
     avatar_manager = None
