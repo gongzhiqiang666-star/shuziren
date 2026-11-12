@@ -256,3 +256,5 @@ X02-03 真实合成与受控背压复测通过。测试消费者收到首段后�
 X03-01 上游源码基线已固定：[MuseTalk](https://github.com/TMElyralab/MuseTalk/tree/0a89dec45a0192b824e3cf4daf96c239440c5ed8) 作为独立口型原型，[LiveTalking](https://github.com/lipku/LiveTalking/tree/c7269433a2b6ecebcd9342445d2ecc882c98b0da) 作为传输和适配参考。本机验证目录未找到两者的运行报告。MuseTalk 上游速度数据基于 Tesla V100，RTX 3060 的同素材、同输出规格及模型依赖核对仍待执行。
 
 X03-01 已将固定 MuseTalk 源码检出到 Git 忽略的验证目录。上游 Windows 指南采用 Python 3.10、PyTorch 2.0.1/CUDA 11.8 和 MMCV 2.0.1 等。本机对照解释器为 PyTorch 2.6.0/CUDA 11.8，缺 MMCV、MMEngine、MMDetection、MMPose。独立环境和权重尚未安装，待验证 Windows 编译扩展及同素材原型。
+
+X03-01 Windows 扩展准备：从 OpenMMLab 的 CUDA 11.8/PyTorch 2.0 wheel 索引下载到 mmcv-2.0.1-cp310-cp310-win_amd64.whl，SHA-256 为 622bbff1f59cd8c9c350c43b6bc2a1a7a1bb065d34681ef8614da8e3b31c9486。文件保存在忽略的本机目录，待安装匹配 PyTorch 后实测 mmcv.ops 加载和 GPU 调用。
