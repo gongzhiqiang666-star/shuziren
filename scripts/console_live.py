@@ -414,7 +414,7 @@ class ConsoleLive:
                     self.tts.products.get(self.ingress.context['product_id']), self.status['rotation_language'])
 
     def configure_rotation(self, session_id, product_ids, *, shift_durations=None, shift_voice_ids=None,
-                           expected_items=None):
+                           expected_items=None, preparation=None):
         if shift_durations is not None and (
             not isinstance(shift_durations, list) or len(shift_durations) != len(product_ids)
             or not all(type(duration) in (int, float) and 0 < duration <= 86400
@@ -461,6 +461,8 @@ class ConsoleLive:
                 items.append(item)
             if self.rotation and self.rotation['task_id']:
                 self.session.discard_pending(self.rotation['task_id'])
+            if preparation is not None:
+                self.tts.products.record_preparation_application(session_id, preparation)
             self.rotation = {'items': items, 'index': 0, 'segment': 0, 'task_id': None} if items else None
             self.status.update(rotation_products=list(product_ids), rotation_completed=0, rotation_error=None)
             self.status.pop('rotation_fault', None)

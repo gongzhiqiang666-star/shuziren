@@ -4,10 +4,34 @@ import unittest
 from unittest.mock import Mock, patch
 
 from scripts.console_live import ConsoleLive
-from scripts.product_store import Conflict
+from scripts.product_store import Conflict, ProductStore
 
 
 class LiveRotationTests(unittest.TestCase):
+    def test_preparation_improvements_are_bound_to_the_running_scene(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = ProductStore(directory)
+            product = store.save(title='茶杯', content='商品说明', product_index=1)
+            script = store.add_script(product, '这是一只茶杯。')
+            store.select_script(product['id'], script)
+            store.record_live_session('source', 1)
+            store.record_queued_reply('source', 'reply', product, '材质是什么？', '请核对规格', 2)
+            store.save_reply_improvement('source', 'reply', '运营', '补充材质', adopted=True)
+            store.save_live_preparation(product_ids=[product['id']])
+            revision = store.build_live_preparation()['revision']
+            store.save_live_preparation_review(revision, '已核对')
+            snapshot = store.live_preparation_rotation(revision, include_improvements=True)
+            store.record_live_session('target', 3, started_at=4, status='running')
+            live = ConsoleLive(Mock(products=store), directory)
+            live.status = {'id': 'target', 'status': 'running'}
+            live.session = Mock()
+            live.session.control_state.return_value = {}
+            for _ in range(2):
+                live.configure_rotation('target', [product['id']], preparation=snapshot)
+            store.save_reply_improvement('source', 'reply', '运营', '补充材质', adopted=False)
+            self.assertEqual(store.live_preparation_applications('target'), [snapshot])
+            self.assertEqual(store.live_preparation_applications('source'), [])
+
     def test_rotation_exposes_sourced_zero_inventory(self):
         with tempfile.TemporaryDirectory() as directory:
             tts = Mock()

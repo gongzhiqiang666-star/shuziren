@@ -216,6 +216,10 @@ class ProductStore:
                     owner TEXT NOT NULL, goal TEXT NOT NULL, adopted INTEGER NOT NULL,
                     PRIMARY KEY(session_id, reply_task_id),
                     FOREIGN KEY(session_id, reply_task_id) REFERENCES live_queued_replies(session_id, task_id));
+                CREATE TABLE IF NOT EXISTS live_preparation_applications (
+                    session_id TEXT NOT NULL, revision TEXT NOT NULL, snapshot TEXT NOT NULL,
+                    PRIMARY KEY(session_id, snapshot),
+                    FOREIGN KEY(session_id) REFERENCES live_sessions(session_id));
                 CREATE TABLE IF NOT EXISTS live_reply_reviews (
                     session_id TEXT NOT NULL, task_id TEXT NOT NULL, verdict TEXT NOT NULL,
                     review_seconds INTEGER, PRIMARY KEY(session_id, task_id),
@@ -379,7 +383,7 @@ class ProductStore:
         with self.connect() as db:
             db.execute('INSERT OR REPLACE INTO live_preparation_review VALUES (?, ?)', (revision, review))
 
-    def live_preparation_rotation(self, revision):
+    def live_preparation_rotation(self, revision, *, include_improvements=False):
         package = self.build_live_preparation()
         if revision != package['revision']:
             raise Conflict('准备包内容已变化，请重新预览')
@@ -395,7 +399,24 @@ class ProductStore:
                 raise Conflict('商品版本已变化，请重新预览')
             items.append({**{key: item[key] for key in ('product_id', 'product_version', 'title', 'assets')},
                           'script_id': script_id})
-        return {'revision': revision, 'items': items}
+        rotation = {'revision': revision, 'items': items}
+        if include_improvements:
+            rotation['improvements'] = package['improvements']
+        return rotation
+
+    def record_preparation_application(self, session_id, preparation):
+        with self.connect() as db:
+            db.execute("""
+                INSERT INTO live_preparation_applications (session_id, revision, snapshot)
+                VALUES (?, ?, ?) ON CONFLICT(session_id, snapshot) DO NOTHING
+            """, (session_id, preparation['revision'], json.dumps(preparation, ensure_ascii=False)))
+
+    def live_preparation_applications(self, session_id):
+        with self.connect() as db:
+            rows = db.execute("""
+                SELECT snapshot FROM live_preparation_applications WHERE session_id=? ORDER BY rowid
+            """, (session_id,)).fetchall()
+        return [json.loads(row['snapshot']) for row in rows]
 
     def save_business_metrics(self, product_id, *, source, period_start, period_end, scope,
                               clicks=None, orders=None, refunds=None, stock=None):

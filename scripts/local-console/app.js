@@ -1697,7 +1697,7 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
   try {
     const query = new URLSearchParams({session_id:sessionId});
     const [{session, products, controls, rotation_faults, observed_product_switches, queued_replies, lineup_baseline,
-      advice_acknowledgments, advice_actions, missing}, review, improvements] =
+      advice_acknowledgments, advice_actions, missing, preparation_applications}, review, improvements] =
       await Promise.all([request('/api/live/report?' + query), request('/api/live/review?' + query),
         request('/api/live/improvements?' + query)]);
     if (($('live-event-scene').value || liveSession.id) !== sessionId) return;
@@ -1715,6 +1715,14 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       ...rotation_faults.map(item => `${formatTime(item.occurred_at)} · 轮播故障 ${item.event_id} · ${item.reason}`),
       ...observed_product_switches.map(item => `${item.completed_at} · 口播商品变化 ${item.previous_product_id} → ${item.product_id} · 任务 ${item.task_id}`),
     ];
+    for (const application of preparation_applications) {
+      if (!application.improvements.length) continue;
+      lines.push(`已载入准备包 ${application.revision}`);
+      for (const task of application.improvements) {
+        const source = task.reply_task_id ? `答复 ${task.reply_task_id}` : `故障 ${task.fault_id}`;
+        lines.push(`${task.owner} · ${task.goal} · 原场次 ${task.session_id} · ${source}`);
+      }
+    }
     for (const reply of queued_replies) {
       const title = savedProducts.find(product => product.id === reply.product_id)?.title ?? reply.product_id;
       lines.push(

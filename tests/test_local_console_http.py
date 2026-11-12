@@ -701,7 +701,8 @@ class ConsoleHTTPTests(unittest.TestCase):
             store.select_script(product_id, first)
             self.assertEqual(self.call('/api/live/rotation', request)[0], 200)
             live.return_value.configure_rotation.assert_called_once_with(
-                'scene', [product_id], shift_durations=None, shift_voice_ids=None, expected_items=items)
+                'scene', [product_id], shift_durations=None, shift_voice_ids=None, expected_items=items,
+                preparation=store.live_preparation_rotation(revision, include_improvements=True))
 
     def test_live_preparation_package_uses_only_current_sourced_facts(self):
         route = '/api/live/preparation'

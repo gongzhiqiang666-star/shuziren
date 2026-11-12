@@ -333,6 +333,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         })
                     report['advice_acknowledgments'] = products().live_advice_acknowledgments(sessions[0])
                     report['advice_actions'] = products().live_advice_actions(sessions[0])
+                    report['preparation_applications'] = products().live_preparation_applications(sessions[0])
                     return self.respond(200, report)
                 if path in {'/api/live/content-source', '/api/live/content-draft', '/api/live/content-schedule'}:
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
@@ -678,11 +679,13 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             raise Conflict('暂无场次')
                         prepared_rotation = value.get('preparation')
                         expected_items = None
+                        current = None
                         if prepared_rotation is not None:
                             if (not isinstance(prepared_rotation, dict) or set(prepared_rotation) != {'revision', 'items'}
                                     or not isinstance(prepared_rotation['revision'], str)):
                                 raise ProductError('准备包轮播配置无效')
-                            current = products().live_preparation_rotation(prepared_rotation['revision'])
+                            current = products().live_preparation_rotation(
+                                prepared_rotation['revision'], include_improvements=True)
                             expected_items = [
                                 {key: item[key] for key in ('product_id', 'product_version', 'script_id')}
                                 for item in current['items']
@@ -693,6 +696,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             value['session_id'], ids, shift_durations=value.get('shift_durations'),
                             shift_voice_ids=value.get('shift_voice_ids'),
                             expected_items=expected_items,
+                            **({'preparation': current} if current is not None else {}),
                         )})
                     if path == '/api/live/control':
                         if set(value) != {'session_id', 'manual', 'revision'} or not isinstance(value['session_id'], str) or type(value['manual']) is not bool or type(value['revision']) is not int:
