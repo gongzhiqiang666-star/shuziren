@@ -1,5 +1,6 @@
 """Build, verify and stage a Windows console source package from a Git revision."""
 import argparse
+from contextlib import ExitStack
 import hashlib
 import io
 import json
@@ -217,7 +218,15 @@ def switch_release(root, archive=None, with_media=False):
     from scripts.local_console import InstanceLock
 
     root = root.resolve()
-    with InstanceLock(root / '.deployment'), InstanceLock(root / 'data'):
+    with InstanceLock(root / '.deployment'), ExitStack() as instances:
+        instances.enter_context(InstanceLock(root / 'data'))
+        for directory in (root / '.running').iterdir() if (root / '.running').is_dir() else ():
+            if not directory.is_dir() or directory.resolve() != directory:
+                raise ValueError('Invalid managed instance lock directory')
+            instances.enter_context(InstanceLock(directory))
+        for directory in (root / 'data' / 'shops').glob('shop-*'):
+            if directory.is_dir() and directory.resolve() == directory:
+                instances.enter_context(InstanceLock(directory))
         media = configured_media(root / 'data') if with_media else None
         active = read_active(root)
         if archive is None:
@@ -248,17 +257,22 @@ def run_release(root, port, with_media=False, shop_id=None):
     from scripts.local_console_config import shop_data_directory
 
     root = root.resolve()
-    with InstanceLock(root / '.deployment'):
-        commit = read_active(root)['current']
-        if commit is None:
-            raise ValueError('Install a release first')
-        release, _ = check_release(root, commit)
-        data = root / 'data'
-        if shop_id is not None:
-            data = shop_data_directory(data, shop_id)
-            if not data.is_relative_to(root):
-                raise ValueError('Shop data directory must be inside the managed installation')
-        python = configured_media(data)[1] if with_media else None
+    with ExitStack() as instance:
+        with InstanceLock(root / '.deployment'):
+            commit = read_active(root)['current']
+            if commit is None:
+                raise ValueError('Install a release first')
+            release, _ = check_release(root, commit)
+            data = root / 'data'
+            if shop_id is not None:
+                data = shop_data_directory(data, shop_id)
+                if not data.is_relative_to(root):
+                    raise ValueError('Shop data directory must be inside the managed installation')
+            lease = root / '.running' / (data.name if shop_id is not None else 'default')
+            if lease.resolve() != lease:
+                raise ValueError('Invalid managed instance lock directory')
+            instance.enter_context(InstanceLock(lease))
+            python = configured_media(data)[1] if with_media else None
         return subprocess.call(console_command(data, port, python), cwd=release, env=console_environment())
 
 

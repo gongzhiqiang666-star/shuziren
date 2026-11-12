@@ -9,7 +9,7 @@ import uuid
 import wave
 from zipfile import ZipFile
 
-from scripts.console_package import MANIFEST, REQUIRED, digest, install, run_release
+from scripts.console_package import MANIFEST, REQUIRED, digest, install, run_release, switch_release
 from scripts.console_data_migration import migrate_data, migrate_v122_products
 from scripts.avatar_store import AvatarStore
 from scripts.local_console import InstanceLock
@@ -19,6 +19,27 @@ from scripts.voice_store import VoiceStore, fingerprint
 
 
 class ConsolePackageTests(unittest.TestCase):
+    def test_managed_shops_can_run_together_while_release_switch_is_locked(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            active = {'current': 'release', 'previous': 'release'}
+
+            def first_running(*args, **kwargs):
+                with self.assertRaises(OSError):
+                    switch_release(root)
+                with self.assertRaises(OSError):
+                    run_release(root, 0, shop_id='first')
+                self.assertEqual(run_release(root, 0, shop_id='second'), 0)
+                return 0
+
+            with (patch('scripts.console_package.read_active', return_value=active),
+                  patch('scripts.console_package.check_release', return_value=(root, {})),
+                  patch('scripts.console_package.subprocess.call') as launch):
+                launch.side_effect = lambda *args, **kwargs: first_running() if launch.call_count == 1 else 0
+                self.assertEqual(run_release(root, 0, shop_id='first'), 0)
+                self.assertEqual(launch.call_count, 2)
+                self.assertEqual(switch_release(root), active)
+
     def test_managed_release_rejects_shop_directory_outside_installation(self):
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)
