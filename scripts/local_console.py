@@ -788,6 +788,24 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         else:
                             data.revoke_live_advice_acknowledgment(value['session_id'], value['advice'], time())
                         return self.respond(200, {'acknowledged': acknowledge})
+                    if path == "/api/promotion/budget-preview":
+                        fields = {'product_id', 'source', 'period_start', 'period_end', 'campaign', 'asset'}
+                        if (set(value) != fields | {'budget_minor'} or any(
+                                not isinstance(value[key], str) or not value[key].strip() for key in fields)):
+                            raise ProductError('预算预览需要完整的账单定位条件')
+                        budget = value['budget_minor']
+                        if type(budget) is not int or not 0 <= budget < 2**53:
+                            raise ProductError('预算上限须为非负整数分')
+                        records = products().promotion_spend(value['product_id'])
+                        bill = next((record for record in records
+                                     if all(record[key] == value[key] for key in fields)), None)
+                        if bill is None:
+                            raise ProductError('缺少同一活动、素材及区间的账单记录')
+                        remaining = budget - bill['spend_minor']
+                        return self.respond(200, {'preview': {
+                            'bill': bill, 'budget_minor': budget, 'remaining_minor': remaining,
+                            'status': 'over_budget' if remaining < 0 else 'at_limit' if remaining == 0 else 'below_limit',
+                        }})
                     if path == "/api/promotion/spend":
                         required = {'product_id', 'source', 'period_start', 'period_end', 'campaign', 'asset', 'spend_minor'}
                         if set(value) - {'attribution'} != required:

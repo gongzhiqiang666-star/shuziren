@@ -30,6 +30,14 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call(route, corrected)[0], 200)
         self.assertEqual(self.call(route + '?product_id=' + product['id']), (200, {'records': [corrected]}))
         self.assertEqual(self.call(route, {**payload, 'spend_minor': -1})[0], 400)
+        preview_route = '/api/promotion/budget-preview'
+        preview = {key: value for key, value in payload.items() if key != 'spend_minor'}
+        self.assertEqual(self.call(preview_route, {**preview, 'asset': 'other', 'budget_minor': 500})[0], 400)
+        status, result = self.call(preview_route, {**preview, 'budget_minor': 300})
+        self.assertEqual(status, 200)
+        self.assertEqual(result['preview'], {'bill': corrected, 'budget_minor': 300,
+                                            'remaining_minor': -20, 'status': 'over_budget'})
+        self.assertEqual(self.call(preview_route, {**preview, 'budget_minor': 320})[1]['preview']['status'], 'at_limit')
 
     def test_sourcing_candidates_preserve_source_and_leave_missing_terms_unknown(self):
         route = '/api/sourcing/candidates'
