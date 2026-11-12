@@ -58,6 +58,12 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call('/api/live/content-draft', body), (200, {'body': body['body']}))
         self.assertEqual(self.call(draft_route + 'assistant-task')[1]['draft']['saved_body'], body['body'])
         self.assertEqual(self.call('/api/live/content-draft', {**body, 'task_id': 'task'})[0], 409)
+        current = store.get(product['id'])
+        store.save(title='再次更新', content='新资料', product_index=1,
+                   product_id=product['id'], version=current['version'])
+        self.assertEqual(self.call(draft_route + 'assistant-task'),
+                         (200, {'draft': {'saved_body': body['body'], 'editable': False}}))
+        self.assertEqual(self.call('/api/live/content-draft', body)[0], 409)
         self.assertEqual((source['sample_start'], source['sample_end']), (960, 1920))
         self.assertEqual(self.call('/api/live/content-source?session_id=other&task_id=task')[0], 400)
 

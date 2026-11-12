@@ -1117,9 +1117,10 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         draftText.value = draft.saved_body ?? [`标题：${draft.title}`, `封面文字：${draft.cover_text}`,
           `语言：${draft.language ?? '未记录'}`, '', draft.narration].join('\n');
         draftLabel.hidden = false;
-        saveDraft.hidden = false;
+        draftText.readOnly = !draft.editable;
+        saveDraft.hidden = !draft.editable;
         draftButton.hidden = true;
-        draftStatus.textContent = '';
+        draftStatus.textContent = draft.editable ? '' : '原商品或话术事实已变化，历史文案仅供核对';
       } catch (error) {
         draftStatus.textContent = error.message;
       } finally {
@@ -1135,7 +1136,9 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
       sourceText.textContent = '正在读取口播来源';
       try {
         const {source} = await request('/api/live/content-source?' + params);
-        draftButton.hidden = source.facts_review !== 'version_current' || source.segment == null;
+        draftButton.hidden = !source.has_saved_draft &&
+          (source.facts_review !== 'version_current' || source.segment == null);
+        if (source.has_saved_draft) draftButton.textContent = '打开已保存的短视频文案';
         const snapshot = source.product_snapshot;
         const speech = source.speech_provenance;
         const speechDetails = [
