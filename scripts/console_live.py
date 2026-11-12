@@ -78,6 +78,8 @@ class ConsoleLive:
             self.status = {'id': session_id, 'status': 'preparing', 'audio_device': audio_device,
                            'frames': 0, 'rotation_language': language, 'assistant_voice_id': assistant_voice_id,
                            'requested_at': time.time()}
+            if camera_device is not None:
+                self.status['requested_camera_device'] = camera_device
             self._record_session()
             self.rotation = None
             self.reply_session = None
@@ -139,7 +141,7 @@ class ConsoleLive:
             def started():
                 with self.lock:
                     if not self.cancel.is_set():
-                        self.status.update(status='running', started_at=time.time())
+                        self.status.update(status='running', started_at=time.time(), camera_device=sink.camera.device)
 
             def presented(row):
                 recent_submissions.append({key: row[key] for key in (
