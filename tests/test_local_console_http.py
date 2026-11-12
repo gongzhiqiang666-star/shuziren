@@ -137,6 +137,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(result['preview'], {'bill': corrected, 'budget_minor': 300,
                                             'remaining_minor': -20, 'status': 'over_budget'})
         self.assertEqual(self.call(preview_route, {**preview, 'budget_minor': 320})[1]['preview']['status'], 'at_limit')
+        zero_budget = self.call(preview_route, {**preview, 'budget_minor': 0})[1]['preview']
+        self.assertEqual((zero_budget['remaining_minor'], zero_budget['status']), (-320, 'over_budget'))
         plans = '/api/promotion/plans'
         plan = {**preview, 'budget_minor': 500, 'rationale': '验证新素材'}
         self.assertEqual(self.call(plans, {**plan, 'budget_minor': 300})[0], 409)
