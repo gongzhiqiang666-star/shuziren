@@ -8,6 +8,7 @@ import subprocess
 
 from scripts.media_runtime import (
     INDEPENDENT, LEGACY_PYTHON, MANIFEST_NAME, MEDIA_FILES, MODEL_FILES, PROVIDER_FILES,
+    ORIGIN_VIDEO_FILES, ORIGIN_VIDEO_PROVIDER, ORIGIN_VIDEO_SILENCE,
     inspect_runtime, runtime_python,
 )
 
@@ -16,8 +17,6 @@ ENV_DIRS = ('DLLs', 'Lib', 'Library', 'CUDA', 'ffmpeg', 'nltk_data', 'share', 'i
 PROVIDERS = ('bin/voice_infer_v3/indextts', 'bin/image_clone/wenet')
 ZIPVOICE_PROVIDER = 'bin/voice_infer/zipvoice'
 OMNIVOICE_PROVIDER = 'bin/voice_infer_v2/omnivoice'
-ORIGIN_VIDEO_PROVIDER = 'bin/image_infer_v2/wenet'
-ORIGIN_VIDEO_SILENCE = '_internal/assets/pretrained_models/image_infer_v2/silence.npy'
 
 
 def reparse(path):
@@ -47,7 +46,7 @@ def stage(reference, destination, *, include_zipvoice=False, include_omnivoice=F
     if include_omnivoice:
         required += (f'_internal/{OMNIVOICE_PROVIDER}/models/omnivoice.py',)
     if include_origin_video:
-        required += (f'_internal/{ORIGIN_VIDEO_PROVIDER}/compute_ctc_att_bnf.py', ORIGIN_VIDEO_SILENCE)
+        required += ORIGIN_VIDEO_FILES
     for name in required:
         path = reference / name
         if not path.is_file() or not path.resolve().is_relative_to(source.resolve()) or reparse(path):

@@ -1172,6 +1172,26 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call('/api/render/cancel',{'task_id':0})[0],400)
         self.assertEqual(self.call('/api/render/video')[0],400)
 
+    def test_video_start_rejects_missing_optional_media_without_creating_a_scene(self):
+        from scripts.media_runtime import ORIGIN_VIDEO_FILES
+
+        root = Path(self.directory.name)
+        video = root / 'fixture.mp4'
+        video.touch()
+        for component in ORIGIN_VIDEO_FILES[:1]:
+            path = root / component
+            path.parent.mkdir(parents=True)
+            path.touch()
+        with (patch('scripts.local_console.preflight', return_value={'runtime_root': str(root)}),
+              patch('scripts.tts_tasks.TTSTasks') as tts):
+            tts.return_value.runtime = root
+            status, result = self.call('/api/live/start', {'audio_device': 14, 'video_path': str(video)})
+            self.assertEqual(status, 400)
+            self.assertIn(ORIGIN_VIDEO_FILES[1], result['error'])
+            self.assertNotIn(ORIGIN_VIDEO_FILES[0], result['error'])
+            self.assertEqual(self.call('/api/live/state')[1]['session']['status'], 'idle')
+            self.assertEqual(self.call('/api/live/history')[1]['sessions'], [])
+
     def test_video_backend_is_validated_before_loading_the_runtime(self):
         cases = [
             ({'audio_device': 14, 'video_backend': 'tensorrt'}, '请选择本地驱动视频'),

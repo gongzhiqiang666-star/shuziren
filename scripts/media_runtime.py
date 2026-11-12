@@ -23,6 +23,9 @@ MODEL_FILES = tuple('_internal/assets/pretrained_models/' + name for name in (
 ))
 PROVIDER_FILES = ('_internal/bin/voice_infer_v3/indextts/infer.py',
                   '_internal/bin/image_clone/wenet/compute_ctc_att_bnf.py')
+ORIGIN_VIDEO_PROVIDER = 'bin/image_infer_v2/wenet'
+ORIGIN_VIDEO_SILENCE = '_internal/assets/pretrained_models/image_infer_v2/silence.npy'
+ORIGIN_VIDEO_FILES = (f'_internal/{ORIGIN_VIDEO_PROVIDER}/compute_ctc_att_bnf.py', ORIGIN_VIDEO_SILENCE)
 
 
 def independent_runtime(root):

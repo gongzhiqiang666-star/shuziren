@@ -208,6 +208,8 @@ class ConsoleLive:
                 self._record_session()
 
     def start_video(self, audio_device, video_path, *, backend='cuda'):
+        from scripts.media_runtime import ORIGIN_VIDEO_FILES
+
         if type(audio_device) is not int or audio_device < 0:
             raise ProductError('请选择明确的音频输出设备')
         if backend not in ('cuda', 'tensorrt'):
@@ -220,6 +222,9 @@ class ConsoleLive:
         with self.lock:
             if self.status['status'] in self.active_states:
                 raise Conflict('已有场次正在运行或清理')
+            missing = [name for name in ORIGIN_VIDEO_FILES if not (Path(self.tts.runtime) / name).is_file()]
+            if missing:
+                raise ProductError('视频直驱缺少媒体组件：' + '、'.join(missing))
             self.cancel.clear()
             session_id = uuid.uuid4().hex
             self.status = {'id': session_id, 'status': 'preparing', 'mode': 'local_video',
