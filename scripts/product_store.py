@@ -824,7 +824,10 @@ class ProductStore:
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('''
-                SELECT schedule.account, receipt.publication_id FROM live_content_schedule schedule
+                SELECT schedule.account, receipt.publication_id, draft.withdrawn,
+                       schedule.planned_body=draft.body AS draft_matches
+                FROM live_content_schedule schedule
+                JOIN live_content_drafts draft USING (session_id, task_id)
                 LEFT JOIN live_content_receipts receipt USING (session_id, task_id)
                 WHERE session_id=? AND task_id=?
             ''', (session_id, task_id)).fetchone()
@@ -834,6 +837,10 @@ class ProductStore:
                 return
             if row['publication_id'] is not None:
                 raise Conflict('该排期已登记其他作品编号')
+            if row['withdrawn']:
+                raise Conflict('草稿已撤回，不能登记新的发布结果')
+            if not row['draft_matches']:
+                raise Conflict('草稿已修改，请重新保存排期后再登记发布结果')
             result = db.execute('INSERT OR IGNORE INTO live_content_receipts VALUES (?, ?, ?, ?)',
                                 (session_id, task_id, row['account'], publication_id))
             if not result.rowcount:
