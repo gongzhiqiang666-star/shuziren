@@ -76,7 +76,7 @@ def browser_metrics(values):
             for key, value in values.items()}
 
 
-def live_advice(session):
+def live_advice(session, repeated_questions=()):
     underrun = session.get('device_underrun')
     if session['status'] == 'failed' and underrun is not None:
         return [{
@@ -110,6 +110,10 @@ def live_advice(session):
     for item in advice:
         if item['code'] == 'rotation_error' and session.get('rotation_fault'):
             item['context'] = session['rotation_fault']
+    for question in repeated_questions:
+        advice.append({'code': 'repeated_question', 'evidence': f"同商品重复提问 {question['occurrences']} 次：{question['question']}",
+                       'recommendation': '核对商品事实后，可补讲或补充 FAQ',
+                       'context': {'product_id': question['product_id'], 'occurred_at': question['last_queued_at']}})
     return advice
 
 
@@ -124,6 +128,11 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
             if product_store is None:
                 product_store = ProductStore(store.directory)
             return product_store
+    def current_live_advice(session):
+        if session['status'] != 'running' or not session.get('id'):
+            return live_advice(session)
+        from time import time
+        return live_advice(session, products().recent_repeated_live_questions(session['id'], time() - 300))
     task_manager = None
     tts_manager = None
     avatar_manager = None
@@ -240,7 +249,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                                               "live_status": live_label(), "data_directory": str(store.directory.resolve())})
                 if path == '/api/live/state':
                     session = live_manager.state() if live_manager else {'status': 'idle'}
-                    advice = live_advice(session)
+                    advice = current_live_advice(session)
                     acknowledged = []
                     if advice and session.get('id'):
                         active = [entry['advice'] for entry in products().live_advice_acknowledgments(session['id'])
@@ -249,7 +258,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     return self.respond(200, {'session': session, 'advice': advice, 'acknowledged': acknowledged})
                 if path == '/api/live/advice':
                     session = live_manager.state() if live_manager else {'status': 'idle'}
-                    return self.respond(200, {'session_id': session.get('id'), 'advice': live_advice(session)})
+                    return self.respond(200, {'session_id': session.get('id'), 'advice': current_live_advice(session)})
                 if path == '/api/live/history':
                     return self.respond(200, {'sessions': products().recent_live_sessions()})
                 if path == '/api/live/control/events':
@@ -661,7 +670,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         if set(value) != {'session_id', 'advice'} or not isinstance(value['session_id'], str):
                             raise ProductError('运营提醒确认字段无效')
                         session = live_manager.state() if live_manager else {'status': 'idle'}
-                        if session.get('id') != value['session_id'] or value['advice'] not in live_advice(session):
+                        if session.get('id') != value['session_id'] or value['advice'] not in current_live_advice(session):
                             raise Conflict('运营提醒已变化，请刷新后核对')
                         from time import time
                         data = products()

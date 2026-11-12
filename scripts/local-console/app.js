@@ -763,7 +763,9 @@ async function loadLive() {
     }
     if (context?.product_id) {
       const title = savedProducts.find(product => product.id === context.product_id)?.title ?? context.product_id;
-      details.push(`${title} · 商品版本 ${context.product_version} · 话术 ${context.script_id}`);
+      details.push(title);
+      if (context.product_version != null) details.push(`商品版本 ${context.product_version}`);
+      if (context.script_id) details.push(`话术 ${context.script_id}`);
     }
     return [...details, item.recommendation].join(' · ');
   });

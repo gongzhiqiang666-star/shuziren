@@ -483,6 +483,17 @@ class ProductStore:
             db.execute('UPDATE live_queued_replies SET played_at=? WHERE session_id=? AND task_id=? AND played_at IS NULL',
                        (played_at, session_id, task_id))
 
+    def recent_repeated_live_questions(self, session_id, since):
+        with self.connect() as db:
+            rows = db.execute("""
+                SELECT product_id, TRIM(question) AS question, COUNT(*) AS occurrences,
+                       MAX(queued_at) AS last_queued_at
+                FROM live_queued_replies WHERE session_id=? AND queued_at>=?
+                GROUP BY product_id, TRIM(question) HAVING COUNT(*) >= 2
+                ORDER BY last_queued_at DESC, product_id, question LIMIT 5
+            """, (session_id, since)).fetchall()
+        return [dict(row) for row in rows]
+
     def record_rotation_fault(self, session_id, occurred_at, reason, *, item=None):
         item = item or {}
         with self.connect() as db:

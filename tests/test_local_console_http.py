@@ -69,6 +69,17 @@ class ConsoleHTTPTests(unittest.TestCase):
             self.assertEqual(advice['context'], {'occurred_at': 100, 'next_frame': 25})
             live.return_value.state.return_value.pop('device_underrun')
             self.assertEqual(self.call(route)[1]['advice'], [])
+            live.return_value.state.return_value['status'] = 'running'
+            product = {'id': 'product', 'version': 1}
+            store.record_queued_reply('scene', 'a', product, '库存？', '待核对', 100)
+            store.record_queued_reply('scene', 'b', product, '库存？ ', '待核对', 101)
+            store.record_queued_reply('other', 'c', product, '库存？', '待核对', 102)
+            with patch('time.time', return_value=399):
+                advice, = self.call(route)[1]['advice']
+                self.assertEqual(advice['code'], 'repeated_question')
+                self.assertIn('2 次', advice['evidence'])
+            with patch('time.time', return_value=401):
+                self.assertEqual(self.call(route)[1]['advice'], [])
 
     def test_live_comparison_requires_distinct_ended_sessions(self):
         store = ProductStore(self.directory.name)
