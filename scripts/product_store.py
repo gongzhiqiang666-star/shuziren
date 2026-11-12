@@ -146,6 +146,10 @@ class ProductStore:
                     revision TEXT PRIMARY KEY, review TEXT NOT NULL);
             ''')
             db.execute('BEGIN IMMEDIATE')
+            fault_columns = {row[1] for row in db.execute('PRAGMA table_info(live_rotation_faults)')}
+            for column, kind in (('product_id', 'TEXT'), ('product_version', 'INTEGER'), ('script_id', 'TEXT')):
+                if column not in fault_columns:
+                    db.execute(f'ALTER TABLE live_rotation_faults ADD COLUMN {column} {kind}')
             if 'adopted' not in {row[1] for row in db.execute('PRAGMA table_info(live_improvement_tasks)')}:
                 db.execute('ALTER TABLE live_improvement_tasks ADD COLUMN adopted INTEGER NOT NULL DEFAULT 0')
             columns = {row[1] for row in db.execute('PRAGMA table_info(scripts)')}
@@ -420,7 +424,8 @@ class ProductStore:
                 WHERE session_id = ? ORDER BY revision
             """, (session_id,)).fetchall()
             faults = db.execute("""
-                SELECT rowid AS event_id, occurred_at, reason FROM live_rotation_faults
+                SELECT rowid AS event_id, occurred_at, reason, product_id, product_version, script_id
+                FROM live_rotation_faults
                 WHERE session_id = ? ORDER BY rowid
             """, (session_id,)).fetchall()
             replies = db.execute("""
@@ -468,9 +473,15 @@ class ProductStore:
             db.execute('UPDATE live_queued_replies SET played_at=? WHERE session_id=? AND task_id=? AND played_at IS NULL',
                        (played_at, session_id, task_id))
 
-    def record_rotation_fault(self, session_id, occurred_at, reason):
+    def record_rotation_fault(self, session_id, occurred_at, reason, *, item=None):
+        item = item or {}
         with self.connect() as db:
-            db.execute('INSERT INTO live_rotation_faults VALUES (?, ?, ?)', (session_id, occurred_at, reason))
+            db.execute("""
+                INSERT INTO live_rotation_faults
+                    (session_id, occurred_at, reason, product_id, product_version, script_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (session_id, occurred_at, reason, item.get('product_id'),
+                  item.get('product_version'), item.get('script_id')))
 
     def save_live_improvement(self, session_id, fault_id, owner, goal, adopted=False):
         owner = text(owner, '负责人', 120)
@@ -493,7 +504,7 @@ class ProductStore:
         with self.connect() as db:
             rows = db.execute("""
                 SELECT task.session_id, task.fault_id, task.owner, task.goal, task.adopted,
-                       fault.reason, fault.occurred_at
+                       fault.reason, fault.occurred_at, fault.product_id, fault.product_version, fault.script_id
                 FROM live_improvement_tasks task
                 JOIN live_rotation_faults fault ON fault.rowid=task.fault_id AND fault.session_id=task.session_id
                 WHERE (? IS NULL OR task.session_id=?) AND (NOT ? OR task.adopted=1)

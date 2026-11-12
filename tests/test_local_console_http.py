@@ -31,7 +31,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         store.record_rotation_completion('other', 'first', item, 0)
         store.record_rotation_completion('scene', 'third', {**item, 'product_id': 'next-product'}, 0)
         store.record_live_control('scene', 1, True, 103)
-        store.record_rotation_fault('scene', 104, '语音合成超时')
+        store.record_rotation_fault('scene', 104, '语音合成超时', item=item)
         store.record_rotation_fault('other', 105, '其他场次故障')
         store.record_queued_reply('scene', 'reply', {'id': 'product', 'version': 2}, '什么材质？', '陶瓷', 106)
         store.record_queued_reply('other', 'reply', {'id': 'product', 'version': 2}, '其他问题', '其他回答', 107)
@@ -47,7 +47,9 @@ class ConsoleHTTPTests(unittest.TestCase):
             'question': '什么材质？', 'answer': '陶瓷', 'queued_at': 106, 'played_at': 108,
         }])
         self.assertEqual(report['session']['failure_reason'], '输出设备断开')
-        self.assertEqual(report['rotation_faults'], [{'event_id': 1, 'occurred_at': 104, 'reason': '语音合成超时'}])
+        self.assertEqual(report['rotation_faults'], [
+            {'event_id': 1, 'occurred_at': 104, 'reason': '语音合成超时', **item},
+        ])
         store.record_queued_reply('scene', 'second-reply', {'id': 'product', 'version': 3}, ' 什么材质？ ', '陶瓷', 109)
         status, review = self.call('/api/live/review?session_id=scene')
         self.assertEqual(status, 200)
@@ -62,7 +64,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(saved['tasks'], [{
             'session_id': 'scene', 'fault_id': 1, 'owner': '运营', 'goal': '复测两次语音合成', 'adopted': False,
-            'reason': '语音合成超时', 'occurred_at': 104,
+            'reason': '语音合成超时', 'occurred_at': 104, **item,
         }])
         self.assertEqual(self.call(task_route + '?session_id=scene'), (200, saved))
         product = store.save(title='茶杯', content='验收商品', product_index=1)
