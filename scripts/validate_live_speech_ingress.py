@@ -22,7 +22,7 @@ def main():
         parser.add_argument('--'+name,required=True,type=Path)
     args=parser.parse_args();root=(args.report_directory/('run-'+uuid.uuid4().hex)).resolve();root.mkdir(parents=True)
     report={'status':'failed','checks':{},'device_output_tested':False,'live_avatar_tested':False};tts=ingress=consumer=None
-    stop=threading.Event();first_received=threading.Event();errors=[];received={};order=[]
+    stop=threading.Event();first_received=threading.Event();resume_consumer=threading.Event();errors=[];received={};order=[]
     def save():
         (root/'result.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     def wait_tts():
@@ -55,7 +55,11 @@ def main():
                         if order and order[-1]!=origin.task_id and origin.task_id in order:raise RuntimeError('Interleaved utterances')
                         if not order or order[-1]!=origin.task_id:order.append(origin.task_id)
                         entry['sha256'].update(packet.pcm);entry['samples']+=packet.samples;entry['segments']+=1
-                        output.writeframesraw(packet.pcm);first_received.set()
+                        output.writeframesraw(packet.pcm)
+                        if not first_received.is_set():
+                            first_received.set()
+                            while not stop.is_set() and not resume_consumer.wait(.1):
+                                pass
             except BaseException as error:errors.append(str(error))
         expected=[];pids=[]
         for index,text in enumerate(['这是第一条真实语音，现在开始验证逐句交接。','这是运行中新增的第二条语音，请按顺序接上。']):
@@ -66,6 +70,11 @@ def main():
             with wave.open(result['output'],'rb') as sound:
                 pcm=sound.readframes(sound.getnframes());samples=sound.getnframes()
             expected.append({'task_id':audio['id'],'samples':samples,'pcm_sha256':hashlib.sha256(pcm).hexdigest(),'generation_started':started})
+            if index == 1:
+                if ingress.state(validate=False)['pending_task_id'] != expected[0]['task_id']:
+                    raise RuntimeError('First source did not fill the queue for the backpressure check')
+                report['checks']['observed_pending_source_before_resume'] = True
+                resume_consumer.set()
             capacity_deadline=time.monotonic()+30;waited=False
             while ingress.state(validate=False)['pending_task_id'] is not None:
                 waited=True
