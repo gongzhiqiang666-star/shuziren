@@ -498,6 +498,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertTrue(replay['schedule']['withdrawn'])
         self.assertEqual(self.call('/api/live/report?session_id=scene')[1]['content_summary'], {
             'drafts': 2, 'tracked_drafts': 2, 'revised_drafts': 1, 'recorded_publications': 2,
+            'withdrawn_drafts': 1,
             'timed_drafts': 1, 'average_production_seconds': 42,
             'paired_drafts': 1, 'average_seconds_saved': 23,
         })

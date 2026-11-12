@@ -872,6 +872,7 @@ class ProductStore:
                 SELECT COUNT(*) AS drafts, COUNT(revision_count) AS tracked_drafts,
                        COUNT(CASE WHEN revision_count > 0 THEN 1 END) AS revised_drafts,
                        COUNT(publication_id) AS recorded_publications,
+                       COUNT(CASE WHEN withdrawn=1 THEN 1 END) AS withdrawn_drafts,
                        COUNT(production_seconds) AS timed_drafts,
                        AVG(production_seconds) AS average_production_seconds,
                        COUNT(baseline_seconds - production_seconds) AS paired_drafts,

@@ -1751,6 +1751,9 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
     if (content_summary?.drafts) {
       const {drafts, tracked_drafts, revised_drafts, recorded_publications} = content_summary;
       lines.push(`短视频草稿 ${drafts} 条 · 已登记发布回执 ${recorded_publications} 条`);
+      if (content_summary.withdrawn_drafts) {
+        lines.push(`已停止复用的草稿 ${content_summary.withdrawn_drafts} 条`);
+      }
       if (tracked_drafts) lines.push(`有改稿记录的草稿 ${revised_drafts}/${tracked_drafts}`);
       if (drafts > tracked_drafts) lines.push(`改稿次数未知 ${drafts - tracked_drafts} 条`);
       if (content_summary.timed_drafts) {
