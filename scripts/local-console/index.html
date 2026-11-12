@@ -32,6 +32,12 @@
 <p id="live-rotation-events-status" role="status"></p>
 <button id="live-report" type="button" class="secondary" disabled>查看场次报告</button>
 <div id="live-report-output" role="status"></div>
+<form id="live-compare-form">
+<label for="live-baseline">基线场次</label><select id="live-baseline" required><option value="">请选择</option></select>
+<label for="live-trial">试验场次</label><select id="live-trial" required><option value="">请选择</option></select>
+<button type="submit">对照场次</button>
+</form>
+<div id="live-comparison" role="status"></div>
 <ol id="live-rotation-events-list"></ol>
 <p id="live-detail" role="status"></p><p id="live-error" role="alert"></p></section>
 <section id="taobao-panel"><h2>淘宝评论采集</h2><label for="taobao-live-id">直播场次 ID</label><input id="taobao-live-id" inputmode="numeric" maxlength="30" autocomplete="off">

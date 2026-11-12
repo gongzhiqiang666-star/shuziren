@@ -928,11 +928,43 @@ $('live-event-refresh').addEventListener('click', () => liveAction(async () => {
   const select = $('live-event-scene');
   const selected = select.value;
   const {sessions} = await request('/api/live/history');
+  for (const id of ['live-baseline', 'live-trial']) {
+    const input = $(id);
+    const previous = input.value;
+    input.replaceChildren(new Option('请选择', ''), ...sessions.filter(session => session.ended_at != null)
+      .map(session => new Option(`${new Date(session.requested_at * 1000).toLocaleString()} · ${session.session_id}`, session.session_id)));
+    input.value = Array.from(input.options).some(option => option.value === previous) ? previous : '';
+  }
   select.replaceChildren(new Option('当前场次', ''), ...sessions.map(session =>
     new Option(`${new Date(session.requested_at * 1000).toLocaleString()} · ${session.session_id}`, session.session_id)));
   select.value = sessions.some(session => session.session_id === selected) ? selected : '';
   if (select.value !== selected) resetRotationEvents();
 }));
+$('live-compare-form').addEventListener('change', () => $('live-comparison').replaceChildren());
+$('live-compare-form').addEventListener('submit', event => {
+  event.preventDefault();
+  liveAction(async () => {
+    const baseline = $('live-baseline').value;
+    const trial = $('live-trial').value;
+    const output = $('live-comparison');
+    output.replaceChildren();
+    if (baseline === trial) throw new Error('请选择两个不同场次');
+    const comparison = await request('/api/live/compare?' + new URLSearchParams({baseline, trial}));
+    if (baseline !== $('live-baseline').value || trial !== $('live-trial').value) return;
+    const lines = ['baseline', 'trial'].map(role => {
+      const result = comparison[role];
+      const label = role === 'baseline' ? '基线' : '试验';
+      return `${label} · 输出 ${result.session.frames} 帧 · 已播 ${result.completed_segments} 段 · 轮播故障 ${result.rotation_faults} 次 · 本机已播问答 ${result.played_replies} 条`;
+    });
+    const gaps = {audience:'人群', traffic:'流量', promotion:'活动', refund_lag:'退款滞后'};
+    lines.push('结论：不确定', '待补数据：' + comparison.missing.map(key => gaps[key] ?? key).join('、'));
+    output.replaceChildren(...lines.map(line => {
+      const item = document.createElement('p');
+      item.textContent = line;
+      return item;
+    }));
+  });
+});
 $('live-rotation-events').addEventListener('click', () => liveAction(async () => {
   const sessionId = $('live-event-scene').value || liveSession.id;
   const query = new URLSearchParams({session_id:sessionId, after:String(rotationEventCursor)});
