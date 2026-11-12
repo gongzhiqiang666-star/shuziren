@@ -509,7 +509,7 @@ async function sourcingAction(save) {
         fact.textContent = `${label}：${candidate.details[key] ?? '未知'}`;
         facts.append(fact);
       }
-      row.append(title, facts);
+      row.append(title, facts, sourcingTrialEditor(candidate));
       return row;
     }));
     status.textContent = save ? '采购候选已保存' : candidates.length ? '' : '暂无采购候选';
@@ -518,6 +518,72 @@ async function sourcingAction(save) {
   } finally {
     buttons.forEach(button => { button.disabled = false; });
   }
+}
+function sourcingTrialEditor(candidate) {
+  const route = '/api/sourcing/trial';
+  const panel = document.createElement('details');
+  const summary = document.createElement('summary');
+  summary.textContent = '样品核验与试卖';
+  const form = document.createElement('form');
+  const sample = document.createElement('textarea');
+  const trial = document.createElement('textarea');
+  const cost = document.createElement('input');
+  cost.type = 'number';
+  cost.min = '0';
+  cost.step = '1';
+  cost.max = String(Number.MAX_SAFE_INTEGER);
+  const verdict = document.createElement('select');
+  verdict.append(new Option('待核验', 'pending'), new Option('商家核验通过', 'pass'), new Option('商家核验未通过', 'fail'));
+  for (const [caption, input] of [['样品核验依据', sample], ['试卖记录或待办', trial],
+    ['样品成本（人民币分，可留空）', cost], ['样品核验结果', verdict]]) {
+    const label = document.createElement('label');
+    label.append(caption, input);
+    form.append(label);
+  }
+  sample.required = trial.required = true;
+  sample.maxLength = trial.maxLength = 2000;
+  const button = document.createElement('button');
+  button.type = 'submit';
+  button.textContent = '保存样品与试卖记录';
+  button.disabled = true;
+  const status = document.createElement('p');
+  status.setAttribute('role', 'status');
+  form.append(button, status);
+  panel.append(summary, form);
+  let loading = false;
+  panel.addEventListener('toggle', async () => {
+    if (!panel.open || !button.disabled || loading || consoleClosed) return;
+    loading = true;
+    try {
+      const query = new URLSearchParams({candidate_id:candidate.id});
+      const {trial: saved} = await request(route + '?' + query);
+      sample.value = saved?.sample_evidence ?? '';
+      trial.value = saved?.trial_evidence ?? '';
+      cost.value = saved?.cost_minor ?? '';
+      verdict.value = saved?.verdict ?? 'pending';
+      status.textContent = '';
+      button.disabled = false;
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      loading = false;
+    }
+  });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (button.disabled || consoleClosed) return;
+    button.disabled = true;
+    try {
+      await request(route, {candidate_id:candidate.id, sample_evidence:sample.value, trial_evidence:trial.value,
+        cost_minor:cost.value === '' ? null : cost.valueAsNumber, verdict:verdict.value});
+      status.textContent = '样品与试卖记录已保存';
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  });
+  return panel;
 }
 sourcingForm.addEventListener('submit', event => { event.preventDefault(); sourcingAction(true); });
 $('sourcing-read').addEventListener('click', () => sourcingAction(false));
