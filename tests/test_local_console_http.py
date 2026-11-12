@@ -156,8 +156,18 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call(plans + '/action', {**action, 'plan_id': replacement_id})[0], 409)
         self.assertEqual(self.call(plans + '?product_id=' + product['id'])[1]['plans'][0]['review_reason'],
                          '商品资料已更新')
-        self.assertEqual(self.call(plans + '?product_id=' + product['id'])[1]['plans'][0]['status'], 'stale')
-
+        current = store.get(product['id'])
+        store.save(title=current['title'], content=current['content'], product_index=1,
+                   product_id=current['id'], version=current['version'], product_facts={
+                       '库存': {'status': 'verified', 'source': '盘点', 'value': 5,
+                                'expires_at': '2099-01-01T00:00:00Z'},
+                   })
+        expiring = self.call(plans, plan)[1]['plan']
+        with patch('scripts.product_store.datetime', wraps=datetime) as clock:
+            clock.now.return_value = datetime(2099, 1, 1, tzinfo=timezone.utc)
+            self.assertEqual(self.call(plans + '/action', {**action, 'plan_id': expiring['id']})[0], 409)
+            latest = self.call(plans + '?product_id=' + product['id'])[1]['plans'][0]
+            self.assertEqual((latest['status'], latest['review_reason']), ('stale', '商品事实已到期'))
     def test_sourcing_candidates_preserve_source_and_leave_missing_terms_unknown(self):
         route = '/api/sourcing/candidates'
         candidate = {'name': '陶瓷杯', 'supplier': '样品供应商', 'source': '商家报价单',

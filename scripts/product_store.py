@@ -1341,12 +1341,14 @@ class ProductStore:
                 raise Conflict('投放账单已变化，请重新读取后核对预算')
             if bill['spend_minor'] > budget_minor:
                 raise Conflict('账单支出已超过预算上限')
-            version = db.execute('SELECT version FROM products WHERE id=?', (product_id,)).fetchone()['version']
+            product = self.decode(db.execute('SELECT * FROM products WHERE id=?', (product_id,)).fetchone())
+            version = product['version']
             if expected_product_version is not None and (
                     type(expected_product_version) is not int or expected_product_version != version):
                 raise Conflict('商品资料已变化，请重新读取后核对投放方案')
             snapshot = {'id': str(uuid.uuid4()), 'bill': dict(bill), 'budget_minor': budget_minor,
                         'product_version': version,
+                        'fact_deadline': product_fact_deadline(product),
                         'rationale': rationale, 'recorded_at': datetime.now(timezone.utc).isoformat()}
             db.execute('INSERT INTO promotion_plans VALUES (?, ?, ?)',
                        (snapshot['id'], product_id, json.dumps(snapshot, ensure_ascii=False)))
@@ -1372,6 +1374,10 @@ class ProductStore:
             if plan.get('product_version') != version:
                 plan['review_reason'] = ('旧方案未记录商品版本' if plan.get('product_version') is None
                                          else '商品资料已更新')
+            deadline = plan.get('fact_deadline')
+            if deadline is not None and datetime.now(timezone.utc).timestamp() >= deadline:
+                stale = True
+                plan.setdefault('review_reason', '商品事实已到期')
             plan['status'] = 'stale' if row['status'] != 'paused' and stale else row['status']
             if plan['status'] == 'paused' and stale:
                 plan['requires_new_plan'] = True
@@ -1394,6 +1400,9 @@ class ProductStore:
                 product = db.execute('SELECT version FROM products WHERE id=?', (bill['product_id'],)).fetchone()
                 if product is None or snapshot.get('product_version') != product['version']:
                     raise Conflict('商品资料已变化或旧方案未记录版本，请重新核对并保存方案')
+                deadline = snapshot.get('fact_deadline')
+                if deadline is not None and datetime.now(timezone.utc).timestamp() >= deadline:
+                    raise Conflict('商品事实已到期，请重新核对并保存方案')
                 keys = ('product_id', 'source', 'period_start', 'period_end', 'campaign', 'asset')
                 current = db.execute("""
                     SELECT * FROM promotion_spend WHERE product_id=? AND source=? AND period_start=?
