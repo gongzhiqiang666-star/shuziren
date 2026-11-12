@@ -1786,7 +1786,9 @@ async function loadLive() {
     if (selectionChanged) renderShiftFields();
   }
   const cameraName = liveSession.camera_device ?? liveSession.requested_camera_device;
-  $('live-status').textContent = liveLabels[liveSession.status] + (cameraName ? ` · 虚拟摄像头 ${cameraName}` : '');
+  $('live-status').textContent = liveLabels[liveSession.status]
+    + (liveSession.input_mode === 'rtmp' ? ' · RTMP 驱动' : '')
+    + (cameraName ? ` · 虚拟摄像头 ${cameraName}` : '');
   $('live-detail').textContent = liveSession.insert_error || (liveSession.insert_pending ? '正在准备插播语音' :
     (liveSession.frames ? `已提交 ${liveSession.frames} 帧，待播 ${liveSession.pending ?? 0} 条` : ''));
   $('live-rotation-status').textContent = liveSession.rotation_error || (liveSession.rotation_products?.length ?
