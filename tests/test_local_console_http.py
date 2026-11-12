@@ -19,6 +19,34 @@ from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_workspace_traces_prepared_product_through_report_to_reusable_copy(self):
+        store = ProductStore(self.directory.name)
+        product = store.save(title='茶杯', content='商品说明', product_index=1, product_facts={
+            '材质': {'status': 'verified', 'value': '陶瓷', 'source': '商品标签'},
+        })
+        product_id = product['id']
+        script_id = store.add_script(product, '这是一只陶瓷杯。')
+        store.select_script(product_id, script_id)
+        preparation = '/api/live/preparation'
+        self.assertEqual(self.call(preparation, {'product_ids': [product_id]})[0], 200)
+        package = self.call(preparation + '/package')[1]
+        self.assertEqual(package['items'][0]['selling_points'][0]['source'], '商品标签')
+        revision = package['revision']
+        self.assertEqual(self.call(preparation + '/review', {'revision': revision, 'review': '已核对'})[0], 200)
+        rotation = self.call(preparation + '/rotation', {'revision': revision})[1]
+        item, = rotation['items']
+        self.assertEqual(item['script_id'], script_id)
+        store.record_live_session('scene', 100, started_at=101, ended_at=110, status='stopped')
+        store.record_rotation_completion('scene', 'spoken', item, 0, sample_start=0, sample_end=24000)
+        report = self.call('/api/live/report?session_id=scene')[1]
+        self.assertEqual(report['products'][0]['script_id'], script_id)
+        status, response = self.call('/api/live/content-draft?session_id=scene&task_id=spoken')
+        self.assertEqual(status, 200)
+        draft = response['draft']
+        self.assertEqual(draft['source']['product_version'], product['version'])
+        self.assertEqual(draft['source']['script_id'], script_id)
+        self.assertEqual(draft['narration'], '这是一只陶瓷杯。')
+
     def test_shop_workspaces_keep_product_and_metrics_data_isolated(self):
         first = ProductStore(shop_data_directory(self.directory.name, 'first'))
         second = ProductStore(shop_data_directory(self.directory.name, 'second'))
