@@ -812,8 +812,9 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
   const output = $('live-report-output');
   output.textContent = '正在读取场次报告';
   try {
-    const {session, products, controls, rotation_faults, observed_product_switches, missing} =
-      await request('/api/live/report?' + new URLSearchParams({session_id:sessionId}));
+    const query = new URLSearchParams({session_id:sessionId});
+    const [{session, products, controls, rotation_faults, observed_product_switches, missing}, review] =
+      await Promise.all([request('/api/live/report?' + query), request('/api/live/review?' + query)]);
     if (($('live-event-scene').value || liveSession.id) !== sessionId) return;
     const formatTime = value => value == null ? '未记录' : new Date(value * 1000).toLocaleString();
     const labels = {product_exposure:'商品曝光', questions_and_answers:'问答', platform_product_switches:'平台切品',
@@ -831,6 +832,12 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
     ];
     if (session.failure_reason) lines.push('场次失败原因：' + session.failure_reason);
     if (missing.length) lines.push('数据缺口：' + missing.map(key => labels[key] ?? key).join('、'));
+    const faultIds = new Set(rotation_faults.map(fault => fault.event_id));
+    for (const finding of review.findings) {
+      if (faultIds.has(finding.evidence.event_id)) {
+        lines.push(`轮播故障 ${finding.evidence.event_id} · 复测建议：${finding.recommendation}`);
+      }
+    }
     output.replaceChildren(...lines.map(line => {
       const paragraph = document.createElement('p');
       paragraph.textContent = line;
