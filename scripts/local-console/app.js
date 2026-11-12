@@ -1128,7 +1128,18 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
           subtitle.readOnly = true;
           subtitle.value = draft.subtitle_srt;
           subtitleLabel.append('原口播片段字幕（SRT）', subtitle);
-          details.append(subtitleLabel);
+          const downloadSubtitle = document.createElement('button');
+          downloadSubtitle.type = 'button';
+          downloadSubtitle.textContent = '下载原口播字幕';
+          downloadSubtitle.addEventListener('click', () => {
+            const url = URL.createObjectURL(new Blob([draft.subtitle_srt], {type:'text/plain;charset=utf-8'}));
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `口播-${event.task_id.replace(/[^a-zA-Z0-9_-]/g, '_')}.srt`;
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          });
+          details.append(subtitleLabel, downloadSubtitle);
         }
       } catch (error) {
         draftStatus.textContent = error.message;
