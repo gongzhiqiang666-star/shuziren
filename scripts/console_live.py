@@ -65,7 +65,7 @@ class ConsoleLive:
             'worker': {'pid': worker.pid, 'exit_code': worker.poll()} if worker is not None else None,
         }
 
-    def start(self, audio_device, *, language='zh-CN', assistant_voice_id=None, camera_device=None):
+    def start(self, audio_device, *, language='zh-CN', assistant_voice_id=None, camera_device=None, rtmp_url=None):
         if type(audio_device) is not int or audio_device < 0:
             raise ProductError('请选择明确的音频输出设备')
         with self.lock:
@@ -84,11 +84,11 @@ class ConsoleLive:
             self.rotation = None
             self.reply_session = None
             self.completed = SimpleQueue()
-            self.thread = threading.Thread(target=self._run, args=(session_id, audio_device, camera_device), name='console-live')
+            self.thread = threading.Thread(target=self._run, args=(session_id, audio_device, camera_device, rtmp_url), name='console-live')
             self.thread.start()
             return self.state()
 
-    def _run(self, session_id, audio_device, camera_device=None):
+    def _run(self, session_id, audio_device, camera_device=None, rtmp_url=None):
         client = receiver = sink = ingress = assembler = None
         ole32 = None
         rotation_thread = None
@@ -126,6 +126,8 @@ class ConsoleLive:
             if self.cancel.is_set():
                 return
             client.request('start', session_id=binding.id)
+            if rtmp_url is not None:
+                client.request('attach_rtmp', url=rtmp_url, width=avatar['width'], height=avatar['height'])
             client.request('prepare')
             if self.cancel.is_set():
                 return

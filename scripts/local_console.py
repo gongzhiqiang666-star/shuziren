@@ -653,7 +653,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                                                 '/api/voices/select', '/api/avatar-preparation/start', '/api/render/start'}:
                         raise Conflict('请先停止本机场次')
                     if path == '/api/live/start':
-                        if set(value) - {'audio_device', 'rotation_language', 'assistant_voice_id', 'video_path', 'video_backend', 'camera_device'} or type(value.get('audio_device')) is not int or value['audio_device'] < 0:
+                        if set(value) - {'audio_device', 'rotation_language', 'assistant_voice_id', 'video_path', 'video_backend', 'camera_device', 'rtmp_url'} or type(value.get('audio_device')) is not int or value['audio_device'] < 0:
                             raise ProductError('请选择音频输出设备')
                         if 'video_path' in value:
                             if set(value) - {'audio_device', 'video_path', 'video_backend'}:
@@ -662,6 +662,12 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                                 raise ProductError('本地视频推理后端无效')
                         elif 'video_backend' in value:
                             raise ProductError('请选择本地驱动视频')
+                        rtmp_url = value.get('rtmp_url')
+                        if 'rtmp_url' in value and (
+                                not isinstance(rtmp_url, str)
+                                or not rtmp_url.strip().lower().startswith(('rtmp://', 'rtmps://'))
+                                or '\x00' in rtmp_url):
+                            raise ProductError('RTMP 输入地址无效')
                         assistant_voice_id = value.get('assistant_voice_id')
                         camera_device = value.get('camera_device')
                         if camera_device is not None and (
@@ -685,6 +691,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         return self.respond(202, {'session': live_manager.start(
                             value['audio_device'], language=language, assistant_voice_id=assistant_voice_id,
                             **({'camera_device': camera_device.strip()} if camera_device is not None else {}),
+                            **({'rtmp_url': rtmp_url.strip()} if rtmp_url is not None else {}),
                         )})
                     if path == '/api/live/video-seek':
                         if set(value) != {'session_id', 'position_ms'} or not isinstance(value['session_id'], str):

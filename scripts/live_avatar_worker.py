@@ -22,6 +22,10 @@ def main():
                     engine.start(request['session_id']);result={'session_id':engine.session,'model_ready':engine.prepared}
                 elif request['operation']=='prepare':
                     with redirect_stdout(sys.stderr):result=engine.prepare()
+                elif request['operation']=='attach_rtmp':
+                    with redirect_stdout(sys.stderr):
+                        engine.attach_rtmp(request['url'], request['width'], request['height'])
+                    result={'attached':True}
                 elif request['operation']=='attach_frames':
                     from scripts.live_frame_channel import FrameSender
                     if sender:sender.close()

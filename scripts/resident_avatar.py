@@ -28,6 +28,33 @@ class ResidentAvatar:
         except BaseException:
             self.context.__exit__(None,None,None);raise
         self.session=None;self.frame_offset=0;self.sample_offset=0;self.timed_mode=None;self.wenet_loads=0;self.prepared=False;self.prepare_result=None;self.silence_features=None
+        self.rtmp_reader = None
+
+    def attach_rtmp(self, url, width, height):
+        from recovered.image_rtmp_face_reader import RtmpFaceReader
+
+        if self.session is None or self.prepared or self.rtmp_reader is not None:
+            raise ValueError('在场次启动后、预热前配置 RTMP 输入')
+        reader = RtmpFaceReader(device='cpu', face_model_dir=self.internal/'assets/pretrained_models/face_detect')
+        try:
+            reader.start_capture(url)
+            if (reader.width, reader.height) != (width, height):
+                raise ValueError('RTMP 输入尺寸须与场次输出尺寸一致')
+        except BaseException:
+            reader.stop_capture()
+            raise
+        self.rtmp_reader = reader
+
+    def _load_live_frames(self, indices):
+        if self.rtmp_reader is None:
+            return self.synth._load_batch_frames(indices)
+
+        from recovered.image_infer_audio import face_slot_from_detection
+
+        images, detections = self.rtmp_reader.read_ahead(len(indices))
+        if len(images) != len(indices):
+            raise RuntimeError('RTMP 输入已中断')
+        return images, [face_slot_from_detection(faces[0] if faces else None) for faces in detections]
 
     def start(self,session):
         if not isinstance(session,str) or not session:raise ValueError('Session ID required')
@@ -55,7 +82,7 @@ class ResidentAvatar:
             sizes=[]
             for size in [1,2,3,4]:
                 indices=[index%self.synth.total_frames for index in range(size)]
-                images,metadata=self.synth._load_batch_frames(indices)
+                images,metadata=self._load_live_frames(indices)
                 frames=self.synth._process_batch(images,metadata,features[:size])
                 if len(frames)!=size:raise RuntimeError('Warmup dropped frames')
                 sizes.append(size)
@@ -85,7 +112,7 @@ class ResidentAvatar:
             for start in range(0,len(sequence),self.synth.batch_size):
                 if progress: progress({'event':'idle_stage','stage':'load','frame_index':offset+start})
                 started=time.perf_counter_ns()
-                indices=sequence[start:start+self.synth.batch_size];images,metadata=self.synth._load_batch_frames(indices)
+                indices=sequence[start:start+self.synth.batch_size];images,metadata=self._load_live_frames(indices)
                 features=[self.silence_features[(start+index)%len(self.silence_features)] for index in range(len(indices))]
                 loaded=time.perf_counter_ns()
                 if progress: progress({'event':'idle_stage','stage':'process','frame_index':offset+start})
@@ -146,7 +173,7 @@ class ResidentAvatar:
             for start in range(0,len(features),self.synth.batch_size):
                 report_stage('load', offset + start)
                 indices=sequence[start:start+self.synth.batch_size]
-                images,metadata=self.synth._load_batch_frames(indices)
+                images,metadata=self._load_live_frames(indices)
                 report_stage('process', offset + start)
                 frames=self.synth._process_batch(images,metadata,features[start:start+len(indices)])
                 if len(frames)!=len(indices):raise RuntimeError('Synthesizer dropped frames')
@@ -183,5 +210,8 @@ class ResidentAvatar:
             'output_device_tested':False,'visual_quality_verified':False}
 
     def close(self):
+        if self.rtmp_reader is not None:
+            self.rtmp_reader.stop_capture()
+            self.rtmp_reader = None
         if self.synth:
             self.synth.close();self.synth=None;self.context.__exit__(None,None,None)
