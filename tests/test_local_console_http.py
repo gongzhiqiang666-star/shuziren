@@ -1175,6 +1175,8 @@ class ConsoleHTTPTests(unittest.TestCase):
             ({'audio_device': 14, 'camera_device': '  '}, '虚拟摄像头设备名称无效'),
             ({'audio_device': 14, 'rtmp_url': 'file:///test.mp4'}, 'RTMP 输入地址无效'),
             ({'audio_device': 14, 'rtmp_url': None}, 'RTMP 输入地址无效'),
+            ({'audio_device': 14, 'rtmp_url': 'rtmp:///live/test'}, 'RTMP 输入地址无效'),
+            ({'audio_device': 14, 'rtmp_url': 'rtmp://localhost:invalid/live/test'}, 'RTMP 输入地址无效'),
             ({'audio_device': 14, 'video_path': 'unused.mp4', 'rtmp_url': 'rtmp://localhost/live/test'},
              '本地视频模式的开播字段无效'),
             ({'audio_device': 14, 'video_path': 'unused.mp4', 'camera_device': 'OBS Virtual Camera'},

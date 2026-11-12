@@ -663,11 +663,17 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         elif 'video_backend' in value:
                             raise ProductError('请选择本地驱动视频')
                         rtmp_url = value.get('rtmp_url')
-                        if 'rtmp_url' in value and (
-                                not isinstance(rtmp_url, str)
-                                or not rtmp_url.strip().lower().startswith(('rtmp://', 'rtmps://'))
-                                or '\x00' in rtmp_url):
-                            raise ProductError('RTMP 输入地址无效')
+                        if 'rtmp_url' in value:
+                            try:
+                                if not isinstance(rtmp_url, str):
+                                    raise ValueError
+                                rtmp_url = rtmp_url.strip()
+                                target = urlsplit(rtmp_url)
+                                if (target.scheme not in ('rtmp', 'rtmps') or not target.hostname
+                                        or target.port == 0 or any(char.isspace() or ord(char) < 32 for char in rtmp_url)):
+                                    raise ValueError
+                            except ValueError:
+                                raise ProductError('RTMP 输入地址无效') from None
                         assistant_voice_id = value.get('assistant_voice_id')
                         camera_device = value.get('camera_device')
                         if camera_device is not None and (
@@ -691,7 +697,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         return self.respond(202, {'session': live_manager.start(
                             value['audio_device'], language=language, assistant_voice_id=assistant_voice_id,
                             **({'camera_device': camera_device.strip()} if camera_device is not None else {}),
-                            **({'rtmp_url': rtmp_url.strip()} if rtmp_url is not None else {}),
+                            **({'rtmp_url': rtmp_url} if rtmp_url is not None else {}),
                         )})
                     if path == '/api/live/video-seek':
                         if set(value) != {'session_id', 'position_ms'} or not isinstance(value['session_id'], str):
