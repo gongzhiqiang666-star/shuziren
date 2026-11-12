@@ -333,12 +333,21 @@ class ConsoleHTTPTests(unittest.TestCase):
         store.save_live_preparation(product_ids=[first['id']])
         package_route = '/api/live/preparation/package'
         self.assertEqual(self.call(package_route)[1]['after_sales_tasks'], tasks['tasks'])
+        preparation = '/api/live/preparation'
+        revision = {'revision': self.call(package_route)[1]['revision']}
+        self.assertEqual(self.call(preparation + '/review', {**revision, 'review': '已核对发货整改'})[0], 200)
+        self.assertEqual(self.call(preparation + '/rotation', revision)[0], 200)
         store.save_after_sales(first['id'], task['source'], task['period_start'], task['period_end'], {'fulfillment': 5})
         self.assertEqual(self.call(route + '/task', {**task, 'expected_count': 4})[0], 409)
+        self.assertEqual(self.call(preparation + '/rotation', revision)[0], 409)
         self.assertEqual(self.call(package_route)[1]['after_sales_tasks'], [])
         self.assertEqual(store.after_sales_tasks([first['id']]), tasks['tasks'])
         self.assertEqual(self.call(route + '/task', {**task, 'expected_count': 5})[0], 200)
         self.assertEqual(self.call(package_route)[1]['after_sales_tasks'][0]['evidence_count'], 5)
+        updated_revision = {'revision': self.call(package_route)[1]['revision']}
+        self.assertEqual(self.call(preparation + '/rotation', updated_revision)[0], 409)
+        self.assertEqual(self.call(preparation + '/review', {**updated_revision, 'review': '已核对更正报表'})[0], 200)
+        self.assertEqual(self.call(preparation + '/rotation', updated_revision)[0], 200)
         updated = store.save(title=first['title'], content='更新后的发货信息', product_index=first['product_index'],
                              product_id=first['id'], version=first['version'])
         self.assertEqual(self.call(package_route)[1]['after_sales_tasks'], [])
