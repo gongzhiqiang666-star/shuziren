@@ -40,6 +40,11 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(imported['records'][0]['stock'], 0)
         self.assertIsNone(imported['records'][0]['clicks'])
         self.assertEqual(self.call(route + '/import', {**upload, 'csv': report + 'bad\n'})[0], 400)
+        invalid = '人工盘点,2026-11-03,2026-11-03,商品,,-1\n'
+        status, error = self.call(route + '/import', {**upload, 'csv': report + invalid})
+        self.assertEqual(status, 400)
+        self.assertIn('第 3 行', error['error'])
+        self.assertIn('库存', error['error'])
         self.assertEqual(len(self.call(route + '?product_id=' + product['id'])[1]['records']), 2)
 
     def test_rotation_event_pages_preserve_order_and_scene_isolation(self):
