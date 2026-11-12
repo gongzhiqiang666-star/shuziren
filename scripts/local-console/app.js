@@ -1118,6 +1118,43 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
     scheduleStatus.setAttribute('role', 'status');
     scheduleForm.append(scheduleSave, scheduleStatus);
     details.append(scheduleForm);
+    const receiptForm = document.createElement('form');
+    receiptForm.hidden = true;
+    const receiptId = document.createElement('input');
+    receiptId.required = true;
+    receiptId.maxLength = 200;
+    const receiptLabel = document.createElement('label');
+    receiptLabel.append('人工发布后的平台作品编号', receiptId);
+    const receiptSave = document.createElement('button');
+    receiptSave.type = 'submit';
+    receiptSave.textContent = '登记发布结果';
+    const receiptStatus = document.createElement('p');
+    receiptStatus.setAttribute('role', 'status');
+    receiptForm.append(receiptLabel, receiptSave, receiptStatus);
+    details.append(receiptForm);
+    function showPublicationReceipt(schedule) {
+      receiptForm.hidden = !schedule;
+      receiptId.value = schedule?.publication_id ?? '';
+      receiptId.readOnly = Boolean(schedule?.publication_id);
+      receiptSave.hidden = receiptId.readOnly;
+      receiptStatus.textContent = receiptId.readOnly ? '平台作品编号已人工登记' : '';
+      if (receiptId.readOnly) scheduleSave.disabled = true;
+    }
+    receiptForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (receiptSave.disabled || receiptSave.hidden || consoleClosed) return;
+      receiptSave.disabled = true;
+      try {
+        const {schedule} = await request('/api/live/content-receipt', {
+          session_id:sessionId, task_id:params.get('task_id'), publication_id:receiptId.value,
+        });
+        showPublicationReceipt(schedule);
+      } catch (error) {
+        receiptStatus.textContent = error.message;
+      } finally {
+        receiptSave.disabled = false;
+      }
+    });
     async function loadSchedule() {
       scheduleForm.hidden = false;
       scheduleSave.disabled = true;
@@ -1127,6 +1164,7 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         scheduleStatus.textContent = schedule && !schedule.draft_matches ? '文案已修改，请重新核对并保存排期' : '';
         scheduleSave.disabled = facts_review !== 'version_current';
         if (scheduleSave.disabled) scheduleStatus.textContent = '商品事实已变化，排期仅供查看';
+        showPublicationReceipt(schedule);
       } catch (error) {
         scheduleStatus.textContent = error.message;
       }
@@ -1142,10 +1180,11 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         });
         scheduleFields.publish_at.value = schedule.publish_at;
         scheduleStatus.textContent = '本机排期已保存，等待人工发布';
+        showPublicationReceipt(schedule);
       } catch (error) {
         scheduleStatus.textContent = error.message;
       } finally {
-        scheduleSave.disabled = false;
+        scheduleSave.disabled = receiptId.readOnly;
       }
     });
     saveDraft.addEventListener('click', async () => {
