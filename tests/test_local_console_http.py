@@ -92,6 +92,17 @@ class ConsoleHTTPTests(unittest.TestCase):
                     'rationale': '等待样品', 'constraints': '仅本店试样'}
         self.assertEqual(second.call('/api/sourcing/decision', decision)[0], 400)
         self.assertEqual(first.call('/api/sourcing/decision', decision)[0], 200)
+        product_id = first.call('/api/products')[1]['products'][0]['id']
+        bill = {'product_id': product_id, 'source': '本店账单', 'period_start': '2026-11-10',
+                'period_end': '2026-11-10', 'campaign': 'campaign', 'asset': 'clip'}
+        self.assertEqual(first.call('/api/promotion/spend', {**bill, 'spend_minor': 20})[0], 200)
+        plans = '/api/promotion/plans'
+        status, result = first.call(plans, {**bill, 'budget_minor': 50, 'rationale': '本店素材试验'})
+        self.assertEqual(status, 200)
+        action = {'plan_id': result['plan']['id'], 'action': 'approved'}
+        self.assertEqual(second.call(plans + '/action', action)[0], 400)
+        self.assertEqual(second.call(plans + '/actions?' + urlencode({'plan_id': action['plan_id']}))[0], 400)
+        self.assertEqual(first.call(plans + '/action', action)[1]['plan']['status'], 'approved')
 
     def test_promotion_spend_preserves_missing_attribution_and_corrects_bill(self):
         store = ProductStore(self.directory.name)
