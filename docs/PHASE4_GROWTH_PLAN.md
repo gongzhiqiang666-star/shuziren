@@ -405,3 +405,5 @@ G07-04 Chrome 跨场次问答对照通过，空场正确率和耗时未知，试
 G07-04 Chrome 重复提问跨场次对照通过。空场显示 0 组；试验场同一商品三次相同问题（含空格差异）统计为 1 组、首次后重复 2 次，另一商品的同文问题未合并。证据 logs/validation/g07-repeat-compare-chrome-01/report.txt。统计覆盖已入队答复，真实商家数据和未入队问题的覆盖仍待验。
 
 G07-04 Chrome 未入队提问对照补验通过。试验场增加一条同商品同问题的未入队记录，重复次数从 2 增至 3，单列未入队 1 条，空场保留两个零值。证据 logs/validation/g07-unqueued-compare-chrome-01/report.txt。配置本机 FFmpeg 后控制台 HTTP 回归 49 项全通过，见 logs/http-regression-dfc663f.log。真实商家问答和运营效果仍待验。
+
+G08-04 Chrome 历史试卖指标补验通过。首版结论保留样品成本 0 分、5 笔订单、0 笔退款、按时履约未知、毛利 -100 分，未被第二版覆盖。证据 logs/validation/g08-history-metrics-chrome-01/report.txt。真实供应商试卖仍待验。
