@@ -359,6 +359,7 @@ class ProductStore:
                 'product_id': product_id, 'product_version': product['version'], 'title': product['title'],
                 'script_id': self.selected_script(product_id),
                 'recommendation': self.lineup_recommendation(facts),
+                'stock_review': self.low_stock_review(facts),
                 'selling_points': [{'name': name, 'value': fact['value'], 'source': fact['source']}
                                    for name, fact in facts.items()],
                 'faq': [{'question': f"{name}是什么？", 'answer': fact['value'], 'source': fact['source']}
@@ -1453,6 +1454,14 @@ class ProductStore:
             role, reason = 'trial', '库存与发货条件已核对，可小范围试播'
         return {'role': role, 'reason': reason}
 
+    @staticmethod
+    def low_stock_review(facts):
+        stock = facts.get('库存', {}).get('value')
+        threshold = facts.get('低库存阈值', {}).get('value')
+        if type(stock) is int and type(threshold) is int and 0 < stock <= threshold:
+            return f'已核对库存 {stock}，达到商家设置的低库存提醒阈值 {threshold}'
+        return None
+
     def product_selection_evidence(self):
         fields = ('适播性', '目标人群', '售价', '成本', '库存', '低库存阈值', '发货条件', '排品角色')
         now = datetime.now(timezone.utc)
@@ -1466,10 +1475,9 @@ class ProductStore:
                 'verified_fact_count': len(facts),
                 'recommendation': self.lineup_recommendation(facts),
             })
-            stock = facts.get('库存', {}).get('value')
-            threshold = facts.get('低库存阈值', {}).get('value')
-            if type(stock) is int and type(threshold) is int and 0 < stock <= threshold:
-                result[-1]['stock_review'] = f'已核对库存 {stock}，达到商家设置的低库存提醒阈值 {threshold}'
+            stock_review = self.low_stock_review(facts)
+            if stock_review:
+                result[-1]['stock_review'] = stock_review
         return result
 
     def get(self, product_id):

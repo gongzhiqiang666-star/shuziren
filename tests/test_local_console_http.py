@@ -363,6 +363,9 @@ class ConsoleHTTPTests(unittest.TestCase):
         })
         low_stock = self.call('/api/products/selection-evidence')[1]['products'][-1]
         self.assertIn('已核对库存 2', low_stock['stock_review'])
+        store.save_live_preparation(product_ids=[low_stock['product_id']])
+        prepared, = self.call('/api/live/preparation/package')[1]['items']
+        self.assertEqual(prepared['stock_review'], low_stock['stock_review'])
 
     def test_product_selection_evidence_preserves_zero_and_missing_conditions(self):
         store = ProductStore(self.directory.name)

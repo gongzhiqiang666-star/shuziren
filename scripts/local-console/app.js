@@ -1061,6 +1061,7 @@ preparationPreview.addEventListener('click', async () => {
       lines.push('', `${index + 1}. ${item.title}（版本 ${item.product_version}）`);
       lines.push(item.script_id ? `选用话术：${item.script_id}` : '待补：为该商品选用话术');
       if (item.recommendation?.role === 'hold') lines.push(`建议暂缓 · ${item.recommendation.reason}`);
+      if (item.stock_review) lines.push(item.stock_review);
       for (const point of item.selling_points) lines.push(`${point.name}：${point.value}（来源：${point.source}）`);
       for (const entry of item.faq) lines.push(`问：${entry.question} 答：${entry.answer}（来源：${entry.source}）`);
       for (const condition of item.missing) lines.push(`待补：${condition}`);
