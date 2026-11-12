@@ -101,7 +101,15 @@ class ResidentTests(unittest.TestCase):
         sink=SimpleNamespace(send=lambda session,task,index,image:sent.append((index,int(image[0,0,0]))),close=lambda:None)
         with self.assertRaisesRegex(ValueError,'Prepare'):self.provider.render('session','one',audio,None,sha,frame_channel=sink)
         self.provider.prepared=True
-        result=self.provider.render('session','one',audio,None,sha,frame_channel=sink)
+        progress = []
+        load_stages = []
+        original_load = self.provider.synth._load_single_frame
+        def load_first(index):
+            load_stages.append(progress[-1])
+            return original_load(index)
+        with patch.object(self.provider.synth, '_load_single_frame', side_effect=load_first):
+            result=self.provider.render('session','one',audio,None,sha,frame_channel=sink,progress=progress.append)
+        self.assertEqual(load_stages[0], {'event': 'speech_stage', 'stage': 'prepare', 'frame_index': 0})
         self.assertEqual(sent,[(0,0),(1,1),(2,2),(3,3),(4,4)])
         self.assertEqual(result['raw_frames_sent'],5);self.assertIsNone(result['output']);self.assertFalse(result['audio_data_sent'])
         self.verify.assert_not_called();self.assertEqual(self.written,[])
