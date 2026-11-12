@@ -2137,7 +2137,9 @@ $('live-compare-form').addEventListener('submit', event => {
         return `${label} · ${title} · 商品版本 ${item.product_version} · 话术 ${item.script_id} · 已播 ${item.completed_segments} 段`;
       });
       const lineup = result.lineup_baseline?.lineup.map(item => `${item.title}（版本 ${item.version}）`).join(' → ');
-      return [summary, `${label} · 人工排品基线 ${lineup ?? '未关联'}`, ...products];
+      const observed = result.observed_product_order.map(id => savedProducts.find(product => product.id === id)?.title ?? id);
+      return [summary, `${label} · 人工排品基线 ${lineup ?? '未关联'}`,
+        `${label} · 实际口播顺序 ${observed.join(' → ') || '未记录'}`, ...products];
     });
     const gaps = {audience:'人群', traffic:'流量', promotion:'活动', refund_lag:'退款滞后'};
     lines.push('结论：不确定', '待补数据：' + comparison.missing.map(key => gaps[key] ?? key).join('、'));
