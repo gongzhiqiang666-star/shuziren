@@ -240,7 +240,13 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                                               "live_status": live_label(), "data_directory": str(store.directory.resolve())})
                 if path == '/api/live/state':
                     session = live_manager.state() if live_manager else {'status': 'idle'}
-                    return self.respond(200, {'session': session, 'advice': live_advice(session)})
+                    advice = live_advice(session)
+                    acknowledged = []
+                    if advice and session.get('id'):
+                        active = [entry['advice'] for entry in products().live_advice_acknowledgments(session['id'])
+                                  if entry['revoked_at'] is None]
+                        acknowledged = [item for item in advice if item in active]
+                    return self.respond(200, {'session': session, 'advice': advice, 'acknowledged': acknowledged})
                 if path == '/api/live/advice':
                     session = live_manager.state() if live_manager else {'status': 'idle'}
                     return self.respond(200, {'session_id': session.get('id'), 'advice': live_advice(session)})

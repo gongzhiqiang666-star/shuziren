@@ -42,10 +42,12 @@ class ConsoleHTTPTests(unittest.TestCase):
             entry, = self.call('/api/live/report?session_id=scene')[1]['advice_acknowledgments']
             self.assertEqual(entry['advice'], advice)
             self.assertIsNone(entry['revoked_at'])
+            self.assertEqual(self.call('/api/live/state')[1]['acknowledged'], [advice])
             self.assertEqual(self.call(route + '/revoke', acknowledge), (200, {'acknowledged': False}))
             revoked, = self.call('/api/live/report?session_id=scene')[1]['advice_acknowledgments']
             self.assertEqual(revoked['acknowledged_at'], entry['acknowledged_at'])
             self.assertIsNotNone(revoked['revoked_at'])
+            self.assertEqual(self.call('/api/live/state')[1]['acknowledged'], [])
             self.assertEqual(self.call(route + '/acknowledge', acknowledge)[0], 200)
             renewed, = self.call('/api/live/report?session_id=scene')[1]['advice_acknowledgments']
             self.assertIsNone(renewed['revoked_at'])
@@ -400,7 +402,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call('/api/taobao/explain', {'capture_id':'old','goods_id':123456})[0], 400)
 
     def test_live_routes_reject_stale_or_unauthorized_actions(self):
-        self.assertEqual(self.call('/api/live/state')[1], {'session': {'status': 'idle'}, 'advice': []})
+        self.assertEqual(self.call('/api/live/state')[1], {'session': {'status': 'idle'}, 'advice': [], 'acknowledged': []})
         self.assertEqual(self.call('/api/live/rotation/events?session_id=scene&after=7')[1],
                          {'session': None, 'events': [], 'next_cursor': 7})
         self.assertEqual(self.call('/api/live/rotation/events?session_id=scene&after=-1')[0], 400)
