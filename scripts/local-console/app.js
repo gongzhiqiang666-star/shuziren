@@ -519,6 +519,7 @@ async function sourcingAction(save) {
     buttons.forEach(button => { button.disabled = false; });
   }
 }
+const sourcingTrialMetrics = {orders:'同批试卖订单', refunds:'同批退款订单', fulfilled_on_time:'按时履约订单'};
 function sourcingTrialEditor(candidate) {
   const route = '/api/sourcing/trial';
   const panel = document.createElement('details');
@@ -542,6 +543,18 @@ function sourcingTrialEditor(candidate) {
   }
   sample.required = trial.required = true;
   sample.maxLength = trial.maxLength = 2000;
+  const metrics = {};
+  for (const [key, caption] of Object.entries(sourcingTrialMetrics)) {
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.max = String(Number.MAX_SAFE_INTEGER);
+    input.step = '1';
+    metrics[key] = input;
+    const label = document.createElement('label');
+    label.append(caption + '（可留空）', input);
+    form.append(label);
+  }
   const button = document.createElement('button');
   button.type = 'submit';
   button.textContent = '保存样品与试卖记录';
@@ -561,6 +574,7 @@ function sourcingTrialEditor(candidate) {
       trial.value = saved?.trial_evidence ?? '';
       cost.value = saved?.cost_minor ?? '';
       verdict.value = saved?.verdict ?? 'pending';
+      for (const [key, input] of Object.entries(metrics)) input.value = saved?.metrics?.[key] ?? '';
       status.textContent = '';
       button.disabled = false;
     } catch (error) {
@@ -574,8 +588,10 @@ function sourcingTrialEditor(candidate) {
     if (button.disabled || consoleClosed) return;
     button.disabled = true;
     try {
+      const counts = Object.fromEntries(Object.entries(metrics).filter(([, input]) => input.value !== '')
+        .map(([key, input]) => [key, input.valueAsNumber]));
       await request(route, {candidate_id:candidate.id, sample_evidence:sample.value, trial_evidence:trial.value,
-        cost_minor:cost.value === '' ? null : cost.valueAsNumber, verdict:verdict.value});
+        cost_minor:cost.value === '' ? null : cost.valueAsNumber, verdict:verdict.value, metrics:counts});
       status.textContent = '样品与试卖记录已保存';
     } catch (error) {
       status.textContent = error.message;
@@ -616,6 +632,11 @@ function sourcingDecisionEditor(candidate) {
     evidence.textContent = snapshot
       ? `保存结论时的样品依据：${snapshot.sample_evidence} · 试卖：${snapshot.trial_evidence} · 样品成本：${snapshot.cost_minor ?? '未知'}${snapshot.cost_minor == null ? '' : ' 分'}`
       : '';
+    if (snapshot) {
+      const metrics = Object.entries(sourcingTrialMetrics).map(([key, label]) =>
+        `${label} ${snapshot.metrics?.[key] ?? '未知'}`);
+      evidence.append(' · ' + metrics.join(' · '));
+    }
   }
   let loaded = false;
   let loading = false;
