@@ -19,6 +19,23 @@ from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_product_selection_evidence_preserves_zero_and_missing_conditions(self):
+        store = ProductStore(self.directory.name)
+        product = store.save(title='茶杯', content='商品说明', product_index=1, product_facts={
+            '库存': {'status': 'verified', 'value': 0, 'source': '盘点'},
+            '成本': {'status': 'unknown'},
+            '售价': {'status': 'verified', 'value': '人民币 99 元', 'source': '旧活动',
+                   'expires_at': '2020-01-01T00:00:00Z'},
+        })
+        status, response = self.call('/api/products/selection-evidence')
+        self.assertEqual(status, 200)
+        item, = response['products']
+        self.assertEqual(item['product_id'], product['id'])
+        self.assertEqual(item['conditions']['库存'], {'value': 0, 'source': '盘点'})
+        self.assertIsNone(item['conditions']['成本'])
+        self.assertIsNone(item['conditions']['售价'])
+        self.assertEqual(item['verified_fact_count'], 1)
+
     def test_live_content_source_preserves_original_product_and_script(self):
         store = ProductStore(self.directory.name)
         product = store.save(title='茶杯', content='原商品资料', product_index=1)

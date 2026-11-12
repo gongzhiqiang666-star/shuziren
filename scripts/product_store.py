@@ -769,6 +769,20 @@ class ProductStore:
         with self.connect() as db:
             return [self.decode(row) for row in db.execute("SELECT * FROM products ORDER BY rowid")]
 
+    def product_selection_evidence(self):
+        fields = ('适播性', '目标人群', '售价', '成本', '库存', '发货条件')
+        now = datetime.now(timezone.utc)
+        result = []
+        for product in self.list():
+            facts = verified_product_facts(product, now=now)
+            result.append({
+                'product_id': product['id'], 'product_version': product['version'], 'title': product['title'],
+                'conditions': {name: {'value': facts[name]['value'], 'source': facts[name]['source']}
+                               if name in facts else None for name in fields},
+                'verified_fact_count': len(facts),
+            })
+        return result
+
     def get(self, product_id):
         with self.connect() as db:
             return self.decode(db.execute("SELECT * FROM products WHERE id=?", (product_id,)).fetchone())
