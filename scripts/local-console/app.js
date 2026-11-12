@@ -434,6 +434,54 @@ async function showScripts() {
   }));
 }
 const preparationRoute = '/api/live/preparation';
+const sourcingForm = $('sourcing-form');
+const sourcingFields = {access:'获取条件', demand:'需求', competition:'竞争', terms:'采购条件',
+  minimum_order:'起订量', lead_time:'交期', logistics:'物流', quality_evidence:'质量证据'};
+for (const [key, name] of Object.entries(sourcingFields)) {
+  const label = document.createElement('label');
+  const input = document.createElement('input');
+  input.name = key;
+  input.maxLength = 2000;
+  label.append(name, input);
+  $('sourcing-details').append(label);
+}
+async function sourcingAction(save) {
+  const buttons = Array.from(sourcingForm.querySelectorAll('button'));
+  if (consoleClosed || buttons.some(button => button.disabled)) return;
+  const route = '/api/sourcing/candidates';
+  const status = $('sourcing-status');
+  buttons.forEach(button => { button.disabled = true; });
+  try {
+    if (save) {
+      const fields = Object.fromEntries(new FormData(sourcingForm));
+      const {name, supplier, source, observed_on, ...optional} = fields;
+      const details = Object.fromEntries(Object.entries(optional).filter(([, value]) => value.trim()));
+      await request(route, {name, supplier, source, observed_on, details});
+      sourcingForm.reset();
+    }
+    const {candidates} = await request(route);
+    $('sourcing-candidates').replaceChildren(...candidates.map(candidate => {
+      const row = document.createElement('li');
+      const title = document.createElement('strong');
+      title.textContent = `${candidate.name} · ${candidate.supplier} · ${candidate.source} · ${candidate.observed_on}`;
+      const facts = document.createElement('ul');
+      for (const [key, label] of Object.entries(sourcingFields)) {
+        const fact = document.createElement('li');
+        fact.textContent = `${label}：${candidate.details[key] ?? '未知'}`;
+        facts.append(fact);
+      }
+      row.append(title, facts);
+      return row;
+    }));
+    status.textContent = save ? '采购候选已保存' : candidates.length ? '' : '暂无采购候选';
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    buttons.forEach(button => { button.disabled = false; });
+  }
+}
+sourcingForm.addEventListener('submit', event => { event.preventDefault(); sourcingAction(true); });
+$('sourcing-read').addEventListener('click', () => sourcingAction(false));
 $('selection-evidence-form').addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.currentTarget;

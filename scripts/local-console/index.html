@@ -124,6 +124,19 @@
 <section>
 <h2>直播准备</h2>
 <details>
+<summary>外部采购候选</summary>
+<form id="sourcing-form">
+<label>候选商品<input name="name" required maxlength="120"></label>
+<label>供应商<input name="supplier" required maxlength="120"></label>
+<label>资料来源<input name="source" required maxlength="500"></label>
+<label>资料日期<input name="observed_on" type="date" required></label>
+<div id="sourcing-details"></div>
+<button type="submit">保存采购候选</button>
+<button id="sourcing-read" type="button" class="secondary">读取采购候选</button>
+</form>
+<p id="sourcing-status" role="status"></p><ul id="sourcing-candidates"></ul>
+</details>
+<details>
 <summary>查看选品依据</summary>
 <form id="selection-evidence-form">
 <p class="hint">可直接查看商品条件。填写以下四项可同时对照经营数据。</p>
