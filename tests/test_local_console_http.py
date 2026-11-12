@@ -112,6 +112,10 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call(route, {**corrected, 'spend_minor': 400})[0], 200)
         self.assertEqual(self.call(plans + '?product_id=' + product['id'])[1]['plans'][0]['status'], 'stale')
         self.assertEqual(self.call(plans + '/action', action)[0], 409)
+        self.assertEqual(self.call(route, corrected)[0], 200)
+        self.assertEqual(self.call(plans + '?product_id=' + product['id'])[1]['plans'][0]['status'], 'stale')
+        self.assertEqual(self.call(plans + '/action', action)[0], 409)
+        self.assertEqual(self.call(route, {**corrected, 'spend_minor': 400})[0], 200)
         self.assertEqual(self.call(plans + '/action', {**action, 'action': 'paused'})[1]['plan']['status'], 'paused')
         actions = self.call(plans + '/actions?plan_id=' + action['plan_id'])[1]['actions']
         self.assertEqual([entry['action'] for entry in actions], ['approved', 'paused'])

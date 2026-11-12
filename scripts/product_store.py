@@ -148,6 +148,7 @@ class ProductStore:
                 CREATE TABLE IF NOT EXISTS promotion_plans (
                     id TEXT PRIMARY KEY, product_id TEXT NOT NULL REFERENCES products(id),
                     snapshot TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS invalidated_promotion_plans (plan_id TEXT PRIMARY KEY);
                 CREATE TABLE IF NOT EXISTS promotion_plan_actions (
                     plan_id TEXT NOT NULL REFERENCES promotion_plans(id), action TEXT NOT NULL,
                     occurred_at TEXT NOT NULL);
@@ -1150,6 +1151,18 @@ class ProductStore:
             attribution = text(attribution, '归因口径', 500)
         self.get(product_id)
         with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            db.execute("""
+                INSERT OR IGNORE INTO invalidated_promotion_plans
+                SELECT id FROM promotion_plans WHERE product_id=?
+                  AND json_extract(snapshot, '$.bill.source')=?
+                  AND json_extract(snapshot, '$.bill.period_start')=?
+                  AND json_extract(snapshot, '$.bill.period_end')=?
+                  AND json_extract(snapshot, '$.bill.campaign')=?
+                  AND json_extract(snapshot, '$.bill.asset')=?
+                  AND (json_extract(snapshot, '$.bill.spend_minor') IS NOT ?
+                       OR json_extract(snapshot, '$.bill.attribution') IS NOT ?)
+            """, (*key, campaign, asset, spend_minor, attribution))
             db.execute("""
                 INSERT INTO promotion_spend VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(product_id, source, period_start, period_end, campaign, asset)
@@ -1183,7 +1196,9 @@ class ProductStore:
         keys = ('source', 'period_start', 'period_end', 'campaign', 'asset')
         bills = {tuple(bill[key] for key in keys): bill for bill in self.promotion_spend(product_id)}
         with self.connect() as db:
-            rows = db.execute('''SELECT snapshot, COALESCE((
+            rows = db.execute('''SELECT snapshot, EXISTS (
+                SELECT 1 FROM invalidated_promotion_plans WHERE plan_id=promotion_plans.id
+            ) AS invalidated, COALESCE((
                 SELECT action FROM promotion_plan_actions WHERE plan_id=promotion_plans.id ORDER BY rowid DESC LIMIT 1
             ), 'draft') AS status FROM promotion_plans WHERE product_id=? ORDER BY rowid DESC''',
                               (product_id,)).fetchall()
@@ -1192,7 +1207,7 @@ class ProductStore:
             plan = json.loads(row['snapshot'])
             bill = plan['bill']
             current = bills.get(tuple(bill[key] for key in keys))
-            plan['status'] = 'stale' if row['status'] == 'approved' and current != bill else row['status']
+            plan['status'] = 'stale' if row['status'] != 'paused' and (row['invalidated'] or current != bill) else row['status']
             plans.append(plan)
         return plans
 
@@ -1206,6 +1221,8 @@ class ProductStore:
                 raise ProductError('投放方案不存在')
             snapshot = json.loads(row['snapshot'])
             if action == 'approved':
+                if db.execute('SELECT 1 FROM invalidated_promotion_plans WHERE plan_id=?', (plan_id,)).fetchone():
+                    raise Conflict('账单已变化，请重新核对并保存方案')
                 bill = snapshot['bill']
                 keys = ('product_id', 'source', 'period_start', 'period_end', 'campaign', 'asset')
                 current = db.execute("""
