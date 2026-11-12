@@ -1,5 +1,6 @@
 """Resident whole-utterance features and bounded-batch frame generation."""
 import hashlib
+import logging
 import os
 from pathlib import Path
 import struct
@@ -55,6 +56,7 @@ class ResidentAvatar:
         images, detections = self.rtmp_reader.read_ahead(len(indices))
         if len(images) != len(indices):
             size = (self.rtmp_reader.width, self.rtmp_reader.height)
+            logging.warning('RTMP 输入中断，开始重连（当前批次 %d/%d 帧）', len(images), len(indices))
             self.rtmp_reader.reconnect(threading.Event())
             if (self.rtmp_reader.width, self.rtmp_reader.height) != size:
                 raise RuntimeError('RTMP 重连后输入尺寸发生变化')
@@ -64,6 +66,7 @@ class ResidentAvatar:
             detections.extend(resumed_detections)
             if len(images) != len(indices):
                 raise RuntimeError('RTMP 重连后未收到足够画面')
+            logging.warning('RTMP 已恢复取帧（补齐 %d 帧）', remaining)
         return images, [face_slot_from_detection(faces[0] if faces else None) for faces in detections]
 
     def start(self,session):
