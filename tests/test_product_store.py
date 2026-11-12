@@ -27,6 +27,18 @@ class ProductStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(ProductError, '重复'):
             self.store.import_business_metrics(product_id, header + first + first)
 
+    def test_business_csv_count_limit_is_atomic(self):
+        product_id = self.product()['id']
+        header = 'source,period_start,period_end,scope,refunds\n'
+        valid = f'商家报表,2026-11-01,2026-11-01,商品,{2**63-1}\n'
+        overflow = f'商家报表,2026-11-02,2026-11-02,商品,{2**63}\n'
+        with self.assertRaisesRegex(ProductError, '第 3 行.*退款超出'):
+            self.store.import_business_metrics(product_id, header + valid + overflow)
+        self.assertEqual(self.store.business_metrics(product_id), [])
+        self.store.import_business_metrics(product_id, header + valid)
+        row, = self.store.business_metrics(product_id)
+        self.assertEqual(row['refunds'], 2**63-1)
+
     def test_business_metrics_preserve_unknowns_and_source_scope(self):
         product_id = self.product()['id']
         period = {'period_start': '2026-11-01', 'period_end': '2026-11-07', 'scope': '店铺商品，按报表时区'}
