@@ -167,13 +167,15 @@ def import_v122_products(snapshot, source):
         raise ValueError('Legacy live configuration needs a nonempty product_scripts or products list')
     selected = index_value(payload.get('current_product_index', -1))
     multi_product = bool(payload.get('multi_product_enabled', payload.get('enable_multi_product', False)))
+    if any(not isinstance(product, dict) for product in products):
+        raise ValueError('Invalid legacy product record')
+    numbers = [product.get('product_index', position) for position, product in enumerate(products)]
+    selection_keys = list(range(len(products))) if multi_product else [index_value(number) for number in numbers]
+    if selected != -1 and selected not in selection_keys:
+        raise ValueError('Legacy current product does not exist in the supplied configuration')
     imported = []
     store = ProductStore(snapshot)
-    for position, product in enumerate(products):
-        if not isinstance(product, dict):
-            raise ValueError('Invalid legacy product record')
-        number = product.get('product_index', position)
-        numeric = index_value(number)
+    for product, number, selection_key in zip(products, numbers, selection_keys):
         title = product.get('itemName') or product.get('item_name') or product.get('title') or f'商品 {number}'
         content = product.get('content') or title
         scripts = product.get('scripts') or product.get('script') or []
@@ -195,12 +197,9 @@ def import_v122_products(snapshot, source):
         legacy['script_roles'] = roles
         saved = store.save(title=title, content=content, product_index=number, extra={'v122': legacy})
         script_ids = [store.add_script(saved, body) for body in texts]
-        selection_key = position if multi_product else numeric
         if selected != -1 and selection_key == selected:
             store.select(saved['id'])
         imported.append({'legacy_index': number, 'product_id': saved['id'], 'script_ids': script_ids})
-    if selected != -1 and store.selected() is None:
-        raise ValueError('Legacy current product does not exist in the supplied configuration')
     return imported
 
 
