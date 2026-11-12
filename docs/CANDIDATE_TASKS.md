@@ -307,3 +307,5 @@ X08-02 帧缓冲优化后分解：492 条定时帧中 18 条迟到超过 5 ms，
 X08-02 合成帧管道隔离：对 100 帧记录 Python 管道 write 的累计耗时及同帧音视频 mux 耗时。管道中位数/p95 为 2.612/4.407 ms，mux 总计为 8.151/12.284 ms。两者包含关系，剩余时间含 rawvideo 打包与 PyAV 调用开销。插桩及计时循环和真实人物不同，结果仅用于定位。证据 logs/validation/x08-nvenc-pipe-01/timing.json。
 
 X08-04 直接 rawvideo 包封装暂不采用。相同 20 秒真实人物短测完成 500 帧，提交耗时 p95 6.478 ms，但迟到 p95 5.042 ms、超 5 ms 比例 5.08%，高于上一版缓冲区方案的 4.618 ms 和 3.66%。已回退单项，保留连续 BGR 缓冲区方案。证据 logs/validation/x08-nvenc-avatar-packet-01/run-d6100c92a97a48f7860059d6fe82b228/result.json。
+
+X08-02 Windows 取消恢复补验：修复 FFmpeg 退出后输出句柄短暂占用，5 次取消均回收进程且清除半成品。另一次取消后以相同输出路径重开，写入 25 帧并正常关闭，双轨完整解码通过。证据 logs/validation/x08-nvenc-abort-03/reopened.ts。长时运行及设备并发仍待验。
