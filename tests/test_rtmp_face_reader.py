@@ -10,6 +10,14 @@ from recovered.image_rtmp_face_reader import RtmpFaceReader
 
 
 class RtmpFirstFrameTests(unittest.TestCase):
+    def test_probe_error_redacts_stream_address(self):
+        reader = RtmpFaceReader.__new__(RtmpFaceReader)
+        url = 'rtmp://127.0.0.1/live/private-test-key'
+        with patch('recovered.image_rtmp_face_reader.subprocess.run') as run:
+            run.return_value = Mock(returncode=1, stderr=f'{url}: Connection refused')
+            with self.assertRaisesRegex(RuntimeError, r'\[RTMP 地址\]: Connection refused'):
+                reader._get_video_properties(url)
+
     def test_cancel_after_decoder_start_releases_capture(self):
         reader = RtmpFaceReader.__new__(RtmpFaceReader)
         cancel = threading.Event()

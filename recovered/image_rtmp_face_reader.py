@@ -67,7 +67,9 @@ class RtmpFaceReader(VideoFaceReader):
                     if probe.poll() is None:
                         probe.kill()
                         probe.communicate()
-        if result.returncode: raise RuntimeError(result.stderr.strip())
+        if result.returncode:
+            diagnostic = result.stderr.strip().replace(rtmp_url, "[RTMP 地址]")
+            raise RuntimeError(diagnostic or "RTMP 视频探测失败")
         streams = json.loads(result.stdout).get("streams")
         if not streams:
             raise RuntimeError("RTMP 输入没有视频轨")
