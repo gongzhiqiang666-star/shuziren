@@ -961,11 +961,16 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             raise ProductError('短视频草稿字段无效')
                         return self.respond(200, {'body': products().save_live_content_draft(**value)})
                     if path == "/api/live/improvements":
-                        required = {'session_id', 'fault_id', 'owner', 'goal'}
-                        if set(value) - {'adopted'} != required or not isinstance(value['session_id'], str):
+                        required = {'session_id', 'owner', 'goal'}
+                        evidence = set(value) - required - {'adopted'}
+                        if (not required <= set(value) or evidence not in ({'fault_id'}, {'reply_task_id'})
+                                or not isinstance(value['session_id'], str)):
                             raise ProductError('改进任务字段无效')
                         data = products()
-                        data.save_live_improvement(**value)
+                        if 'reply_task_id' in value:
+                            data.save_reply_improvement(**value)
+                        else:
+                            data.save_live_improvement(**value)
                         return self.respond(200, {'tasks': data.live_improvements(value['session_id'])})
                     if path == "/api/live/preparation/review":
                         if set(value) != {'revision', 'review'}:

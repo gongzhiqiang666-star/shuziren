@@ -1049,7 +1049,7 @@ preparationPreview.addEventListener('click', async () => {
     if (missing.length) lines.push('', '场次待补条件', ...missing);
     if (improvements.length) {
       lines.push('', '已采用的改进任务', ...improvements.map(task =>
-        `${task.owner} · ${task.goal}（场次 ${task.session_id}，故障 ${task.fault_id}）`));
+        `${task.owner} · ${task.goal}（场次 ${task.session_id}，${task.reply_task_id ? '答复 ' + task.reply_task_id : '故障 ' + task.fault_id}）`));
     }
     if (after_sales_tasks.length) {
       lines.push('', '售后改进任务', ...after_sales_tasks.map(task => {
@@ -1852,11 +1852,22 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       });
       output.append(bind, baselineStatus);
     }
-    for (const fault of rotation_faults) {
-      const task = improvements.tasks.find(item => item.fault_id === fault.event_id);
+    const evidence = new Map();
+    for (const group of review.repeated_questions) {
+      for (const reply of group.evidence) evidence.set(reply.task_id, group.question);
+    }
+    for (const reply of review.replies_without_playback_record) {
+      evidence.set(reply.task_id, reply.question);
+    }
+    const sources = [
+      ...rotation_faults.map(fault => ['fault_id', fault.event_id, `故障 ${fault.event_id}`]),
+      ...Array.from(evidence, ([id, question]) => ['reply_task_id', id, `答复 ${id} · ${question}`]),
+    ];
+    for (const [field, id, label] of sources) {
+      const task = improvements.tasks.find(item => item[field] === id);
       const form = document.createElement('form');
       const heading = document.createElement('h4');
-      heading.textContent = `故障 ${fault.event_id} 的改进任务`;
+      heading.textContent = `${label}的改进任务`;
       const owner = document.createElement('input');
       owner.required = true;
       owner.maxLength = 120;
@@ -1887,7 +1898,7 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
         status.textContent = '';
         try {
           await request('/api/live/improvements', {
-            session_id:sessionId, fault_id:fault.event_id, owner:owner.value, goal:goal.value,
+            session_id:sessionId, [field]:id, owner:owner.value, goal:goal.value,
             adopted:adopted.checked,
           });
           status.textContent = '改进任务已保存';

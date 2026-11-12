@@ -632,6 +632,18 @@ class ConsoleHTTPTests(unittest.TestCase):
         historical_task, = self.call(task_route + '?session_id=scene')[1]['tasks']
         self.assertEqual(historical_task['product_version'], product['version'])
         self.assertTrue(historical_task['adopted'])
+        current = store.get(product['id'])
+        store.record_queued_reply('scene', 'current-reply', current, '有没有盖子？', '请查看商品规格', 111)
+        reply_task = {'session_id': 'scene', 'reply_task_id': 'current-reply',
+                      'owner': '运营', 'goal': '核对商品规格', 'adopted': True}
+        self.assertEqual(self.call(task_route, {**reply_task, 'session_id': 'other'})[0], 400)
+        self.assertEqual(self.call(task_route, {**reply_task, 'fault_id': 1})[0], 400)
+        self.assertEqual(self.call(task_route, reply_task)[0], 200)
+        adopted_reply, = self.call(package_route)[1]['improvements']
+        self.assertEqual((adopted_reply['reply_task_id'], adopted_reply['product_version']),
+                         ('current-reply', current['version']))
+        self.assertEqual(self.call(task_route, {**reply_task, 'adopted': False})[0], 200)
+        self.assertEqual(self.call(package_route)[1]['improvements'], [])
         self.assertIn('questions_and_answers', review['missing'])
         unqueued, = review['unqueued_replies']
         self.assertEqual((unqueued['question'], unqueued['status'], unqueued['reason']),

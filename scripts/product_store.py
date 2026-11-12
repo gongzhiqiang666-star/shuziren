@@ -211,6 +211,11 @@ class ProductStore:
                     queued_at REAL NOT NULL, PRIMARY KEY(session_id, task_id));
                 CREATE INDEX IF NOT EXISTS live_queued_replies_session_time
                     ON live_queued_replies(session_id, queued_at);
+                CREATE TABLE IF NOT EXISTS live_reply_improvement_tasks (
+                    session_id TEXT NOT NULL, reply_task_id TEXT NOT NULL,
+                    owner TEXT NOT NULL, goal TEXT NOT NULL, adopted INTEGER NOT NULL,
+                    PRIMARY KEY(session_id, reply_task_id),
+                    FOREIGN KEY(session_id, reply_task_id) REFERENCES live_queued_replies(session_id, task_id));
                 CREATE TABLE IF NOT EXISTS live_reply_reviews (
                     session_id TEXT NOT NULL, task_id TEXT NOT NULL, verdict TEXT NOT NULL,
                     review_seconds INTEGER, PRIMARY KEY(session_id, task_id),
@@ -707,6 +712,22 @@ class ProductStore:
             if not result.rowcount:
                 raise ProductError('该场次没有对应的轮播故障记录')
 
+    def save_reply_improvement(self, session_id, reply_task_id, owner, goal, adopted=False):
+        owner = text(owner, '负责人', 120)
+        goal = text(goal, '改进目标', 2000)
+        reply_task_id = text(reply_task_id, '答复任务编号', 120)
+        if type(adopted) is not bool:
+            raise ProductError('采用状态无效')
+        with self.connect() as db:
+            result = db.execute("""
+                INSERT INTO live_reply_improvement_tasks (session_id, reply_task_id, owner, goal, adopted)
+                SELECT session_id, task_id, ?, ?, ? FROM live_queued_replies WHERE session_id=? AND task_id=?
+                ON CONFLICT(session_id, reply_task_id) DO UPDATE SET
+                    owner=excluded.owner, goal=excluded.goal, adopted=excluded.adopted
+            """, (owner, goal, adopted, session_id, reply_task_id))
+            if not result.rowcount:
+                raise ProductError('该场次没有对应的答复记录')
+
     def live_improvements(self, session_id=None, *, adopted_only=False):
         with self.connect() as db:
             rows = db.execute("""
@@ -717,7 +738,15 @@ class ProductStore:
                 WHERE (? IS NULL OR task.session_id=?) AND (NOT ? OR task.adopted=1)
                 ORDER BY task.fault_id
             """, (session_id, session_id, adopted_only)).fetchall()
-        return [{**dict(row), 'adopted': bool(row['adopted'])} for row in rows]
+            replies = db.execute("""
+                SELECT task.*, reply.question AS reason, reply.queued_at AS occurred_at,
+                       reply.product_id, reply.product_version, NULL AS script_id
+                FROM live_reply_improvement_tasks task
+                JOIN live_queued_replies reply ON reply.session_id=task.session_id AND reply.task_id=task.reply_task_id
+                WHERE (? IS NULL OR task.session_id=?) AND (NOT ? OR task.adopted=1)
+                ORDER BY reply.queued_at, reply.task_id
+            """, (session_id, session_id, adopted_only)).fetchall()
+        return [{**dict(row), 'adopted': bool(row['adopted'])} for row in (*rows, *replies)]
 
     def record_rotation_completion(self, session_id, task_id, item, segment_index, *,
                                    sample_start=None, sample_end=None, voice_id=None, speech_provenance=None):
