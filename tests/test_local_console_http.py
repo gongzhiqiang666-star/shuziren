@@ -35,6 +35,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertIsNone(item['conditions']['成本'])
         self.assertIsNone(item['conditions']['售价'])
         self.assertEqual(item['verified_fact_count'], 1)
+        self.assertEqual(item['recommendation'], {'role': 'hold', 'reason': '已核对库存为零'})
         store.save(title='桌布', content='另一商品', product_index=2)
         window = {'source': '商家报表', 'scope': '商品日统计',
                   'period_start': '2026-11-01', 'period_end': '2026-11-01'}
@@ -48,6 +49,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(first['business_metrics']['orders'], 5)
         self.assertEqual(first['business_metrics']['refunds'], 0)
         self.assertIsNone(second['business_metrics'])
+        self.assertEqual(second['recommendation']['role'], 'hold')
         self.assertIn('覆盖', second['business_metrics_gap'])
 
     def test_live_content_source_preserves_original_product_and_script(self):

@@ -775,11 +775,24 @@ class ProductStore:
         result = []
         for product in self.list():
             facts = verified_product_facts(product, now=now)
+            stock = facts.get('库存', {}).get('value')
+            suitability = facts.get('适播性', {}).get('value')
+            if type(stock) is int and stock == 0:
+                role, reason = 'hold', '已核对库存为零'
+            elif suitability == '不适播':
+                role, reason = 'hold', '已核对为不适播'
+            elif type(stock) is not int or stock < 0 or '发货条件' not in facts:
+                role, reason = 'hold', '需核对可售库存和发货条件'
+            elif suitability == '适播' and '目标人群' in facts:
+                role, reason = 'support', '已有适播、人群、库存及发货依据，可作为辅助商品'
+            else:
+                role, reason = 'trial', '库存与发货条件已核对，可小范围试播'
             result.append({
                 'product_id': product['id'], 'product_version': product['version'], 'title': product['title'],
                 'conditions': {name: {'value': facts[name]['value'], 'source': facts[name]['source']}
                                if name in facts else None for name in fields},
                 'verified_fact_count': len(facts),
+                'recommendation': {'role': role, 'reason': reason},
             })
         return result
 
