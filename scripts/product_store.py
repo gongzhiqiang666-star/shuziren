@@ -27,13 +27,16 @@ def text(value, label, limit):
     return value.strip()
 
 
+INTERNAL_PRODUCT_FACTS = {'成本', '排品角色', '低库存阈值'}
+
+
 def product_prompt_info(snapshot, *, now=None):
     """Project a versioned product into the facts permitted in a prompt."""
     extra = snapshot.get("extra") or {}
     if "product_facts" not in extra:
         return {"title": snapshot["title"], "content": snapshot["content"]}
     verified = {name: fact["value"] for name, fact in verified_product_facts(snapshot, now=now).items()
-                if name != '低库存阈值'}
+                if name not in INTERNAL_PRODUCT_FACTS}
     return {"title": snapshot["title"], "content": json.dumps(verified, ensure_ascii=False)}
 
 
@@ -356,7 +359,7 @@ class ProductStore:
         for product_id in preparation['draft']['product_ids']:
             product = self.get(product_id)
             facts = verified_product_facts(product, now=now)
-            customer_facts = {name: fact for name, fact in facts.items() if name != '低库存阈值'}
+            customer_facts = {name: fact for name, fact in facts.items() if name not in INTERNAL_PRODUCT_FACTS}
             items.append({
                 'product_id': product_id, 'product_version': product['version'], 'title': product['title'],
                 'script_id': self.selected_script(product_id),
@@ -1423,7 +1426,7 @@ class ProductStore:
             items.append({
                 'product_id': product_id, 'product_version': product['version'], 'title': product['title'],
                 'facts': {name: {'value': facts[name]['value'], 'source': facts[name]['source']}
-                          if name in facts and name != '低库存阈值' else None for name in fact_names},
+                          if name in facts and name not in INTERNAL_PRODUCT_FACTS else None for name in fact_names},
             })
         return items
 
