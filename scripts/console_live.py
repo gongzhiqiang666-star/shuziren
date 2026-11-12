@@ -515,6 +515,10 @@ class ConsoleLive:
                     retry = [item['product_id'] for item in rotation['items']] if rotation else []
                     self.rotation = None
                     self.status.update(rotation_products=[], rotation_error=str(error), rotation_retry_products=retry)
+                    try:
+                        self.tts.products.record_rotation_fault(session_id, time.time(), str(error))
+                    except sqlite3.Error:
+                        logging.exception('记录轮播故障失败')
                     self.status.pop('shift_index', None)
                     pending = None
 

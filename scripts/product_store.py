@@ -129,6 +129,8 @@ class ProductStore:
                     PRIMARY KEY(product_id, source, period_start, period_end, scope));
                 CREATE TABLE IF NOT EXISTS live_preparation (
                     singleton INTEGER PRIMARY KEY CHECK(singleton=1), draft TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS live_rotation_faults (
+                    session_id TEXT NOT NULL, occurred_at REAL NOT NULL, reason TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_preparation_review (
                     revision TEXT PRIMARY KEY, review TEXT NOT NULL);
             ''')
@@ -402,12 +404,21 @@ class ProductStore:
                 SELECT revision, manual, occurred_at FROM live_control_events
                 WHERE session_id = ? ORDER BY revision
             """, (session_id,)).fetchall()
+            faults = db.execute("""
+                SELECT rowid AS event_id, occurred_at, reason FROM live_rotation_faults
+                WHERE session_id = ? ORDER BY rowid
+            """, (session_id,)).fetchall()
         return {
             'session': dict(session),
             'products': [dict(row) for row in products],
             'controls': [{**dict(row), 'manual': bool(row['manual'])} for row in controls],
+            'rotation_faults': [dict(row) for row in faults],
             'missing': ['product_exposure', 'questions_and_answers', 'product_switches', 'fault_events', 'attributed_sales'],
         }
+
+    def record_rotation_fault(self, session_id, occurred_at, reason):
+        with self.connect() as db:
+            db.execute('INSERT INTO live_rotation_faults VALUES (?, ?, ?)', (session_id, occurred_at, reason))
 
     def record_rotation_completion(self, session_id, task_id, item, segment_index, *,
                                    sample_start=None, sample_end=None):

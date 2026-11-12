@@ -30,10 +30,13 @@ class ConsoleHTTPTests(unittest.TestCase):
         store.record_rotation_completion('scene', 'second', item, 1)
         store.record_rotation_completion('other', 'first', item, 0)
         store.record_live_control('scene', 1, True, 103)
+        store.record_rotation_fault('scene', 104, '语音合成超时')
+        store.record_rotation_fault('other', 105, '其他场次故障')
         status, report = self.call('/api/live/report?session_id=scene')
         self.assertEqual(status, 200)
         self.assertEqual(report['session']['frames'], 225)
         self.assertEqual(report['session']['failure_reason'], '输出设备断开')
+        self.assertEqual(report['rotation_faults'], [{'event_id': 1, 'occurred_at': 104, 'reason': '语音合成超时'}])
         product, = report['products']
         self.assertEqual(product['completed_segments'], 2)
         self.assertEqual(product['product_version'], 2)

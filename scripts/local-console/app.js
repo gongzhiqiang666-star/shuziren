@@ -812,7 +812,7 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
   const output = $('live-report-output');
   output.textContent = '正在读取场次报告';
   try {
-    const {session, products, controls, missing} = await request('/api/live/report?' + new URLSearchParams({session_id:sessionId}));
+    const {session, products, controls, rotation_faults, missing} = await request('/api/live/report?' + new URLSearchParams({session_id:sessionId}));
     if (($('live-event-scene').value || liveSession.id) !== sessionId) return;
     const formatTime = value => value == null ? '未记录' : new Date(value * 1000).toLocaleString();
     const labels = {product_exposure:'商品曝光', questions_and_answers:'问答', product_switches:'切品',
@@ -825,6 +825,7 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
         return `${title} · 商品版本 ${item.product_version} · 话术 ${item.script_id} · 已播片段 ${item.completed_segments}`;
       }),
       ...controls.map(item => `${formatTime(item.occurred_at)} · ${item.manual ? '人工接管' : '恢复自动'} · 记录 ${item.revision}`),
+      ...rotation_faults.map(item => `${formatTime(item.occurred_at)} · 轮播故障 ${item.event_id} · ${item.reason}`),
     ];
     if (session.failure_reason) lines.push('场次失败原因：' + session.failure_reason);
     if (missing.length) lines.push('数据缺口：' + missing.map(key => labels[key] ?? key).join('、'));
