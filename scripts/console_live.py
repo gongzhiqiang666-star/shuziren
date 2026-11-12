@@ -361,6 +361,7 @@ class ConsoleLive:
                     self.tts.products.record_rotation_completion(
                         self.status['id'], source_id, item, self.rotation['segment'],
                         sample_start=sample_start, sample_end=sample_end,
+                        voice_id=self.rotation.pop('task_voice_id', None),
                     )
                 except sqlite3.Error:
                     logging.exception('记录商品口播完成事件失败')
@@ -519,6 +520,7 @@ class ConsoleLive:
                                 item = {**item, 'voice_id': voice_id}
                             self.enqueue(session_id, task_id, rotation_item=item)
                             rotation['task_id'] = task_id
+                            rotation['task_voice_id'] = voice_id
                             pending = None
                         elif state['status'] not in {'running', 'succeeded'}:
                             raise ProductError(state.get('error') or '轮播语音合成失败')
