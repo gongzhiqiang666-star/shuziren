@@ -144,6 +144,8 @@ class ProductStore:
                 db.execute('ALTER TABLE scripts ADD COLUMN parent_script_id TEXT REFERENCES scripts(id)')
             if 'failure_reason' not in {row[1] for row in db.execute('PRAGMA table_info(live_sessions)')}:
                 db.execute('ALTER TABLE live_sessions ADD COLUMN failure_reason TEXT')
+            if 'played_at' not in {row[1] for row in db.execute('PRAGMA table_info(live_queued_replies)')}:
+                db.execute('ALTER TABLE live_queued_replies ADD COLUMN played_at REAL')
             event_columns = {row[1] for row in db.execute('PRAGMA table_info(live_rotation_events)')}
             for column in ('sample_start', 'sample_end'):
                 if column not in event_columns:
@@ -413,7 +415,7 @@ class ProductStore:
                 WHERE session_id = ? ORDER BY rowid
             """, (session_id,)).fetchall()
             replies = db.execute("""
-                SELECT task_id, product_id, product_version, question, answer, queued_at
+                SELECT task_id, product_id, product_version, question, answer, queued_at, played_at
                 FROM live_queued_replies WHERE session_id = ? ORDER BY rowid
             """, (session_id,)).fetchall()
             switches = db.execute("""
@@ -437,8 +439,15 @@ class ProductStore:
 
     def record_queued_reply(self, session_id, task_id, product, question, answer, queued_at):
         with self.connect() as db:
-            db.execute('INSERT OR IGNORE INTO live_queued_replies VALUES (?, ?, ?, ?, ?, ?, ?)',
+            db.execute('''INSERT OR IGNORE INTO live_queued_replies
+                       (session_id, task_id, product_id, product_version, question, answer, queued_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)''',
                        (session_id, task_id, product['id'], product['version'], question, answer, queued_at))
+
+    def record_reply_playback(self, session_id, task_id, played_at):
+        with self.connect() as db:
+            db.execute('UPDATE live_queued_replies SET played_at=? WHERE session_id=? AND task_id=? AND played_at IS NULL',
+                       (played_at, session_id, task_id))
 
     def record_rotation_fault(self, session_id, occurred_at, reason):
         with self.connect() as db:

@@ -834,6 +834,7 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       const title = savedProducts.find(product => product.id === reply.product_id)?.title ?? reply.product_id;
       lines.push(
         `${formatTime(reply.queued_at)} · 问答已入队 · ${title} · 商品版本 ${reply.product_version} · 任务 ${reply.task_id}`,
+        reply.played_at == null ? '播放完成时间未记录' : `本机播放完成 ${formatTime(reply.played_at)}`,
         `问：${reply.question}`, `答：${reply.answer}`,
       );
     }

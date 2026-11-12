@@ -35,12 +35,14 @@ class ConsoleHTTPTests(unittest.TestCase):
         store.record_rotation_fault('other', 105, '其他场次故障')
         store.record_queued_reply('scene', 'reply', {'id': 'product', 'version': 2}, '什么材质？', '陶瓷', 106)
         store.record_queued_reply('other', 'reply', {'id': 'product', 'version': 2}, '其他问题', '其他回答', 107)
+        store.record_reply_playback('scene', 'reply', 108)
+        store.record_reply_playback('scene', 'reply', 109)
         status, report = self.call('/api/live/report?session_id=scene')
         self.assertEqual(status, 200)
         self.assertEqual(report['session']['frames'], 225)
         self.assertEqual(report['queued_replies'], [{
             'task_id': 'reply', 'product_id': 'product', 'product_version': 2,
-            'question': '什么材质？', 'answer': '陶瓷', 'queued_at': 106,
+            'question': '什么材质？', 'answer': '陶瓷', 'queued_at': 106, 'played_at': 108,
         }])
         self.assertEqual(report['session']['failure_reason'], '输出设备断开')
         self.assertEqual(report['rotation_faults'], [{'event_id': 1, 'occurred_at': 104, 'reason': '语音合成超时'}])

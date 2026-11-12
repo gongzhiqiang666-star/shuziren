@@ -352,6 +352,11 @@ class ConsoleLive:
                     self.status['rotation_event_error'] = '商品口播完成事件写入失败'
                 self.rotation['task_id'] = None
                 self._advance_rotation(self.rotation)
+            else:
+                try:
+                    self.tts.products.record_reply_playback(self.status['id'], source_id, time.time())
+                except sqlite3.Error:
+                    logging.exception('记录问答播放完成失败')
 
     def _advance_rotation(self, rotation):
         item = rotation['items'][rotation['index']]
