@@ -1753,6 +1753,9 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       lines.push(`短视频草稿 ${drafts} 条 · 已登记发布回执 ${recorded_publications} 条`);
       if (tracked_drafts) lines.push(`有改稿记录的草稿 ${revised_drafts}/${tracked_drafts}`);
       if (drafts > tracked_drafts) lines.push(`改稿次数未知 ${drafts - tracked_drafts} 条`);
+      if (content_summary.timed_drafts) {
+        lines.push(`人工登记平均制作耗时 ${content_summary.average_production_seconds.toFixed(1)} 秒（${content_summary.timed_drafts} 条）`);
+      }
     }
     for (const application of preparation_applications) {
       if (!application.improvements.length) continue;
@@ -2063,6 +2066,14 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
     draftText.rows = 8;
     draftText.maxLength = 100000;
     draftLabel.append('短视频文案', draftText);
+    const productionLabel = document.createElement('label');
+    const productionSeconds = document.createElement('input');
+    productionSeconds.type = 'number';
+    productionSeconds.min = '0';
+    productionSeconds.max = '2147483647';
+    productionSeconds.step = '1';
+    productionLabel.hidden = true;
+    productionLabel.append('制作耗时（秒，选填）', productionSeconds);
     const saveDraft = document.createElement('button');
     saveDraft.type = 'button';
     saveDraft.textContent = '保存文案';
@@ -2071,7 +2082,7 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
     withdrawDraft.type = 'button';
     withdrawDraft.textContent = '停止复用';
     withdrawDraft.hidden = true;
-    details.append(draftButton, draftStatus, draftLabel, saveDraft, withdrawDraft);
+    details.append(draftButton, draftStatus, draftLabel, productionLabel, saveDraft, withdrawDraft);
     const params = new URLSearchParams({session_id:sessionId, task_id:event.task_id});
     const scheduleForm = document.createElement('form');
     scheduleForm.hidden = true;
@@ -2179,7 +2190,10 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
       if (saveDraft.disabled || consoleClosed) return;
       saveDraft.disabled = true;
       try {
-        await request('/api/live/content-draft', {session_id:sessionId, task_id:event.task_id, body:draftText.value});
+        if (!productionSeconds.reportValidity()) return;
+        const payload = {session_id:sessionId, task_id:event.task_id, body:draftText.value};
+        if (productionSeconds.value !== '') payload.production_seconds = productionSeconds.valueAsNumber;
+        await request('/api/live/content-draft', payload);
         draftStatus.textContent = '文案已保存';
         withdrawDraft.hidden = false;
         await loadSchedule();
@@ -2197,6 +2211,7 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         await request('/api/live/content-withdraw', {session_id:sessionId, task_id:event.task_id});
         draftText.readOnly = true;
         saveDraft.hidden = true;
+        productionLabel.hidden = true;
         withdrawDraft.hidden = true;
         if (reuseNarration) reuseNarration.hidden = true;
         await loadSchedule();
@@ -2219,6 +2234,7 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         draftLabel.hidden = false;
         draftText.readOnly = !draft.editable;
         saveDraft.hidden = !draft.editable;
+        productionLabel.hidden = !draft.editable;
         draftButton.hidden = true;
         withdrawDraft.hidden = draft.saved_body == null || Boolean(draft.withdrawn);
         draftStatus.textContent = draft.withdrawn ? '文案已停止复用，仅供回查'
