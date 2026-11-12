@@ -1315,6 +1315,63 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       paragraph.textContent = line;
       return paragraph;
     }));
+    if (queued_replies.length) {
+      const reviewSummary = document.createElement('p');
+      const updateSummary = () => {
+        const correct = queued_replies.filter(reply => reply.verdict === 'correct').length;
+        const incorrect = queued_replies.filter(reply => reply.verdict === 'incorrect').length;
+        const uncertain = queued_replies.filter(reply => reply.verdict === 'uncertain').length;
+        const timed = queued_replies.filter(reply => reply.review_seconds != null);
+        const rate = correct + incorrect ? `${(100 * correct / (correct + incorrect)).toFixed(1)}%` : '未知';
+        const seconds = timed.reduce((total, reply) => total + reply.review_seconds, 0);
+        reviewSummary.textContent = `答复复核 ${correct + incorrect + uncertain}/${queued_replies.length} 条 · 正确率 ${rate}（已判定 ${correct + incorrect} 条）· 不确定 ${uncertain} 条 · 已记录用时 ${timed.length ? seconds + ' 秒' : '未知'}（${timed.length} 条）`;
+      };
+      updateSummary();
+      output.append(reviewSummary);
+      for (const reply of queued_replies) {
+        const form = document.createElement('form');
+        const verdict = document.createElement('select');
+        verdict.required = true;
+        verdict.append(new Option('请选择', ''), new Option('正确', 'correct'),
+          new Option('错误', 'incorrect'), new Option('不确定', 'uncertain'));
+        verdict.value = reply.verdict ?? '';
+        const verdictLabel = document.createElement('label');
+        verdictLabel.append(`复核答复：${reply.question} · 任务 ${reply.task_id}`, verdict);
+        const time = document.createElement('input');
+        time.type = 'number';
+        time.min = '0';
+        time.max = '86400';
+        time.step = '1';
+        time.value = reply.review_seconds ?? '';
+        const timeLabel = document.createElement('label');
+        timeLabel.append('人工核对用时（秒，可留空）', time);
+        const button = document.createElement('button');
+        button.type = 'submit';
+        button.textContent = '保存答复复核';
+        const feedback = document.createElement('p');
+        feedback.setAttribute('role', 'status');
+        form.append(verdictLabel, timeLabel, button, feedback);
+        form.addEventListener('submit', async event => {
+          event.preventDefault();
+          if (button.disabled || consoleClosed) return;
+          button.disabled = true;
+          const payload = {session_id:sessionId, task_id:reply.task_id, verdict:verdict.value,
+            review_seconds:time.value === '' ? null : time.valueAsNumber};
+          try {
+            await request('/api/live/reply-review', payload);
+            reply.verdict = payload.verdict;
+            reply.review_seconds = payload.review_seconds;
+            updateSummary();
+            feedback.textContent = '复核已保存';
+          } catch (error) {
+            feedback.textContent = error.message;
+          } finally {
+            button.disabled = false;
+          }
+        });
+        output.append(form);
+      }
+    }
     const baselineStatus = document.createElement('p');
     const showBaseline = baseline => {
       baselineStatus.textContent = `人工排品基线 · ${formatTime(Date.parse(baseline.captured_at) / 1000)} · ` +
