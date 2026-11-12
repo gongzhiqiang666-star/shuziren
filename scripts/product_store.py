@@ -131,6 +131,8 @@ class ProductStore:
                     singleton INTEGER PRIMARY KEY CHECK(singleton=1), draft TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_lineup_baseline (
                     singleton INTEGER PRIMARY KEY CHECK(singleton=1), snapshot TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS live_lineup_trials (
+                    session_id TEXT PRIMARY KEY REFERENCES live_sessions(session_id), snapshot TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_rotation_faults (
                     session_id TEXT NOT NULL, occurred_at REAL NOT NULL, reason TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_content_drafts (
@@ -256,6 +258,19 @@ class ProductStore:
             db.execute('INSERT OR REPLACE INTO live_lineup_baseline VALUES (1, ?)',
                        (json.dumps(baseline, ensure_ascii=False),))
         return baseline
+
+    def bind_live_lineup_trial(self, session_id):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            result = db.execute("""
+                INSERT INTO live_lineup_trials
+                SELECT session_id, snapshot FROM live_sessions CROSS JOIN live_lineup_baseline
+                WHERE session_id=? AND started_at IS NOT NULL AND ended_at IS NOT NULL
+                ON CONFLICT(session_id) DO NOTHING
+            """, (session_id,))
+            if not result.rowcount and not db.execute(
+                    'SELECT 1 FROM live_lineup_trials WHERE session_id=?', (session_id,)).fetchone():
+                raise Conflict('需要已留存的人工基线和已结束的试播场次')
 
     def build_live_preparation(self):
         preparation = self.live_preparation()
@@ -469,6 +484,7 @@ class ProductStore:
             session = db.execute('SELECT * FROM live_sessions WHERE session_id = ?', (session_id,)).fetchone()
             if session is None:
                 raise ProductError('场次记录不存在')
+            trial = db.execute('SELECT snapshot FROM live_lineup_trials WHERE session_id=?', (session_id,)).fetchone()
             products = db.execute("""
                 SELECT product_id, product_version, script_id, COUNT(*) AS completed_segments,
                        MIN(completed_at) AS first_completed_at, MAX(completed_at) AS last_completed_at
@@ -502,6 +518,7 @@ class ProductStore:
             """, (session_id,)).fetchall()
         return {
             'session': dict(session),
+            'lineup_baseline': json.loads(trial['snapshot']) if trial else None,
             'products': [dict(row) for row in products],
             'controls': [{**dict(row), 'manual': bool(row['manual'])} for row in controls],
             'rotation_faults': [dict(row) for row in faults],

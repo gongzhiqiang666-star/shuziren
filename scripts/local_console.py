@@ -799,6 +799,13 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         if set(value) != {'revision'}:
                             return self.respond(400, {"error": "需要准备包版本"})
                         return self.respond(200, products().live_preparation_rotation(**value))
+                    if path == "/api/live/preparation/trial":
+                        if set(value) != {'session_id'} or not isinstance(value['session_id'], str):
+                            raise ProductError('试播场次无效')
+                        data = products()
+                        data.bind_live_lineup_trial(value['session_id'])
+                        return self.respond(200, {'lineup_baseline': data.live_session_report(
+                            value['session_id'])['lineup_baseline']})
                     if path == "/api/live/preparation/baseline":
                         if value:
                             raise ProductError('基线使用当前已保存草稿')

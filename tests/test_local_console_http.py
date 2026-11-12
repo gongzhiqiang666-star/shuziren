@@ -42,6 +42,13 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual([item['id'] for item in captured['baseline']['lineup']], order)
         self.assertEqual(self.call(route, {'product_ids': list(reversed(order))})[0], 200)
         self.assertEqual(self.call(route + '/baseline'), (200, captured))
+        trial = {'session_id': 'trial'}
+        self.assertEqual(self.call(route + '/trial', trial)[0], 409)
+        store.record_live_session('trial', 1, started_at=2, ended_at=3, status='stopped')
+        self.assertEqual(self.call(route + '/trial', trial), (200, {'lineup_baseline': captured['baseline']}))
+        self.assertEqual(self.call(route + '/baseline', {})[0], 200)
+        self.assertEqual(self.call(route + '/trial', trial)[1]['lineup_baseline'], captured['baseline'])
+        self.assertEqual(self.call('/api/live/report?session_id=trial')[1]['lineup_baseline'], captured['baseline'])
 
     def test_product_selection_requires_verified_primary_role_and_commercial_facts(self):
         store = ProductStore(self.directory.name)
