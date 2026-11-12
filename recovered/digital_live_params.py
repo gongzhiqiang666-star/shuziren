@@ -55,7 +55,8 @@ def build_local_params(live_data):
     if input_mode not in ("file", "camera", "video", "rtmp", "dual"):
         raise ValueError(f"不支持的驱动模式: {input_mode}")
     video_path = (live_data.get("video_path_for_driving") or "").strip()
-    rtmp_url = (live_data.get("rtmp_url_for_driving") or "").strip()
+    rtmp_value = live_data.get("rtmp_url_for_driving")
+    rtmp_url = rtmp_value.strip() if isinstance(rtmp_value, str) else ""
     if input_mode == "video":
         if not video_path:
             raise ValueError("使用视频驱动模式时，必须提供视频文件路径")
