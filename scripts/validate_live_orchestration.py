@@ -3,6 +3,7 @@ import argparse
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import threading
 import time
 from urllib.error import HTTPError
@@ -253,6 +254,12 @@ def main():
                 capture.wait()
                 report['capture'] = str(capture.path)
                 report['capture_buffer_drop_reported'] = capture.reported_buffer_drop()
+                subprocess.run([
+                    str(ffmpeg), '-nostdin', '-v', 'error', '-xerror', '-i', str(capture.path),
+                    '-map', '0:v:0', '-map', '0:a:0', '-fps_mode', 'passthrough',
+                    '-enc_time_base:v', '1:1000', '-f', 'null', '-',
+                ], check=True, timeout=max(30, args.capture_seconds + 10))
+                report['capture_decode_verified'] = True
             call('/api/live/stop', {'session_id': session_id})
             stopped = live(lambda state: state['id'] == session_id and state['status'] == 'stopped')
             if cycle == 0 and interactions:
