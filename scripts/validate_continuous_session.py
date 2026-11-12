@@ -49,6 +49,9 @@ def main():
     parser.add_argument('--seconds',type=int,default=20)
     parser.add_argument('--device-audio-output',type=int)
     parser.add_argument('--capture-devices',action='store_true')
+    parser.add_argument('--capture-buffer-mb', type=int, default=16)
+    parser.add_argument('--tts-engine', choices=('indextts', 'zipvoice', 'omnivoice'), default='indextts')
+    parser.add_argument('--tts-model-root', type=Path)
     parser.add_argument('--dshow-video-clock',action='store_true')
     parser.add_argument('--smooth-device-clock',action='store_true')
     parser.add_argument('--device-buffer-frames',type=int,choices=(2,4,8),default=2)
@@ -65,6 +68,8 @@ def main():
         parser.error('--device-buffer-frames requires --device-audio-output')
     if args.camera_i420 and args.device_audio_output is None:
         parser.error('--camera-i420 requires --device-audio-output')
+    if args.capture_buffer_mb < 1:
+        parser.error('--capture-buffer-mb must be positive')
     if args.capture_devices and args.seconds * 25 > 65536:
         parser.error('--capture-devices supports at most 2621 seconds at 25 fps (16-bit frame counter)')
     if args.speech_interval_seconds is not None and not 0<args.speech_interval_seconds<args.seconds-20:
@@ -89,6 +94,9 @@ def main():
     report['startup']={'engine_cache_seeded':args.seed_cache is not None}
     report['idle_frames']=args.idle_frames
     report['dshow_video_clock']=args.dshow_video_clock
+    report['tts_engine'] = args.tts_engine
+    if args.capture_devices:
+        report['capture_buffer_mb'] = args.capture_buffer_mb
     tts=client=receiver=sink=session=ingress=assembler=injector=None
     completed=[];expected={};errors=[];presented=[];offsets=[];submit_costs=[];device_trace=[]
     capture=None
@@ -112,7 +120,7 @@ def main():
                              video_delay_ms=args.video_delay_ms,smooth_clock=args.smooth_device_clock,
                              buffer_frames=args.device_buffer_frames,camera_i420=args.camera_i420)
         products=ProductStore(root);product=products.save(title='V05连续输出验证',content='仅本机，不开播',product_index=12);products.select(product['id'])
-        tts=TTSTasks(args.runtime_root,root)
+        tts=TTSTasks(args.runtime_root,root,engine=args.tts_engine,model_root=args.tts_model_root)
         warm_script=products.add_script(product,'这是准备阶段的语音模型预热。');products.select_script(product['id'],warm_script)
         tts.start(product['id'],warm_script,voice['id'],use_cache=False);warm=wait(tts,195)
         if warm['status']!='succeeded':raise RuntimeError('TTS preparation failed')
@@ -151,7 +159,8 @@ def main():
                 if args.capture_devices:
                     if not first_device_frame.wait(2):raise TimeoutError('Camera did not send its first frame')
                     if session.stop_event.is_set():return
-                    capture=DeviceCapture(ffmpeg,root,max(1,args.seconds-2),dshow_video_clock=args.dshow_video_clock)
+                    capture=DeviceCapture(ffmpeg,root,max(1,args.seconds-2),dshow_video_clock=args.dshow_video_clock,
+                                          buffer_mb=args.capture_buffer_mb)
                 previous=None
                 for offset,case_id,text in schedule:
                     if session.stop_event.wait(max(0,schedule_start+offset-time.monotonic())):return
