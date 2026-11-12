@@ -1094,7 +1094,11 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
     saveDraft.type = 'button';
     saveDraft.textContent = '保存文案';
     saveDraft.hidden = true;
-    details.append(draftButton, draftStatus, draftLabel, saveDraft);
+    const withdrawDraft = document.createElement('button');
+    withdrawDraft.type = 'button';
+    withdrawDraft.textContent = '停止复用';
+    withdrawDraft.hidden = true;
+    details.append(draftButton, draftStatus, draftLabel, saveDraft, withdrawDraft);
     const params = new URLSearchParams({session_id:sessionId, task_id:event.task_id});
     const scheduleForm = document.createElement('form');
     scheduleForm.hidden = true;
@@ -1162,8 +1166,9 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         const {schedule, facts_review} = await request('/api/live/content-schedule?' + params);
         for (const [key, input] of Object.entries(scheduleFields)) input.value = schedule?.[key] ?? '';
         scheduleStatus.textContent = schedule && !schedule.draft_matches ? '文案已修改，请重新核对并保存排期' : '';
-        scheduleSave.disabled = facts_review !== 'version_current';
-        if (scheduleSave.disabled) scheduleStatus.textContent = '商品事实已变化，排期仅供查看';
+        scheduleSave.disabled = facts_review !== 'version_current' || Boolean(schedule?.withdrawn);
+        if (schedule?.withdrawn) scheduleStatus.textContent = '文案已停止复用，排期仅供查看';
+        else if (scheduleSave.disabled) scheduleStatus.textContent = '商品事实已变化，排期仅供查看';
         showPublicationReceipt(schedule);
       } catch (error) {
         scheduleStatus.textContent = error.message;
@@ -1193,11 +1198,29 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
       try {
         await request('/api/live/content-draft', {session_id:sessionId, task_id:event.task_id, body:draftText.value});
         draftStatus.textContent = '文案已保存';
+        withdrawDraft.hidden = false;
         await loadSchedule();
       } catch (error) {
         draftStatus.textContent = error.message;
       } finally {
         saveDraft.disabled = false;
+      }
+    });
+    withdrawDraft.addEventListener('click', async () => {
+      if (withdrawDraft.disabled || consoleClosed) return;
+      withdrawDraft.disabled = true;
+      try {
+        await request('/api/live/content-withdraw', {session_id:sessionId, task_id:event.task_id});
+        draftText.readOnly = true;
+        saveDraft.hidden = true;
+        withdrawDraft.hidden = true;
+        await loadSchedule();
+        scheduleSave.disabled = true;
+        draftStatus.textContent = '文案已停止复用，仅供回查';
+      } catch (error) {
+        draftStatus.textContent = error.message;
+      } finally {
+        withdrawDraft.disabled = false;
       }
     });
     draftButton.addEventListener('click', async () => {
@@ -1212,8 +1235,11 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         draftText.readOnly = !draft.editable;
         saveDraft.hidden = !draft.editable;
         draftButton.hidden = true;
-        draftStatus.textContent = draft.editable ? '' : '原商品或话术事实已变化，历史文案仅供核对';
+        withdrawDraft.hidden = draft.saved_body == null || Boolean(draft.withdrawn);
+        draftStatus.textContent = draft.withdrawn ? '文案已停止复用，仅供回查'
+          : draft.editable ? '' : '原商品或话术事实已变化，历史文案仅供核对';
         if (draft.saved_body != null) await loadSchedule();
+        if (draft.withdrawn) scheduleSave.disabled = true;
         if (draft.subtitle_srt) {
           const subtitleLabel = document.createElement('label');
           const subtitle = document.createElement('textarea');
