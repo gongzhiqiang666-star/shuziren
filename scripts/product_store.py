@@ -917,6 +917,8 @@ class ProductStore:
 
     def after_sales(self, product_id):
         self.get(product_id)
+        tasks = {(item['source'], item['period_start'], item['period_end'], item['category']): item
+                 for item in self.after_sales_tasks([product_id])}
         with self.connect() as db:
             rows = db.execute('SELECT * FROM product_after_sales WHERE product_id=? ORDER BY period_end DESC, source',
                               (product_id,)).fetchall()
@@ -932,6 +934,10 @@ class ProductStore:
             counts = json.loads(row['counts'])
             followups = [{'category': category, 'count': count, 'recommendation': recommendations[category]}
                          for category, count in counts.items() if count > 0]
+            for followup in followups:
+                task = tasks.get((row['source'], row['period_start'], row['period_end'], followup['category']))
+                if task:
+                    followup['task'] = task
             reports.append({**dict(row), 'counts': counts, 'followups': followups})
         return reports
 

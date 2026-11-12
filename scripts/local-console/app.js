@@ -172,6 +172,42 @@ async function afterSalesAction(action) {
         const suggestion = document.createElement('p');
         suggestion.textContent = `${categories[followup.category]} ${followup.count} · ${followup.recommendation}`;
         row.append(suggestion);
+        const form = document.createElement('form');
+        const owner = document.createElement('input');
+        owner.required = true;
+        owner.maxLength = 120;
+        owner.value = followup.task?.owner ?? '';
+        const goal = document.createElement('textarea');
+        goal.required = true;
+        goal.maxLength = 2000;
+        goal.value = followup.task?.goal ?? followup.recommendation;
+        const ownerLabel = document.createElement('label');
+        ownerLabel.append('负责人', owner);
+        const goalLabel = document.createElement('label');
+        goalLabel.append('改进目标', goal);
+        const save = document.createElement('button');
+        save.type = 'submit';
+        save.textContent = '保存售后改进任务';
+        const feedback = document.createElement('p');
+        feedback.setAttribute('role', 'status');
+        form.append(ownerLabel, goalLabel, save, feedback);
+        form.addEventListener('submit', async event => {
+          event.preventDefault();
+          if (save.disabled || currentProduct !== product || consoleClosed) return;
+          save.disabled = true;
+          try {
+            await request(route + '/task', {
+              product_id:product.id, source:report.source, period_start:report.period_start,
+              period_end:report.period_end, category:followup.category, owner:owner.value, goal:goal.value,
+            });
+            feedback.textContent = '已保存，将纳入该商品的直播准备包';
+          } catch (error) {
+            feedback.textContent = error.message;
+          } finally {
+            save.disabled = false;
+          }
+        });
+        row.append(form);
       }
       return row;
     }));
@@ -494,7 +530,8 @@ preparationPreview.addEventListener('click', async () => {
   preparationSave.disabled = true;
   $('preparation-error').textContent = '';
   try {
-    const {items, segments, missing, revision, review, improvements} = await request(preparationRoute + '/package');
+    const {items, segments, missing, revision, review, improvements, after_sales_tasks} =
+      await request(preparationRoute + '/package');
     const lines = ['开场', segments.opening];
     for (const [index, item] of items.entries()) {
       if (index) lines.push('', '转场', segments.transition);
@@ -509,6 +546,12 @@ preparationPreview.addEventListener('click', async () => {
     if (improvements.length) {
       lines.push('', '已采用的改进任务', ...improvements.map(task =>
         `${task.owner} · ${task.goal}（场次 ${task.session_id}，故障 ${task.fault_id}）`));
+    }
+    if (after_sales_tasks.length) {
+      lines.push('', '售后改进任务', ...after_sales_tasks.map(task => {
+        const title = items.find(item => item.product_id === task.product_id)?.title ?? task.product_id;
+        return `${title} · ${task.owner} · ${task.goal}（${task.source}，${task.period_start} 至 ${task.period_end}，记录 ${task.evidence_count} 条）`;
+      }));
     }
     preparationRevision = revision;
     $('preparation-package').value = review ?? lines.join('\n');
