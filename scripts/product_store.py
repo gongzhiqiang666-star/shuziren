@@ -408,12 +408,22 @@ class ProductStore:
                 SELECT rowid AS event_id, occurred_at, reason FROM live_rotation_faults
                 WHERE session_id = ? ORDER BY rowid
             """, (session_id,)).fetchall()
+            switches = db.execute("""
+                WITH sequence AS (
+                    SELECT rowid AS cursor, task_id, product_id, completed_at,
+                           LAG(product_id) OVER (ORDER BY rowid) AS previous_product_id
+                    FROM live_rotation_events WHERE session_id = ?
+                )
+                SELECT * FROM sequence WHERE previous_product_id <> product_id ORDER BY cursor
+            """, (session_id,)).fetchall()
         return {
             'session': dict(session),
             'products': [dict(row) for row in products],
             'controls': [{**dict(row), 'manual': bool(row['manual'])} for row in controls],
             'rotation_faults': [dict(row) for row in faults],
-            'missing': ['product_exposure', 'questions_and_answers', 'product_switches', 'fault_events', 'attributed_sales'],
+            'observed_product_switches': [dict(row) for row in switches],
+            'missing': ['product_exposure', 'questions_and_answers', 'platform_product_switches',
+                        'fault_events', 'attributed_sales'],
         }
 
     def record_rotation_fault(self, session_id, occurred_at, reason):

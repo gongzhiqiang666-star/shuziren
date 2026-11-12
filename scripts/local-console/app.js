@@ -812,10 +812,11 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
   const output = $('live-report-output');
   output.textContent = '正在读取场次报告';
   try {
-    const {session, products, controls, rotation_faults, missing} = await request('/api/live/report?' + new URLSearchParams({session_id:sessionId}));
+    const {session, products, controls, rotation_faults, observed_product_switches, missing} =
+      await request('/api/live/report?' + new URLSearchParams({session_id:sessionId}));
     if (($('live-event-scene').value || liveSession.id) !== sessionId) return;
     const formatTime = value => value == null ? '未记录' : new Date(value * 1000).toLocaleString();
-    const labels = {product_exposure:'商品曝光', questions_and_answers:'问答', product_switches:'切品',
+    const labels = {product_exposure:'商品曝光', questions_and_answers:'问答', platform_product_switches:'平台切品',
       fault_events:'故障', attributed_sales:'成交归因'};
     const lines = [
       `场次 ${session.session_id} · ${liveLabels[session.status] ?? session.status} · 输出 ${session.frames} 帧`,
@@ -826,6 +827,7 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       }),
       ...controls.map(item => `${formatTime(item.occurred_at)} · ${item.manual ? '人工接管' : '恢复自动'} · 记录 ${item.revision}`),
       ...rotation_faults.map(item => `${formatTime(item.occurred_at)} · 轮播故障 ${item.event_id} · ${item.reason}`),
+      ...observed_product_switches.map(item => `${item.completed_at} · 口播商品变化 ${item.previous_product_id} → ${item.product_id} · 任务 ${item.task_id}`),
     ];
     if (session.failure_reason) lines.push('场次失败原因：' + session.failure_reason);
     if (missing.length) lines.push('数据缺口：' + missing.map(key => labels[key] ?? key).join('、'));
