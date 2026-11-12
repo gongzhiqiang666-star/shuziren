@@ -63,6 +63,22 @@ class LiveRotationTests(unittest.TestCase):
             tts.products.get.return_value['extra']['product_facts']['库存'] = {'status': 'unknown'}
             self.assertNotIn('rotation_stock_evidence', live.configure_rotation('scene', ['product']))
 
+    def test_rotation_enqueue_passes_earliest_fact_deadline_to_playback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tts = Mock()
+            tts.state.return_value = {'id': 'clip', 'fact_deadline': 110}
+            live = ConsoleLive(tts, directory)
+            live.status = {'id': 'scene', 'status': 'running'}
+            live.session = Mock()
+            live.session.queue_full.return_value = False
+            live.session.control_state.return_value = {'manual': False}
+            live.ingress = Mock()
+            live.assembler = Mock()
+            item = {'fact_deadline': 100}
+            utterance = live.enqueue('scene', 'clip', rotation_item=item)
+            live.session.submit.assert_called_once_with(
+                utterance, priority=False, manual_revision=None, reply_guard=None, fact_deadline=100)
+
     def test_expired_queued_rotation_does_not_wait_for_completion(self):
         with tempfile.TemporaryDirectory() as directory:
             tts = Mock()

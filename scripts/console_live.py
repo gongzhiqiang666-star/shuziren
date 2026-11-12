@@ -649,8 +649,11 @@ class ConsoleLive:
                 utterance = self.assembler.push(self.ingress.take(timeout=2))
             try:
                 options = {}
-                if task and task['id'] == task_id and task.get('fact_deadline') is not None:
-                    options['fact_deadline'] = task['fact_deadline']
+                task_deadline = task.get('fact_deadline') if task and task['id'] == task_id else None
+                rotation_deadline = rotation_item.get('fact_deadline') if rotation_item else None
+                deadlines = [deadline for deadline in (task_deadline, rotation_deadline) if deadline is not None]
+                if deadlines:
+                    options['fact_deadline'] = min(deadlines)
                 self.session.submit(utterance, priority=priority, manual_revision=manual_revision,
                                     reply_guard=reply_guard, **options)
             except Full:
