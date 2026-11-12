@@ -454,20 +454,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     ids = parse_qs(urlsplit(self.path).query).get('product_id', [])
                     if len(ids) != 1 or not 1 <= len(ids[0]) <= 64:
                         raise ProductError('请选择商品')
-                    reports = products().after_sales(ids[0])
-                    recommendations = {
-                        'quality': '抽样核对质量问题，确认需要补充的实拍或检查说明',
-                        'size': '核对规格和测量方法，必要时补充尺寸 FAQ',
-                        'expectation': '核对买家预期与商品事实，检查卖点和演示是否需要改写',
-                        'fulfillment': '核对发货条件及承诺，必要时更新口播和导购说明',
-                        'other': '抽样核对其他原因，再确定要修改的资料',
-                    }
-                    for report in reports:
-                        report['followups'] = [
-                            {'category': category, 'count': count, 'recommendation': recommendations[category]}
-                            for category, count in report['counts'].items() if count > 0
-                        ]
-                    return self.respond(200, {'reports': reports})
+                    return self.respond(200, {'reports': products().after_sales(ids[0])})
                 if path == "/api/products/guide":
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                     ids = query.get('product_id', [])

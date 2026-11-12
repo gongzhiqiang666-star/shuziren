@@ -880,7 +880,20 @@ class ProductStore:
         with self.connect() as db:
             rows = db.execute('SELECT * FROM product_after_sales WHERE product_id=? ORDER BY period_end DESC, source',
                               (product_id,)).fetchall()
-        return [{**dict(row), 'counts': json.loads(row['counts'])} for row in rows]
+        recommendations = {
+            'quality': '抽样核对质量问题，确认需要补充的实拍或检查说明',
+            'size': '核对规格和测量方法，必要时补充尺寸 FAQ',
+            'expectation': '核对买家预期与商品事实，检查卖点和演示是否需要改写',
+            'fulfillment': '核对发货条件及承诺，必要时更新口播和导购说明',
+            'other': '抽样核对其他原因，再确定要修改的资料',
+        }
+        reports = []
+        for row in rows:
+            counts = json.loads(row['counts'])
+            followups = [{'category': category, 'count': count, 'recommendation': recommendations[category]}
+                         for category, count in counts.items() if count > 0]
+            reports.append({**dict(row), 'counts': counts, 'followups': followups})
+        return reports
 
     def compare_product_facts(self, product_ids, fact_names):
         now = datetime.now(timezone.utc)
