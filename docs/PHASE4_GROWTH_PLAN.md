@@ -375,3 +375,5 @@ G05-04 场次报告显示改稿率、分母及未登记制作耗时的数量。�
 G05-04 Chrome 发布回执追溯补验通过。使用 G05-03 并发验证的隔离数据库副本打开历史场次报告，核对汇总显示 1 条回执，作品编号、账号与来源任务均与接口一致。证据 logs/validation/g05-publication-report-chrome-01/report.txt。平台实发及内容效果仍待验。
 
 G05-03 旧回执库升级和 Chrome 展示通过。旧记录保留并显示本机登记时间未记录；同一数据库中新登记回执显示首次登记时间，重复提交同一编号保持时间不变。证据 logs/validation/g05-receipt-time-upgrade-01/result.json。平台实际发布时间仍待验。
+
+G05-03 回执时间表升级后回退写入通过。用旧版 0e5347c 的 ProductStore 在升级后的隔离数据库上新增回执，再用当前版本读取原回执和回退期间新增的回执，两条记录均保留，登记时间均为空。证据 logs/validation/g05-receipt-rollback-01/result.json。本轮验证存储层兼容性，未执行整包回退。
