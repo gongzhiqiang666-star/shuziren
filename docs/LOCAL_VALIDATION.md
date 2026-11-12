@@ -148,3 +148,5 @@ Windows 全量回归复跑：源码 d53f7d0，使用 v122 验证解释器并显�
 常驻 TTS Windows 协议补验（ee44675）：显式配置 SHUZIREN_TEST_RUNTIME_ROOT 后，test_tts_worker_protocol 三项通过，覆盖 ZipVoice/OmniVoice 进程就绪和退出、无效请求及转换失败时不发布音频。本次协议测试未加载模型，真实合成和听感按各引擎验收记录跟踪。
 
 G02 / G10 浏览器串联短测通过。使用本机 Chrome 和隔离工作区预览准备包、保存审阅稿、切换话术，验证旧准备包被拒载且新版本需要重新审核。保存新审阅稿后载入双商品轮播，经 WASAPI 虚拟音频设备本机输出 1197 帧并完成 2 条口播。停播后重新打开控制台，从历史场次报告核对两个话术 ID 及准备包版本。证据见 logs/validation/browser-preparation-03/browser-result.json 和 report-after-reload.txt。未执行外部平台推流、长稳或画质验收。
+
+A01-05 本机 Chrome 视频直驱场次报告复验通过。通过浏览器选择 WASAPI 虚拟音频设备并启动 CUDA 驱动，运行中打开报告显示 26 帧，正常停播后重新打开报告显示已停止、34 帧，与场次状态一致。证据 logs/validation/a01-browser-live-report-01/result.json。接收端画面、原声、长稳与口型画质另行验收。
