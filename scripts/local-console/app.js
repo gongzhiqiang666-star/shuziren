@@ -868,12 +868,20 @@ function sourcingDecisionEditor(candidate) {
     loading = true;
     try {
       const query = new URLSearchParams({candidate_id:candidate.id});
-      const {decision: record} = await request(route + '?' + query);
+      const [{decision: record}, {trial}] = await Promise.all([
+        request(route + '?' + query), request('/api/sourcing/trial?' + query),
+      ]);
       decision.value = record?.decision ?? 'continue';
       rationale.value = record?.rationale ?? '';
       constraints.value = record?.constraints ?? '';
       showEvidence(record);
-      status.textContent = '';
+      const original = record?.trial;
+      const fields = ['sample_evidence', 'trial_evidence', 'cost_minor', 'verdict'];
+      const changed = record && (
+        fields.some(key => original?.[key] !== trial?.[key]) ||
+        Object.keys(sourcingTrialMetrics).some(key => original?.metrics?.[key] !== trial?.metrics?.[key])
+      );
+      status.textContent = changed ? '试样或试卖记录已更新，请核对后再保存采购结论' : '';
       loaded = true;
       button.disabled = false;
     } catch (error) {
