@@ -19,6 +19,29 @@ from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_live_preparation_package_uses_only_current_sourced_facts(self):
+        route = '/api/live/preparation'
+        self.assertEqual(self.call(route + '/package')[0], 400)
+        _, response = self.call('/api/products', {
+            'title': '茶杯', 'content': '旧说明中的活动', 'product_index': 1,
+            'product_facts': {
+                '材质': {'value': '陶瓷', 'status': 'verified', 'source': '商品标签'},
+                '优惠': {'value': '半价', 'status': 'verified', 'source': '旧报表',
+                       'expires_at': '2020-01-01T00:00:00Z'},
+                '库存': {'status': 'unknown'},
+            },
+        })
+        product = response['product']
+        self.assertEqual(self.call(route, {'product_ids': [product['id']]})[0], 200)
+        status, package = self.call(route + '/package')
+        self.assertEqual(status, 200)
+        item, = package['items']
+        self.assertEqual(item['product_version'], product['version'])
+        self.assertEqual(item['selling_points'], [{'name': '材质', 'value': '陶瓷', 'source': '商品标签'}])
+        self.assertEqual(item['faq'], [{'question': '材质是什么？', 'answer': '陶瓷', 'source': '商品标签'}])
+        self.assertIn('发货条件', package['missing'])
+        self.assertEqual(set(package['segments']), {'opening', 'transition', 'closing'})
+
     def test_live_preparation_draft_and_missing_conditions(self):
         route = '/api/live/preparation'
         self.assertIn('本场商品', self.call(route)[1]['missing'])

@@ -28,8 +28,13 @@ def product_prompt_info(snapshot, *, now=None):
     extra = snapshot.get("extra") or {}
     if "product_facts" not in extra:
         return {"title": snapshot["title"], "content": snapshot["content"]}
+    verified = {name: fact["value"] for name, fact in verified_product_facts(snapshot, now=now).items()}
+    return {"title": snapshot["title"], "content": json.dumps(verified, ensure_ascii=False)}
+
+
+def verified_product_facts(snapshot, *, now=None):
     now = datetime.now(timezone.utc) if now is None else now
-    facts = extra["product_facts"]
+    facts = (snapshot.get("extra") or {}).get("product_facts")
     verified = {}
     if isinstance(facts, dict):
         for name, fact in facts.items():
@@ -42,8 +47,8 @@ def product_prompt_info(snapshot, *, now=None):
             except (AttributeError, TypeError, ValueError):
                 continue
             if fact.get("value") is not None:
-                verified[name] = fact["value"]
-    return {"title": snapshot["title"], "content": json.dumps(verified, ensure_ascii=False)}
+                verified[name] = fact
+    return verified
 
 
 def script_facts_current(product, created_at):
@@ -172,6 +177,30 @@ class ProductStore:
         with self.connect() as db:
             db.execute('INSERT OR REPLACE INTO live_preparation VALUES (1, ?)',
                        (json.dumps(draft, ensure_ascii=False),))
+
+    def build_live_preparation(self):
+        preparation = self.live_preparation()
+        if not preparation['draft']['product_ids']:
+            raise ProductError('请先在准备草稿中保存本场商品')
+        now = datetime.now(timezone.utc)
+        items = []
+        for product_id in preparation['draft']['product_ids']:
+            product = self.get(product_id)
+            facts = verified_product_facts(product, now=now)
+            items.append({
+                'product_id': product_id, 'product_version': product['version'], 'title': product['title'],
+                'selling_points': [{'name': name, 'value': fact['value'], 'source': fact['source']}
+                                   for name, fact in facts.items()],
+                'faq': [{'question': f"{name}是什么？", 'answer': fact['value'], 'source': fact['source']}
+                        for name, fact in facts.items()],
+                'missing': [] if facts else ['补充并核对商品事实'],
+                'assets': ['核对商品展示图或实拍视频'],
+            })
+        return {**preparation, 'items': items, 'segments': {
+            'opening': '欢迎来到直播间，接下来为大家逐一介绍本场商品。',
+            'transition': '接下来介绍下一件商品。',
+            'closing': '感谢观看，本场商品介绍到这里。',
+        }}
 
     def save_business_metrics(self, product_id, *, source, period_start, period_end, scope,
                               clicks=None, orders=None, refunds=None, stock=None):

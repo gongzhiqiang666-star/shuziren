@@ -275,6 +275,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     return self.respond(200,VoiceStore(store.directory).audio_path(ids[0]).read_bytes(),'audio/wav')
                 if path == "/api/live/preparation":
                     return self.respond(200, products().live_preparation())
+                if path == "/api/live/preparation/package":
+                    return self.respond(200, products().build_live_preparation())
                 if path == "/api/products":
                     data = products()
                     return self.respond(200, {"products": data.list(), "selected": data.selected()})
