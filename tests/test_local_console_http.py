@@ -742,7 +742,13 @@ class ConsoleHTTPTests(unittest.TestCase):
         store = ProductStore(self.directory.name)
         script_id = store.add_script(product, '这是一只陶瓷杯。')
         store.select_script(product['id'], script_id)
-        self.assertEqual(self.call(route + '/rotation', {'revision': package['revision']})[1]['items'][0]['script_id'],
+        self.assertEqual(self.call(route + '/rotation', {'revision': package['revision']})[0], 409)
+        updated = self.call(route + '/package')[1]
+        self.assertNotEqual(updated['revision'], package['revision'])
+        self.assertIsNone(updated['review'])
+        self.assertEqual(updated['items'][0]['script_id'], script_id)
+        self.assertEqual(self.call(route + '/review', {**review, 'revision': updated['revision']})[0], 200)
+        self.assertEqual(self.call(route + '/rotation', {'revision': updated['revision']})[1]['items'][0]['script_id'],
                          script_id)
         self.assertEqual(self.call(route, {'product_ids': [product['id']], 'goal': '新品介绍'})[0], 200)
         self.assertIsNone(self.call(route + '/package')[1]['review'])

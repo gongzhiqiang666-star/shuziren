@@ -348,6 +348,7 @@ class ProductStore:
             facts = verified_product_facts(product, now=now)
             items.append({
                 'product_id': product_id, 'product_version': product['version'], 'title': product['title'],
+                'script_id': self.selected_script(product_id),
                 'selling_points': [{'name': name, 'value': fact['value'], 'source': fact['source']}
                                    for name, fact in facts.items()],
                 'faq': [{'question': f"{name}是什么？", 'answer': fact['value'], 'source': fact['source']}
@@ -356,7 +357,7 @@ class ProductStore:
                 'assets': ['核对商品展示图或实拍视频'],
             })
         selected_versions = {item['product_id']: item['product_version'] for item in items}
-        selected_scripts = {product_id: self.selected_script(product_id) for product_id in selected_versions}
+        selected_scripts = {item['product_id']: item['script_id'] for item in items}
         improvements = [task for task in self.live_improvements(adopted_only=True)
                         if task['product_id'] is None or (
                             task['product_id'] in selected_versions
@@ -395,8 +396,8 @@ class ProductStore:
         for item in package['items']:
             product_id = item['product_id']
             script_id = self.selected_script(product_id)
-            if self.get(product_id)['version'] != item['product_version']:
-                raise Conflict('商品版本已变化，请重新预览')
+            if self.get(product_id)['version'] != item['product_version'] or script_id != item['script_id']:
+                raise Conflict('商品或话术已变化，请重新预览')
             items.append({**{key: item[key] for key in ('product_id', 'product_version', 'title', 'assets')},
                           'script_id': script_id})
         rotation = {'revision': revision, 'items': items}
