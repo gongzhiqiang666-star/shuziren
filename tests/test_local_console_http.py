@@ -825,6 +825,10 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call(route + 'baseline')[0], 400)
         self.assertEqual(self.call(route + 'trial')[0], 400)
         store.record_live_session('trial', 4, started_at=5, ended_at=6, status='stopped')
+        for verdict in ('correct', 'incorrect', 'uncertain', 'unreviewed'):
+            store.record_queued_reply('trial', verdict, {'id': 'product', 'version': 1}, '问题', '答复', 5)
+            if verdict != 'unreviewed':
+                store.review_live_reply('trial', verdict, verdict, 0 if verdict == 'correct' else None)
         store.record_rotation_completion('trial', 'segment', {
             'product_id': 'product', 'product_version': 1, 'script_id': 'script',
         }, 0)
@@ -832,6 +836,10 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(comparison['baseline']['completed_segments'], 0)
         self.assertEqual(comparison['trial']['completed_segments'], 1)
+        self.assertEqual(comparison['trial']['reply_review'], {
+            'correct': 1, 'incorrect': 1, 'uncertain': 1, 'unreviewed': 1, 'timed': 1, 'seconds': 0,
+        })
+        self.assertIsNone(comparison['baseline']['reply_review']['seconds'])
         self.assertEqual(comparison['baseline']['products'], [])
         self.assertEqual(comparison['baseline']['observed_product_order'], [])
         self.assertEqual(comparison['trial']['observed_product_order'], ['product'])

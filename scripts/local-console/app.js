@@ -2144,6 +2144,10 @@ $('live-compare-form').addEventListener('submit', event => {
       const duration = result.duration_seconds == null ? '未知' : `${result.duration_seconds.toFixed(1)} 秒`;
       const rate = result.completed_segments_per_minute == null ? '未知' : result.completed_segments_per_minute.toFixed(2);
       const summary = `${label} · 时长 ${duration} · 输出 ${result.session.frames} 帧 · 已播 ${result.completed_segments} 段（每分钟 ${rate}）· 轮播故障 ${result.rotation_faults} 次 · 本机已播问答 ${result.played_replies} 条`;
+      const review = result.reply_review;
+      const judged = review.correct + review.incorrect;
+      const accuracy = judged ? `${(100 * review.correct / judged).toFixed(1)}%` : '未知';
+      const reviewLine = `${label} · 答复正确率 ${accuracy}（正确 ${review.correct}，错误 ${review.incorrect}）· 不确定 ${review.uncertain} · 未复核 ${review.unreviewed} · 复核用时 ${review.seconds == null ? '未知' : review.seconds + ' 秒'}（${review.timed} 条）`;
       const products = result.products.map(item => {
         const title = savedProducts.find(product => product.id === item.product_id)?.title ?? item.product_id;
         return `${label} · ${title} · 商品版本 ${item.product_version} · 话术 ${item.script_id} · 已播 ${item.completed_segments} 段`;
@@ -2153,7 +2157,7 @@ $('live-compare-form').addEventListener('submit', event => {
       const plans = result.preparation_applications.map(plan =>
         `${label} · 已审核轮播计划 ${plan.revision} · ${plan.items.map(item =>
           `${item.title}（版本 ${item.product_version}）`).join(' → ')}`);
-      return [summary, `${label} · 人工排品基线 ${lineup ?? '未关联'}`,
+      return [summary, reviewLine, `${label} · 人工排品基线 ${lineup ?? '未关联'}`,
         ...plans, `${label} · 实际口播顺序 ${observed.join(' → ') || '未记录'}`, ...products];
     });
     const gaps = {audience:'人群', traffic:'流量', promotion:'活动', refund_lag:'退款滞后'};
