@@ -132,3 +132,4 @@ class ReceivedVoiceTests(unittest.TestCase):
         self.assertFalse(result['frame_continuity_passed'])
         self.assertTrue(result['speech_frame_continuity_passed'])
         self.assertEqual(result['repeated_frame_indices'], {1: 1})
+        self.assertEqual(result['missing_frame_ranges'], [[2, 2]])
