@@ -190,6 +190,16 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertIsNone(result['comparison']['differences']['size'])
         self.assertEqual(result['comparison']['conclusion'], 'uncertain')
         self.assertEqual(self.call(route + urlencode({**query, 'trial_start': query['baseline_end']}))[0], 400)
+        store.save_after_sales(product['id'], '其他来源', query['trial_start'], query['trial_end'], {'quality': 9})
+        self.assertEqual(self.call(route + urlencode(query)), (200, result))
+        store.save_after_sales(product['id'], query['source'], query['trial_start'], query['trial_end'],
+                               {'quality': 1, 'size': 0})
+        updated = self.call(route + urlencode(query))[1]['comparison']
+        self.assertEqual(updated['baseline'], result['comparison']['baseline'])
+        self.assertEqual(updated['trial']['counts'], {'quality': 1, 'size': 0})
+        self.assertEqual(updated['differences']['quality'], -1)
+        self.assertEqual(updated['differences']['size'], -1)
+        self.assertEqual(updated['conclusion'], 'uncertain')
 
     def test_after_sales_summary_keeps_missing_categories_and_corrects_same_window(self):
         store = ProductStore(self.directory.name)
