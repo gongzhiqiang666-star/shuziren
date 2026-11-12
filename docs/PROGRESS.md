@@ -761,3 +761,5 @@ V05-04b-17 用原录像复算确认13个缺帧和15个重帧编号。发送日�
 2026-11-12 Windows 跨阶段全仓回归通过。使用随包 CPython 3.10、真实 FFmpeg、NVENC 和显式语音运行包，unittest discover -s tests 共 288 项通过，无跳过，耗时 136.144 秒。设备并行回采、真实平台试点及长期连续性仍按各任务单独验收。
 
 A01-05 重连等待首帧期间的取消回归通过。Windows 全量回归共 289 项，277 项通过、12 项跳过，日志 logs/full-regression-d7ff846.log。当前控制台轮播使用 LiveAvatarClient 和已准备的形象目录，RTMP 驱动入口仍在恢复版 digital_image_runtime / image_infer_v2_manager。真实控制台验收需要接通 RTMP 实时输入，再验证断流期间的画面、恢复及停播。
+
+N05 / V09 从 db1c4c8 构建 439 文件候选包并通过本机隔离安装。包 SHA-256 为 3b24e78b3440e58807910fa61570ef0874ad8563291c7470dae86ee90545fb13。从安装目录使用独立媒体运行环境复跑实机轮播，重新审核、插播、人工接管恢复、双轨完整解码及场次报告追溯均通过。证据 logs/validation/n05-installed-live-db1c4c8/result.json。干净 Windows 整机及生产放行待验。
