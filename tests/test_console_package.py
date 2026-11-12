@@ -19,6 +19,16 @@ from scripts.voice_store import VoiceStore, fingerprint
 
 
 class ConsolePackageTests(unittest.TestCase):
+    def test_release_switch_respects_shop_process_lock_without_launcher(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            shop = root / 'data' / 'shops' / 'shop-pilot'
+            active = {'current': 'release', 'previous': 'release'}
+            with patch('scripts.console_package.read_active', return_value=active):
+                with InstanceLock(shop), self.assertRaises(OSError):
+                    switch_release(root)
+                self.assertEqual(switch_release(root), active)
+
     def test_managed_shops_can_run_together_while_release_switch_is_locked(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
