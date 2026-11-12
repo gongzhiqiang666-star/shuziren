@@ -464,7 +464,18 @@ $('product-guide-form').addEventListener('submit', async event => {
   const results = $('product-guide-results');
   results.replaceChildren();
   const ids = preparationProductIds();
-  const names = [...new Set($('product-guide-facts').value.split(/\r?\n/).map(name => name.trim()).filter(Boolean))];
+  const criteria = new Map();
+  for (const line of $('product-guide-facts').value.split(/\r?\n/).map(line => line.trim()).filter(Boolean)) {
+    const separator = line.indexOf('=');
+    const name = (separator < 0 ? line : line.slice(0, separator)).trim();
+    const expected = separator < 0 ? null : line.slice(separator + 1).trim();
+    if (!name || expected === '' || criteria.has(name)) {
+      status.textContent = '请填写有效且不重复的条件，例如「材质=陶瓷」';
+      return;
+    }
+    criteria.set(name, expected);
+  }
+  const names = [...criteria.keys()];
   if (!ids.length || ids.length > 10 || !names.length || names.length > 12) {
     status.textContent = '请选择 1 至 10 件商品，并填写 1 至 12 项事实';
     return;
@@ -483,8 +494,13 @@ $('product-guide-form').addEventListener('submit', async event => {
       const facts = document.createElement('ul');
       for (const name of names) {
         const fact = product.facts[name];
+        const expected = criteria.get(name);
         const item = document.createElement('li');
-        item.textContent = fact ? `${name}：${fact.value}（来源：${fact.source}）` : `${name}：待人工核对`;
+        const actual = typeof fact?.value === 'string' ? fact.value.trim()
+          : typeof fact?.value === 'number' ? String(fact.value) : null;
+        const matches = expected == null ? '' : actual == null ? ' · 条件待人工核对'
+          : actual === expected ? ' · 符合所填条件' : ` · 与所填条件「${expected}」不同`;
+        item.textContent = fact ? `${name}：${fact.value}（来源：${fact.source}）${matches}` : `${name}：待人工核对`;
         unknown ||= !fact;
         facts.append(item);
       }
