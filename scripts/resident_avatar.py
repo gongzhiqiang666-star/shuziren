@@ -3,6 +3,7 @@ import hashlib
 import logging
 import os
 from pathlib import Path
+import queue
 import struct
 import threading
 import time
@@ -31,6 +32,10 @@ class ResidentAvatar:
             self.context.__exit__(None,None,None);raise
         self.session=None;self.frame_offset=0;self.sample_offset=0;self.timed_mode=None;self.wenet_loads=0;self.prepared=False;self.prepare_result=None;self.silence_features=None
         self.rtmp_reader = None
+        self.rtmp_reconnect = None
+        self.rtmp_cancel = threading.Event()
+        self.rtmp_error = None
+        self.rtmp_last = None
 
     def attach_rtmp(self, url, width, height):
         from recovered.image_rtmp_face_reader import RtmpFaceReader
@@ -42,6 +47,10 @@ class ResidentAvatar:
             reader.start_capture(url)
             if (reader.width, reader.height) != (width, height):
                 raise ValueError('RTMP 输入尺寸须与场次输出尺寸一致')
+            images, detections = reader.read_ahead(1)
+            if not images:
+                raise RuntimeError('RTMP 输入没有可用画面')
+            self.rtmp_last = images[0], detections[0]
         except BaseException:
             reader.stop_capture()
             raise
@@ -53,21 +62,41 @@ class ResidentAvatar:
 
         from recovered.image_infer_audio import face_slot_from_detection
 
-        images, detections = self.rtmp_reader.read_ahead(len(indices))
-        if len(images) != len(indices):
-            size = (self.rtmp_reader.width, self.rtmp_reader.height)
-            logging.warning('RTMP 输入中断，开始重连（当前批次 %d/%d 帧）', len(images), len(indices))
-            self.rtmp_reader.reconnect(threading.Event())
-            if (self.rtmp_reader.width, self.rtmp_reader.height) != size:
+        reader = self.rtmp_reader
+        images, metadata = [], []
+        for _ in indices:
+            if self.rtmp_error is not None:
+                raise self.rtmp_error
+            if self.rtmp_reconnect is None or not self.rtmp_reconnect.is_alive():
+                try:
+                    batch = reader.processed_frames_queue.get_nowait() if not reader.internal_buffer else ()
+                except queue.Empty:
+                    batch = () if reader.preprocess_thread and reader.preprocess_thread.is_alive() else None
+                if batch is None:
+                    self.rtmp_reconnect = threading.Thread(
+                        target=self._reconnect_rtmp, args=(reader,), name='avatar-rtmp-reconnect', daemon=True,
+                    )
+                    self.rtmp_reconnect.start()
+                elif batch:
+                    reader.internal_buffer.extend(zip(*batch))
+                if batch is not None and reader.internal_buffer:
+                    self.rtmp_last = reader.internal_buffer.pop(0)
+            image, faces = self.rtmp_last
+            images.append(image)
+            metadata.append(face_slot_from_detection(faces[0] if faces else None))
+        return images, metadata
+
+    def _reconnect_rtmp(self, reader):
+        size = reader.width, reader.height
+        logging.warning('RTMP 输入中断，开始重连')
+        try:
+            reader.reconnect(self.rtmp_cancel)
+            if (reader.width, reader.height) != size:
                 raise RuntimeError('RTMP 重连后输入尺寸发生变化')
-            remaining = len(indices) - len(images)
-            resumed_images, resumed_detections = self.rtmp_reader.read_ahead(remaining)
-            images.extend(resumed_images)
-            detections.extend(resumed_detections)
-            if len(images) != len(indices):
-                raise RuntimeError('RTMP 重连后未收到足够画面')
-            logging.warning('RTMP 已恢复取帧（补齐 %d 帧）', remaining)
-        return images, [face_slot_from_detection(faces[0] if faces else None) for faces in detections]
+        except Exception as error:
+            self.rtmp_error = error
+        else:
+            logging.warning('RTMP 已重新连接')
 
     def start(self,session):
         if not isinstance(session,str) or not session:raise ValueError('Session ID required')
@@ -227,6 +256,9 @@ class ResidentAvatar:
         synth, self.synth = self.synth, None
         try:
             if reader is not None:
+                self.rtmp_cancel.set()
+                if self.rtmp_reconnect is not None:
+                    self.rtmp_reconnect.join()
                 reader.stop_capture()
         finally:
             if synth is not None:
