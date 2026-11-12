@@ -939,6 +939,34 @@ class ProductStore:
                 tasks.append(task)
         return tasks
 
+    def compare_after_sales(self, product_id, source, baseline_start, baseline_end, trial_start, trial_end):
+        baseline = self._business_metric_row(product_id, source=source, period_start=baseline_start,
+                                             period_end=baseline_end, scope='售后原因')[:4]
+        trial = self._business_metric_row(product_id, source=source, period_start=trial_start,
+                                          period_end=trial_end, scope='售后原因')[:4]
+        if baseline_end >= trial_start:
+            raise ProductError('基线窗口须早于试验窗口，且两者不能重叠')
+        with self.connect() as db:
+            db.execute('BEGIN')
+            counts = []
+            for key in (baseline, trial):
+                row = db.execute("""
+                    SELECT counts FROM product_after_sales
+                    WHERE product_id=? AND source=? AND period_start=? AND period_end=?
+                """, key).fetchone()
+                if not row:
+                    raise ProductError('缺少与所选窗口完全对应的售后报表')
+                counts.append(json.loads(row['counts']))
+        categories = ('quality', 'size', 'expectation', 'fulfillment', 'other')
+        return {
+            'product_id': product_id, 'source': baseline[1],
+            'baseline': {'period_start': baseline_start, 'period_end': baseline_end, 'counts': counts[0]},
+            'trial': {'period_start': trial_start, 'period_end': trial_end, 'counts': counts[1]},
+            'differences': {name: counts[1][name] - counts[0][name] if all(name in row for row in counts) else None
+                            for name in categories},
+            'conclusion': 'uncertain',
+        }
+
     def after_sales(self, product_id):
         self.get(product_id)
         tasks = {(item['source'], item['period_start'], item['period_end'], item['category']): item

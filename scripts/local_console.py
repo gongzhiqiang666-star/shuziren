@@ -450,6 +450,13 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     return self.respond(200, {'baseline': products().live_lineup_baseline()})
                 if path == "/api/live/preparation/package":
                     return self.respond(200, products().build_live_preparation())
+                if path == "/api/products/after-sales/compare":
+                    query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                    if (set(query) != {'product_id', 'source', 'baseline_start', 'baseline_end', 'trial_start', 'trial_end'}
+                            or any(len(values) != 1 or not values[0] for values in query.values())):
+                        raise ProductError('请选择商品、来源和两个售后统计窗口')
+                    return self.respond(200, {'comparison': products().compare_after_sales(
+                        **{name: values[0] for name, values in query.items()})})
                 if path == "/api/products/after-sales":
                     ids = parse_qs(urlsplit(self.path).query).get('product_id', [])
                     if len(ids) != 1 or not 1 <= len(ids[0]) <= 64:

@@ -19,6 +19,25 @@ from scripts.product_store import ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_after_sales_comparison_keeps_unreported_categories_unknown(self):
+        store = ProductStore(self.directory.name)
+        product = store.save(title='茶杯', content='商品说明', product_index=1)
+        query = {'product_id': product['id'], 'source': '售后统计',
+                 'baseline_start': '2026-11-01', 'baseline_end': '2026-11-03',
+                 'trial_start': '2026-11-04', 'trial_end': '2026-11-06'}
+        store.save_after_sales(product['id'], query['source'], query['baseline_start'], query['baseline_end'],
+                               {'quality': 2, 'size': 1})
+        route = '/api/products/after-sales/compare?'
+        self.assertEqual(self.call(route + urlencode(query))[0], 400)
+        store.save_after_sales(product['id'], query['source'], query['trial_start'], query['trial_end'],
+                               {'quality': 0})
+        status, result = self.call(route + urlencode(query))
+        self.assertEqual(status, 200)
+        self.assertEqual(result['comparison']['differences']['quality'], -2)
+        self.assertIsNone(result['comparison']['differences']['size'])
+        self.assertEqual(result['comparison']['conclusion'], 'uncertain')
+        self.assertEqual(self.call(route + urlencode({**query, 'trial_start': query['baseline_end']}))[0], 400)
+
     def test_after_sales_summary_keeps_missing_categories_and_corrects_same_window(self):
         store = ProductStore(self.directory.name)
         first = store.save(title='茶杯', content='商品说明', product_index=1)
