@@ -131,6 +131,9 @@ class ProductStore:
                     singleton INTEGER PRIMARY KEY CHECK(singleton=1), draft TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_rotation_faults (
                     session_id TEXT NOT NULL, occurred_at REAL NOT NULL, reason TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS live_advice_acknowledgments (
+                    session_id TEXT NOT NULL, advice TEXT NOT NULL, acknowledged_at REAL NOT NULL,
+                    PRIMARY KEY(session_id, advice));
                 CREATE TABLE IF NOT EXISTS live_improvement_tasks (
                     session_id TEXT NOT NULL, fault_id INTEGER NOT NULL,
                     owner TEXT NOT NULL, goal TEXT NOT NULL,
@@ -485,6 +488,19 @@ class ProductStore:
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (session_id, occurred_at, reason, item.get('product_id'),
                   item.get('product_version'), item.get('script_id')))
+
+    def acknowledge_live_advice(self, session_id, advice, acknowledged_at):
+        with self.connect() as db:
+            db.execute('INSERT OR IGNORE INTO live_advice_acknowledgments VALUES (?, ?, ?)',
+                       (session_id, json.dumps(advice, sort_keys=True, ensure_ascii=False), acknowledged_at))
+
+    def live_advice_acknowledgments(self, session_id):
+        with self.connect() as db:
+            rows = db.execute("""
+                SELECT advice, acknowledged_at FROM live_advice_acknowledgments
+                WHERE session_id=? ORDER BY rowid
+            """, (session_id,)).fetchall()
+        return [{'advice': json.loads(row['advice']), 'acknowledged_at': row['acknowledged_at']} for row in rows]
 
     def save_live_improvement(self, session_id, fault_id, owner, goal, adopted=False):
         owner = text(owner, '负责人', 120)

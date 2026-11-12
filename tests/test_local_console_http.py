@@ -33,7 +33,16 @@ class ConsoleHTTPTests(unittest.TestCase):
             advice, = payload['advice']
             self.assertEqual(self.call('/api/live/state')[1]['advice'], payload['advice'])
             self.assertEqual((advice['code'], advice['evidence']), ('rotation_error', '合成超时'))
+            store = ProductStore(self.directory.name)
+            store.record_live_session('scene', 1)
+            acknowledge = {'session_id': 'scene', 'advice': advice}
+            self.assertEqual(self.call(route + '/acknowledge', {**acknowledge, 'session_id': 'old'})[0], 409)
+            self.assertEqual(self.call(route + '/acknowledge', acknowledge)[0], 200)
+            self.assertEqual(self.call(route + '/acknowledge', acknowledge)[0], 200)
+            entry, = self.call('/api/live/report?session_id=scene')[1]['advice_acknowledgments']
+            self.assertEqual(entry['advice'], advice)
             live.return_value.state.return_value['rotation_error'] = None
+            self.assertEqual(self.call(route + '/acknowledge', acknowledge)[0], 409)
             self.assertEqual(self.call(route)[1]['advice'], [])
             live.return_value.state.return_value.update(automatic_queue_full=True, pending=4)
             advice, = self.call(route)[1]['advice']
