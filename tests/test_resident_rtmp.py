@@ -36,6 +36,18 @@ class ResidentRtmpTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, '尺寸发生变化'):
             self.engine._load_live_frames([0])
 
+    def test_reconnect_error_published_at_thread_exit_prevents_dequeue(self):
+        def finish_reconnect():
+            self.engine.rtmp_error = RuntimeError('RTMP 重连后输入尺寸发生变化')
+            return False
+
+        self.engine.rtmp_reconnect = Mock()
+        self.engine.rtmp_reconnect.is_alive.side_effect = finish_reconnect
+        self.reader.processed_frames_queue.put((['wrong-size'], [[]]))
+        with self.assertRaisesRegex(RuntimeError, '尺寸发生变化'):
+            self.engine._load_live_frames([0])
+        self.assertEqual(self.reader.processed_frames_queue.get_nowait(), (['wrong-size'], [[]]))
+
     def test_close_releases_model_even_when_rtmp_cleanup_fails(self):
         synth = self.engine.synth = Mock()
         context = self.engine.context = MagicMock()
