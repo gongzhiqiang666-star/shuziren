@@ -42,8 +42,18 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertIn('发货条件', package['missing'])
         self.assertEqual(set(package['segments']), {'opening', 'transition', 'closing'})
         review = {'revision': package['revision'], 'review': '商家确认：陶瓷杯。'}
+        self.assertEqual(self.call(route + '/rotation', {'revision': package['revision']})[0], 409)
         self.assertEqual(self.call(route + '/review', review)[0], 200)
         self.assertEqual(self.call(route + '/package')[1]['review'], review['review'])
+        status, rotation = self.call(route + '/rotation', {'revision': package['revision']})
+        self.assertEqual(status, 200)
+        self.assertEqual(rotation['items'][0]['product_id'], product['id'])
+        self.assertIsNone(rotation['items'][0]['script_id'])
+        store = ProductStore(self.directory.name)
+        script_id = store.add_script(product, '这是一只陶瓷杯。')
+        store.select_script(product['id'], script_id)
+        self.assertEqual(self.call(route + '/rotation', {'revision': package['revision']})[1]['items'][0]['script_id'],
+                         script_id)
         self.assertEqual(self.call(route, {'product_ids': [product['id']], 'goal': '新品介绍'})[0], 200)
         self.assertIsNone(self.call(route + '/package')[1]['review'])
         self.assertEqual(self.call(route + '/review', review)[0], 409)

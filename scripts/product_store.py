@@ -217,6 +217,24 @@ class ProductStore:
         with self.connect() as db:
             db.execute('INSERT OR REPLACE INTO live_preparation_review VALUES (?, ?)', (revision, review))
 
+    def live_preparation_rotation(self, revision):
+        package = self.build_live_preparation()
+        if revision != package['revision']:
+            raise Conflict('准备包内容已变化，请重新预览')
+        if package['review'] is None:
+            raise Conflict('请先保存准备包审阅稿')
+        if len(package['items']) > 20:
+            raise ProductError('商品轮播最多支持20件商品')
+        items = []
+        for item in package['items']:
+            product_id = item['product_id']
+            script_id = self.selected_script(product_id)
+            if self.get(product_id)['version'] != item['product_version']:
+                raise Conflict('商品版本已变化，请重新预览')
+            items.append({**{key: item[key] for key in ('product_id', 'product_version', 'title', 'assets')},
+                          'script_id': script_id})
+        return {'revision': revision, 'items': items}
+
     def save_business_metrics(self, product_id, *, source, period_start, period_end, scope,
                               clicks=None, orders=None, refunds=None, stock=None):
         row = self._business_metric_row(product_id, source=source, period_start=period_start,
