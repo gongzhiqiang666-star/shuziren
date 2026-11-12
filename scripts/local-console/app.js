@@ -103,6 +103,7 @@ function showProduct(product) {
   $('business-import-form').reset();
   $('settlement-review-form').reset();
   $('after-sales-form').reset();
+  $('after-sales-import-form').reset();
   $('after-sales-status').textContent = '';
   $('after-sales-reports').replaceChildren();
   $('metrics-status').textContent = '';
@@ -123,10 +124,11 @@ for (const id of Object.values(summaryFields)) {
 }
 const settlementForm = $('settlement-review-form');
 const afterSalesForm = $('after-sales-form');
-async function afterSalesAction(save) {
+const afterSalesImportForm = $('after-sales-import-form');
+async function afterSalesAction(action) {
   const product = currentProduct;
   if (!product || consoleClosed) return;
-  const buttons = Array.from(afterSalesForm.querySelectorAll('button'));
+  const buttons = [...afterSalesForm.querySelectorAll('button'), ...afterSalesImportForm.querySelectorAll('button')];
   if (buttons.some(button => button.disabled)) return;
   const status = $('after-sales-status');
   const route = '/api/products/after-sales';
@@ -135,7 +137,15 @@ async function afterSalesAction(save) {
   status.textContent = '';
   try {
     let result;
-    if (save) {
+    if (action === 'import') {
+      const file = $('after-sales-csv').files[0];
+      if (!file) return;
+      if (file.size >= 1048576) throw new Error('CSV 文件必须小于 1 MiB');
+      let csv;
+      try { csv = new TextDecoder('utf-8', {fatal:true}).decode(await file.arrayBuffer()); }
+      catch { throw new Error('请使用可读取的 UTF-8 编码 CSV 文件'); }
+      result = await request(route + '/import', {product_id:product.id, csv});
+    } else if (action === 'save') {
       const payload = {product_id:product.id, counts:{}};
       for (const key of ['source', 'period_start', 'period_end']) {
         const input = $(summaryFields[key]);
@@ -160,15 +170,17 @@ async function afterSalesAction(save) {
       row.textContent = [report.source, `${report.period_start} 至 ${report.period_end}`, ...counts].join(' · ');
       return row;
     }));
-    status.textContent = save ? '售后汇总已保存' : result.reports.length ? '' : '暂无售后汇总';
+    status.textContent = action === 'import' ? `已导入 ${result.imported} 行售后汇总`
+      : action === 'save' ? '售后汇总已保存' : result.reports.length ? '' : '暂无售后汇总';
   } catch (error) {
     if (currentProduct === product) status.textContent = error.message;
   } finally {
     buttons.forEach(button => { button.disabled = false; });
   }
 }
-afterSalesForm.addEventListener('submit', event => { event.preventDefault(); afterSalesAction(true); });
-$('after-sales-read').addEventListener('click', () => afterSalesAction(false));
+afterSalesForm.addEventListener('submit', event => { event.preventDefault(); afterSalesAction('save'); });
+afterSalesImportForm.addEventListener('submit', event => { event.preventDefault(); afterSalesAction('import'); });
+$('after-sales-read').addEventListener('click', () => afterSalesAction('read'));
 settlementForm.addEventListener('input', clearBusinessSummary);
 settlementForm.addEventListener('submit', async event => {
   event.preventDefault();

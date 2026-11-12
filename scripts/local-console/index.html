@@ -104,6 +104,11 @@
 <button type="submit">保存售后汇总</button>
 <button type="button" class="secondary" id="after-sales-read">读取售后汇总</button>
 </form>
+<form id="after-sales-import-form">
+<label for="after-sales-csv">售后汇总 CSV（UTF-8）</label><input id="after-sales-csv" type="file" accept=".csv,text/csv" required>
+<p class="hint">必填表头 source、period_start、period_end。分类列可用 quality、size、expectation、fulfillment、other。</p>
+<button type="submit">导入售后汇总</button>
+</form>
 <p id="after-sales-status" role="status"></p><ul id="after-sales-reports"></ul>
 </details>
 </section>
