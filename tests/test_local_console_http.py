@@ -25,7 +25,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         script_id = store.add_script(product, '原口播')
         store.record_rotation_completion('scene', 'task', {
             'product_id': product['id'], 'product_version': product['version'], 'script_id': script_id,
-        }, 0, sample_start=960, sample_end=1920, voice_id='host-voice')
+        }, 0, sample_start=960, sample_end=1920, voice_id='host-voice',
+           speech_provenance={'engine': 'indextts', 'language': 'zh-CN'})
         store.save(title='新版茶杯', content='更新资料', product_index=1,
                    product_id=product['id'], version=product['version'])
         status, result = self.call('/api/live/content-source?session_id=scene&task_id=task')
@@ -34,6 +35,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(source['product_snapshot'], product)
         self.assertEqual(source['facts_review'], 'product_changed')
         self.assertEqual(source['voice_id'], 'host-voice')
+        self.assertEqual(source['speech_provenance'], {'engine': 'indextts', 'language': 'zh-CN'})
         self.assertEqual(source['script_text'], '原口播')
         self.assertEqual(source['segment'], {'type': 'host', 'content': '原口播'})
         segmented_id = store.add_script(store.get(product['id']), '主讲。{助：补充说明。}')

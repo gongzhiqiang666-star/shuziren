@@ -174,6 +174,8 @@ class ProductStore:
                     db.execute(f'ALTER TABLE live_rotation_events ADD COLUMN {column} INTEGER')
             if 'voice_id' not in event_columns:
                 db.execute('ALTER TABLE live_rotation_events ADD COLUMN voice_id TEXT')
+            if 'speech_provenance' not in event_columns:
+                db.execute('ALTER TABLE live_rotation_events ADD COLUMN speech_provenance TEXT')
             db.execute('PRAGMA user_version=3')
 
     @contextmanager
@@ -579,15 +581,17 @@ class ProductStore:
         return [{**dict(row), 'adopted': bool(row['adopted'])} for row in rows]
 
     def record_rotation_completion(self, session_id, task_id, item, segment_index, *,
-                                   sample_start=None, sample_end=None, voice_id=None):
+                                   sample_start=None, sample_end=None, voice_id=None, speech_provenance=None):
         with self.connect() as db:
             db.execute("""
                 INSERT INTO live_rotation_events
-                    (session_id, task_id, product_id, product_version, script_id, segment_index, sample_start, sample_end, voice_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (session_id, task_id, product_id, product_version, script_id, segment_index,
+                     sample_start, sample_end, voice_id, speech_provenance)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_id, task_id) DO NOTHING
             """, (session_id, task_id, item['product_id'], item['product_version'],
-                  item['script_id'], segment_index, sample_start, sample_end, voice_id))
+                  item['script_id'], segment_index, sample_start, sample_end, voice_id,
+                  json.dumps(speech_provenance) if speech_provenance else None))
 
     def rotation_events(self, session_id, *, after=0, product_id=None, task_id=None):
         with self.connect() as db:
@@ -607,7 +611,8 @@ class ProductStore:
             row = db.execute("""
                 SELECT event.session_id, event.task_id, event.product_id, event.product_version,
                        event.script_id, event.segment_index, event.completed_at,
-                       event.sample_start, event.sample_end, event.voice_id, script.snapshot, script.text AS script_text,
+                       event.sample_start, event.sample_end, event.voice_id, event.speech_provenance,
+                       script.snapshot, script.text AS script_text,
                        script.created_at AS script_created_at, product.version AS current_product_version
                 FROM live_rotation_events event
                 LEFT JOIN scripts script ON script.id=event.script_id AND script.product_id=event.product_id
@@ -618,6 +623,8 @@ class ProductStore:
         if row is None:
             raise ProductError('该场次没有对应的口播完成记录')
         source = dict(row)
+        provenance = source['speech_provenance']
+        source['speech_provenance'] = json.loads(provenance) if provenance else None
         snapshot = source.pop('snapshot')
         source['product_snapshot'] = json.loads(snapshot) if snapshot else None
         created_at = source.pop('script_created_at')

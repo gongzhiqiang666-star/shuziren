@@ -362,6 +362,7 @@ class ConsoleLive:
                         self.status['id'], source_id, item, self.rotation['segment'],
                         sample_start=sample_start, sample_end=sample_end,
                         voice_id=self.rotation.pop('task_voice_id', None),
+                        speech_provenance=self.rotation.pop('task_speech_provenance', None),
                     )
                 except sqlite3.Error:
                     logging.exception('记录商品口播完成事件失败')
@@ -521,6 +522,10 @@ class ConsoleLive:
                             self.enqueue(session_id, task_id, rotation_item=item)
                             rotation['task_id'] = task_id
                             rotation['task_voice_id'] = voice_id
+                            rotation['task_speech_provenance'] = {
+                                key: state[key] for key in ('engine', 'language', 'voice_audio_sha256', 'voice_text_sha256')
+                                if key in state
+                            }
                             pending = None
                         elif state['status'] not in {'running', 'succeeded'}:
                             raise ProductError(state.get('error') or '轮播语音合成失败')
