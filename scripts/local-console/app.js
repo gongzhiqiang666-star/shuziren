@@ -1720,10 +1720,11 @@ async function loadRender() {
   const labels={running:'正在生成视频',succeeded:'视频已生成',cancelled:'视频生成已取消',interrupted:'上次视频生成已中断',failed:'视频不可用'};
   $('render-status').textContent=renderState ? (labels[renderState.status] || renderState.status)+' · '+renderState.product_title+' · '+renderState.avatar_name+' · '+(renderState.render_profile==='trt-nvenc' ? '加速预览' : '标准生成')+(renderState.error ? '：'+renderState.error : '') : '暂无视频生成任务';
   const saved=currentProduct && $('product-title').value===currentProduct.title && $('product-content').value===currentProduct.content && $('product-index').value===String(currentProduct.product_index) && $('product-facts').value===productFactsText(currentProduct);
-  const matches=renderState?.status==='succeeded' && saved && renderState.product_id===currentProduct.id && renderState.script_id===currentScriptId && renderState.tts_task_id===ttsState?.id && renderState.tts_task_id===ttsPreviewTask && renderState.avatar_id===$('avatar-list').value;
+  const matches=renderState?.status==='succeeded' && renderState.avatar_id===$('avatar-list').value &&
+    (renderState.source_kind==='live_content' || (saved && renderState.product_id===currentProduct.id && renderState.script_id===currentScriptId && renderState.tts_task_id===ttsState?.id && renderState.tts_task_id===ttsPreviewTask));
   if(matches) {
     const samples = renderState.result?.input_audio_samples;
-    $('render-subtitle').hidden = !Number.isSafeInteger(samples) || samples <= 0 || Boolean(ttsState.kind);
+    $('render-subtitle').hidden = !Number.isSafeInteger(samples) || samples <= 0 || (renderState.source_kind!=='live_content' && Boolean(ttsState.kind));
     if(renderPreviewTask!==renderState.id) {$('render-preview').src='/api/render/video?task_id='+encodeURIComponent(renderState.id);$('render-preview').load();renderPreviewTask=renderState.id;}
   } else if(renderPreviewTask) clearRenderPreview();
   renderVideoButtons();
@@ -2678,7 +2679,29 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
           download.href = audio.src;
           download.download = `口播-${event.task_id.replace(/[^a-zA-Z0-9_-]/g, '_')}.wav`;
           download.textContent = '下载原口播音频';
-          details.append(audio, download);
+          const renderButton = document.createElement('button');
+          renderButton.type = 'button';
+          renderButton.textContent = '用原口播生成数字人短视频';
+          renderButton.disabled = source.facts_review !== 'version_current' || source.segment == null;
+          renderButton.addEventListener('click', async () => {
+            renderButton.disabled = true;
+            draftStatus.textContent = '正在启动真实数字人渲染…';
+            try {
+              const avatar_id = $('avatar-list').value;
+              if (!avatar_id) throw new Error('请先在数字人形象区域选用一个形象');
+              const result = await request('/api/live/content-render', {
+                session_id:event.session_id, task_id:event.task_id, avatar_id,
+                render_profile:$('render-profile').value
+              });
+              renderState = result.task;
+              draftStatus.textContent = '已进入数字人渲染队列，可在“数字人视频”区域查看进度和成片。';
+              await loadRender();
+            } catch (error) {
+              draftStatus.textContent = error.message;
+              renderButton.disabled = false;
+            }
+          });
+          details.append(audio, download, renderButton);
         }
         loaded = true;
       } catch (error) {

@@ -749,7 +749,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         return self.respond(200, {'capture': taobao.stop()})
                     live_active = live_manager is not None and live_manager.state()['status'] in ConsoleLive.active_states
                     if live_active and path in {'/api/config', '/api/products', '/api/products/select', '/api/avatars/select',
-                                                '/api/voices/select', '/api/avatar-preparation/start', '/api/render/start'}:
+                                                '/api/voices/select', '/api/avatar-preparation/start', '/api/render/start',
+                                                '/api/live/content-render'}:
                         raise Conflict('请先停止本机场次')
                     if path == '/api/live/start':
                         if set(value) - {'audio_device', 'rotation_language', 'assistant_voice_id', 'video_path', 'video_backend', 'camera_device', 'rtmp_url'} or type(value.get('audio_device')) is not int or value['audio_device'] < 0:
@@ -921,6 +922,16 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         if avatar_manager is not None and (avatar_manager.state() or {}).get('status')=='running':
                             raise Conflict('正在制作形象，请完成或取消后再合成视频')
                         return self.respond(202,{'task':renders().start(**value)})
+                    if path == '/api/live/content-render':
+                        if set(value) not in ({'session_id','task_id','avatar_id'},
+                                              {'session_id','task_id','avatar_id','render_profile'}):
+                            raise ProductError('短视频生成字段无效')
+                        if not all(isinstance(value[key], str) and value[key]
+                                   for key in ('session_id', 'task_id', 'avatar_id')):
+                            raise ProductError('口播记录或形象ID无效')
+                        if avatar_manager is not None and (avatar_manager.state() or {}).get('status') == 'running':
+                            raise Conflict('正在制作形象，请完成或取消后再合成视频')
+                        return self.respond(202, {'task': renders().start_content(**value)})
                     if path == '/api/render/cancel':
                         if set(value)!={'task_id'} or not isinstance(value['task_id'],str):
                             raise ProductError('视频取消字段无效')

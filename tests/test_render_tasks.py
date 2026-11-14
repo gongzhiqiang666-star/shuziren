@@ -128,5 +128,26 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(self.tasks.state()['status'],'failed')
         self.assertFalse((work/'output.mp4').exists())
 
+    def test_completed_live_audio_is_a_version_bound_render_input(self):
+        script_id = self.audio.products.add_script(self.product, '直播中真实说出的这一段。')
+        source = self.root / 'spoken.wav'
+        source.write_bytes(b'RIFF retained live audio fixture')
+        audio_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+        self.audio.products.archive_live_content_audio('scene', 'spoken', source, audio_hash)
+        self.audio.products.record_rotation_completion('scene', 'spoken', {
+            'product_id': self.product['id'], 'product_version': self.product['version'],
+            'script_id': script_id,
+        }, 0, voice_id=self.audio.value['voice_id'])
+        binding, content, audio, avatar = self.tasks._content_inputs('scene', 'spoken', self.avatar['id'])
+        self.assertEqual(binding['source_kind'], 'live_content')
+        self.assertEqual(binding['audio_sha256'], audio_hash)
+        self.assertEqual(content, source.read_bytes())
+        self.assertEqual(audio['caption'], '直播中真实说出的这一段。')
+        self.assertEqual(avatar['id'], self.avatar['id'])
+        self.audio.products.save(title='绑定夹具', content='事实已经变化', product_index=1,
+                                 version=self.product['version'], product_id=self.product['id'])
+        with self.assertRaises(Conflict):
+            self.tasks._content_inputs('scene', 'spoken', self.avatar['id'])
+
 
 if __name__=='__main__':unittest.main()

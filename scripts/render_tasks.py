@@ -52,12 +52,40 @@ class RenderTasks:
                  'product_version':audio['product_version'],'script_id':audio['script_id'],'voice_id':audio['voice_id']}
         return binding,content,audio,avatar
 
+    def _content_inputs(self, session_id, source_task_id, avatar_id):
+        source = self.tts.products.live_content_source(session_id, source_task_id)
+        if source['facts_review'] != 'version_current' or source.get('segment') is None:
+            raise Conflict('商品事实或原口播片段已变化，请核对后再生成')
+        if not source.get('content_audio_available'):
+            raise Conflict('该口播没有可用的原始音频')
+        if self.avatars.selected_id() != avatar_id:
+            raise Conflict('请先选用该形象')
+        avatar = self.avatars.get(avatar_id)
+        audio_path = self.tts.products.live_content_audio_path(session_id, source_task_id)
+        content = audio_path.read_bytes()
+        binding = {
+            'source_kind': 'live_content', 'content_session_id': session_id,
+            'content_task_id': source_task_id, 'avatar_id': avatar_id,
+            'avatar_manifest_sha256': avatar['manifest_sha256'],
+            'audio_sha256': hashlib.sha256(content).hexdigest(),
+            'product_id': source['product_id'], 'product_version': source['product_version'],
+            'script_id': source['script_id'], 'voice_id': source.get('voice_id'),
+        }
+        audio = {'product_title': source['product_snapshot']['title'], 'speed': 1.0,
+                 'caption': source['segment']['content']}
+        return binding, content, audio, avatar
+
+    def _task_inputs(self, task):
+        if task.get('source_kind') == 'live_content':
+            return self._content_inputs(task['content_session_id'], task['content_task_id'], task['avatar_id'])
+        return self._inputs(task['tts_task_id'], task['avatar_id'])
+
     def _validate(self,task):
         if task['status']=='succeeded' and not result_matches(task.get('render_profile','standard'),task.get('result',{}),allow_legacy='render_profile' not in task):
             raise Conflict('视频生成方案与结果不符，请重新生成')
         if task['status']=='succeeded' and task.get('result',{}).get('audio_complete') is not True:
             raise Conflict('旧视频未通过新版音轨完整性检查，请重新生成')
-        binding,_,_,_=self._inputs(task['tts_task_id'],task['avatar_id'])
+        binding,_,_,_=self._task_inputs(task)
         if any(task.get(key)!=value for key,value in binding.items()):
             raise Conflict('视频输入已变化，请重新生成')
 
@@ -65,7 +93,7 @@ class RenderTasks:
         with self.lock:
             if self.task and self.task['status'] in {'running','succeeded'}:
                 try:self._validate(self.task)
-                except (ValueError,OSError) as error:
+                except (ProductError, ValueError, OSError):
                     self.task.update(status='failed',error='商品、语音或形象已变化，本次视频已失效')
                     self.task['previous_result']=self.task.pop('result',None);self._save()
                     if self.process:AvatarTasks._terminate(self.process)
@@ -80,16 +108,32 @@ class RenderTasks:
             if self.process is not None or (self.monitor and self.monitor.is_alive()):
                 raise Conflict('已有视频合成任务，请等待或取消')
             binding,content,audio,avatar=self._inputs(tts_task_id,avatar_id)
+            return self._start(binding, content, audio, avatar, render_profile)
+
+    def start_content(self, session_id, task_id, avatar_id, render_profile='standard'):
+        if not isinstance(render_profile, str) or render_profile not in PROFILES:
+            raise ProductError('视频生成方案无效')
+        if not all(isinstance(value, str) and value for value in (session_id, task_id, avatar_id)):
+            raise ProductError('口播记录或形象ID无效')
+        with self.lock:
+            if self.closed: raise Conflict('视频合成服务正在退出')
+            if self.process is not None or (self.monitor and self.monitor.is_alive()):
+                raise Conflict('已有视频合成任务，请等待或取消')
+            binding, content, audio, avatar = self._content_inputs(session_id, task_id, avatar_id)
+            return self._start(binding, content, audio, avatar, render_profile)
+
+    def _start(self, binding, content, audio, avatar, render_profile):
             python=runtime_python(self.runtime)
             if not python.is_file():raise ProductError('缺少视频合成运行解释器')
             task_id=str(uuid.uuid4());work=self.jobs/task_id;work.mkdir()
             self.task={'id':task_id,'status':'running',**binding,'product_title':audio['product_title'],
                        'avatar_name':avatar['name'],'speed':audio['speed'],'render_profile':render_profile}
+            if 'caption' in audio: self.task['caption'] = audio['caption']
             log=(work/'worker.log').open('wb')
             try:
                 (work/'audio.wav').write_bytes(content);self._save()
                 self.process=subprocess.Popen([str(python),'-X','utf8','-m','scripts.render_worker',
-                    '--runtime-root',str(self.runtime),'--avatar-directory',str(self.avatars._directory(avatar_id)),
+                    '--runtime-root',str(self.runtime),'--avatar-directory',str(self.avatars._directory(binding['avatar_id'])),
                     '--audio',str(work/'audio.wav'),'--output',str(work/'output.mp4'),
                     '--render-profile',render_profile,'--engine-cache',str(self.data/'render-engine-cache')],
                     stdout=subprocess.PIPE,stderr=log,cwd=Path(__file__).resolve().parents[1],
@@ -163,11 +207,15 @@ class RenderTasks:
         with self.lock:
             self.video_path(task_id)
             task = self.task
-            audio = self.tts.state()
-            if not audio or audio['id'] != task['tts_task_id'] or audio.get('kind'):
-                raise Conflict('该视频缺少可核对的完整话术来源')
-            script = next((row for row in self.tts.products.scripts(task['product_id'])
-                           if row['id'] == task['script_id']), None)
+            if task.get('source_kind') == 'live_content':
+                caption = task.get('caption')
+                script = {'text': caption} if isinstance(caption, str) and caption.strip() else None
+            else:
+                audio = self.tts.state()
+                if not audio or audio['id'] != task['tts_task_id'] or audio.get('kind'):
+                    raise Conflict('该视频缺少可核对的完整话术来源')
+                script = next((row for row in self.tts.products.scripts(task['product_id'])
+                               if row['id'] == task['script_id']), None)
             samples = task['result'].get('input_audio_samples')
             if script is None or type(samples) is not int or samples <= 0:
                 raise Conflict('该视频缺少字幕所需的话术或采样数')
