@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import threading
 import uuid
+import zipfile
 
 from scripts.avatar_store import AvatarStore,digest
 from scripts.avatar_tasks import AvatarTasks
@@ -262,6 +263,54 @@ class RenderTasks:
             except (OSError, KeyError): valid = False
             if not valid: raise Conflict('封面文件缺失或已变化，请重新生成')
             return path
+
+    def publication_package(self, session_id, source_task_id, render_task_id):
+        with self.lock:
+            state = self.state()
+            if (not state or state['id'] != render_task_id or state['status'] != 'succeeded'
+                    or state.get('source_kind') != 'live_content'
+                    or state.get('content_session_id') != session_id
+                    or state.get('content_task_id') != source_task_id):
+                raise Conflict('请选择该口播生成的有效数字人成片')
+            schedule = self.tts.products.live_content_schedule(session_id, source_task_id)
+            body = self.tts.products.live_content_draft_body(session_id, source_task_id)
+            if not schedule or body is None:
+                raise Conflict('请先保存短视频文案和本机排期')
+            if schedule['withdrawn'] or not schedule['draft_matches']:
+                raise Conflict('文案已撤回或修改，请重新核对排期')
+            source = self.tts.products.live_content_source(session_id, source_task_id)
+            if source['facts_review'] != 'version_current':
+                raise Conflict('商品事实已变化，请重新核对发布内容')
+            video = self.video_path(render_task_id); cover = self.cover_path(render_task_id)
+            subtitle = self.subtitle(render_task_id).encode('utf-8')
+            assets = {
+                'video.mp4': state['result']['published_output_sha256'],
+                'cover.jpg': state['result']['cover_sha256'],
+                'captions.srt': hashlib.sha256(subtitle).hexdigest(),
+            }
+            metadata = {
+                'version': 1, 'session_id': session_id, 'source_task_id': source_task_id,
+                'render_task_id': render_task_id, 'product_id': state['product_id'],
+                'product_version': state['product_version'], 'script_id': state['script_id'],
+                'title': source['product_snapshot']['title'] + '讲解片段', 'body': body,
+                'account': schedule['account'], 'audience': schedule['audience'],
+                'publish_at': schedule['publish_at'], 'assets': assets,
+            }
+            manifest = json.dumps(metadata, ensure_ascii=False, indent=2).encode('utf-8')
+            assets['metadata.json'] = hashlib.sha256(manifest).hexdigest()
+            work = (self.jobs/render_task_id).resolve(); package = work/'publication-package.zip'
+            temporary = work/('publication-package.' + uuid.uuid4().hex + '.tmp')
+            try:
+                with zipfile.ZipFile(temporary, 'w', compression=zipfile.ZIP_DEFLATED,
+                                     compresslevel=6) as archive:
+                    archive.write(video, 'video.mp4'); archive.write(cover, 'cover.jpg')
+                    archive.writestr('captions.srt', subtitle); archive.writestr('metadata.json', manifest)
+                    checksums = ''.join(f'{digest_value}  {name}\n' for name, digest_value in assets.items())
+                    archive.writestr('SHA256SUMS.txt', checksums.encode('ascii'))
+                temporary.replace(package)
+            finally:
+                temporary.unlink(missing_ok=True)
+            return package
 
     def subtitle(self, task_id):
         with self.lock:

@@ -7,6 +7,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import uuid
+import zipfile
 import cv2
 import numpy as np
 
@@ -44,6 +45,17 @@ class RenderTests(unittest.TestCase):
         result={'output':str(path),'output_sha256':digest(path),'audio_sha256':binding['audio_sha256'],
                 'full_decode_passed':True,'audio_complete':True}
         return task,work,result
+
+    def retained_content(self):
+        script_id = self.audio.products.add_script(self.product, '直播中真实说出的这一段。')
+        source = self.root / 'spoken.wav'; source.write_bytes(b'RIFF retained live audio fixture')
+        audio_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+        self.audio.products.archive_live_content_audio('scene', 'spoken', source, audio_hash)
+        self.audio.products.record_rotation_completion('scene', 'spoken', {
+            'product_id': self.product['id'], 'product_version': self.product['version'],
+            'script_id': script_id,
+        }, 0, voice_id=self.audio.value['voice_id'])
+        return source, audio_hash
 
     def finish(self,task,work,result):
         class ProcessFixture:
@@ -130,15 +142,7 @@ class RenderTests(unittest.TestCase):
         self.assertFalse((work/'output.mp4').exists())
 
     def test_completed_live_audio_is_a_version_bound_render_input(self):
-        script_id = self.audio.products.add_script(self.product, '直播中真实说出的这一段。')
-        source = self.root / 'spoken.wav'
-        source.write_bytes(b'RIFF retained live audio fixture')
-        audio_hash = hashlib.sha256(source.read_bytes()).hexdigest()
-        self.audio.products.archive_live_content_audio('scene', 'spoken', source, audio_hash)
-        self.audio.products.record_rotation_completion('scene', 'spoken', {
-            'product_id': self.product['id'], 'product_version': self.product['version'],
-            'script_id': script_id,
-        }, 0, voice_id=self.audio.value['voice_id'])
+        source, audio_hash = self.retained_content()
         binding, content, audio, avatar = self.tasks._content_inputs('scene', 'spoken', self.avatar['id'])
         self.assertEqual(binding['source_kind'], 'live_content')
         self.assertEqual(binding['audio_sha256'], audio_hash)
@@ -149,6 +153,36 @@ class RenderTests(unittest.TestCase):
                                  version=self.product['version'], product_id=self.product['id'])
         with self.assertRaises(Conflict):
             self.tasks._content_inputs('scene', 'spoken', self.avatar['id'])
+
+    def test_publication_package_binds_current_draft_schedule_and_asset_hashes(self):
+        self.retained_content()
+        binding, _, audio, avatar = self.tasks._content_inputs('scene', 'spoken', self.avatar['id'])
+        task_id = str(uuid.uuid4()); work = self.tasks.jobs/task_id; work.mkdir()
+        original = work/'output.mp4'; original.write_bytes(b'original video')
+        published = work/'published.mp4'; published.write_bytes(b'published video')
+        cover = work/'cover.jpg'; cover.write_bytes(b'\xff\xd8cover')
+        self.tasks.task = {'id': task_id, 'status': 'succeeded', **binding,
+            'product_title': audio['product_title'], 'avatar_name': avatar['name'],
+            'caption': audio['caption'], 'result': {
+                'output': str(original.resolve()), 'output_sha256': digest(original),
+                'published_output': str(published.resolve()), 'published_output_sha256': digest(published),
+                'cover': str(cover.resolve()), 'cover_sha256': digest(cover),
+                'audio_complete': True, 'full_decode_passed': True, 'input_audio_samples': 24000,
+            }}
+        self.tasks._save()
+        self.audio.products.save_live_content_draft('scene', 'spoken', '审核后的发布文案')
+        self.audio.products.save_live_content_schedule('scene', 'spoken', '账号一', '公开',
+                                                       '2027-01-01T09:00:00+08:00')
+        package = self.tasks.publication_package('scene', 'spoken', task_id)
+        with zipfile.ZipFile(package) as archive:
+            self.assertEqual(set(archive.namelist()), {
+                'video.mp4', 'cover.jpg', 'captions.srt', 'metadata.json', 'SHA256SUMS.txt'})
+            metadata = json.loads(archive.read('metadata.json'))
+            self.assertEqual((metadata['body'], metadata['account']), ('审核后的发布文案', '账号一'))
+            self.assertNotIn(str(self.root), json.dumps(metadata, ensure_ascii=False))
+        self.audio.products.save_live_content_draft('scene', 'spoken', '排期后又修改的文案')
+        with self.assertRaises(Conflict):
+            self.tasks.publication_package('scene', 'spoken', task_id)
 
     def test_ass_caption_preserves_generated_line_break_but_escapes_user_controls(self):
         self.assertEqual(_escape_ass_text(r'第一行\N第二行\危险{覆盖}'),

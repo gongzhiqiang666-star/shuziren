@@ -4,6 +4,7 @@ import hashlib
 import json
 import shutil
 import time
+import zipfile
 from pathlib import Path
 
 from scripts.avatar_store import AvatarStore
@@ -33,6 +34,10 @@ def main():
     products.record_rotation_completion('validation-scene', 'validation-speech', {
         'product_id': product['id'], 'product_version': product['version'], 'script_id': script_id,
     }, 0)
+    products.save_live_content_draft('validation-scene', 'validation-speech',
+                                       '标题：直播内容成片验证\n封面文字：直播内容成片验证')
+    products.save_live_content_schedule('validation-scene', 'validation-speech', '本机验证账号',
+                                        '人工审核后公开', '2027-01-01T09:00:00+08:00')
     avatars = AvatarStore(root)
     avatar = avatars.import_prepared(args.avatar_directory, '真实数字人验证形象')
     avatars.select(avatar['id'])
@@ -53,8 +58,20 @@ def main():
     (root / 'avatar-subtitles.srt').write_text(subtitle, encoding='utf-8')
     shutil.copy2(video, root / 'live-content-avatar.mp4')
     shutil.copy2(tasks.cover_path(task['id']), root / 'live-content-cover.jpg')
+    package = tasks.publication_package('validation-scene', 'validation-speech', task['id'])
+    shutil.copy2(package, root / 'publication-package.zip')
+    with zipfile.ZipFile(package) as archive:
+        names = set(archive.namelist())
+        if names != {'video.mp4', 'cover.jpg', 'captions.srt', 'metadata.json', 'SHA256SUMS.txt'}:
+            raise SystemExit('publication package inventory mismatch')
+        checksums = {name: digest_value for digest_value, name in
+                     (line.split('  ', 1) for line in archive.read('SHA256SUMS.txt').decode().splitlines())}
+        for name, expected in checksums.items():
+            if hashlib.sha256(archive.read(name)).hexdigest() != expected:
+                raise SystemExit('publication package checksum mismatch: ' + name)
     report = {'ok': True, 'task': task, 'video': str(root / 'live-content-avatar.mp4'),
-              'subtitle': str(root / 'avatar-subtitles.srt'), 'cover': str(root / 'live-content-cover.jpg')}
+              'subtitle': str(root / 'avatar-subtitles.srt'), 'cover': str(root / 'live-content-cover.jpg'),
+              'package': str(root / 'publication-package.zip')}
     (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False))
 

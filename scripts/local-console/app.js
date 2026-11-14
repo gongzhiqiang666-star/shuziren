@@ -2441,7 +2441,11 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
     const scheduleStatus = document.createElement('p');
     scheduleStatus.setAttribute('role', 'status');
     const revisionStatus = document.createElement('p');
-    scheduleForm.append(scheduleSave, scheduleStatus, revisionStatus);
+    const packageDownload = document.createElement('a');
+    packageDownload.textContent = '下载发布准备包';
+    packageDownload.download = '数字人发布准备包.zip';
+    packageDownload.hidden = true;
+    scheduleForm.append(scheduleSave, scheduleStatus, revisionStatus, packageDownload);
     function showRevisionCount(schedule) {
       revisionStatus.textContent = !schedule ? '' : schedule.revision_count == null
         ? '历史改稿次数未记录' : `已保存改稿 ${schedule.revision_count} 次`;
@@ -2498,6 +2502,13 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         scheduleSave.disabled = facts_review !== 'version_current' || Boolean(schedule?.withdrawn);
         if (schedule?.withdrawn) scheduleStatus.textContent = '文案已停止复用，排期仅供查看';
         else if (scheduleSave.disabled) scheduleStatus.textContent = '商品事实已变化，排期仅供查看';
+        const matchingRender = renderState?.status === 'succeeded' && renderState.source_kind === 'live_content'
+          && renderState.content_session_id === sessionId && renderState.content_task_id === params.get('task_id');
+        packageDownload.hidden = !(schedule?.draft_matches && !schedule?.withdrawn && matchingRender);
+        if (!packageDownload.hidden) packageDownload.href = '/api/live/content-package?' + new URLSearchParams({
+          session_id:sessionId, task_id:params.get('task_id'), render_task_id:renderState.id,
+        });
+        else packageDownload.removeAttribute('href');
         showPublicationReceipt(schedule);
       } catch (error) {
         scheduleStatus.textContent = error.message;

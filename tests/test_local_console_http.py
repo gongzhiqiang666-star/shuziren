@@ -68,6 +68,20 @@ class ConsoleHTTPTests(unittest.TestCase):
             self.assertEqual(response.read(), bytes(range(8)))
         self.assertEqual(self.call('/api/live/content-audio?session_id=scene&task_id=missing')[0], 400)
 
+    def test_publication_package_download_delegates_to_version_bound_render_task(self):
+        package = Path(self.directory.name)/'publication.zip'; package.write_bytes(b'PK\x03\x04verified package')
+        self.store.save({'version': 1, 'runtime_root': self.directory.name, 'port': 5168})
+        with (patch('scripts.local_console.preflight', return_value={'runtime_root': self.directory.name}),
+              patch('scripts.tts_tasks.TTSTasks'), patch('scripts.render_tasks.RenderTasks') as render_type):
+            render_type.return_value.publication_package.return_value = package
+            url = self.base + '/api/live/content-package?' + urlencode({
+                'session_id': 'scene', 'task_id': 'spoken', 'render_task_id': 'rendered'})
+            with urlopen(url, timeout=3) as response:
+                self.assertEqual(response.headers['Content-Type'], 'application/zip')
+                self.assertEqual(response.read(), package.read_bytes())
+            render_type.return_value.publication_package.assert_called_once_with('scene', 'spoken', 'rendered')
+        self.assertEqual(self.call('/api/live/content-package?session_id=scene&task_id=spoken')[0], 400)
+
     def test_shop_workspaces_keep_product_and_metrics_data_isolated(self):
         first = ProductStore(shop_data_directory(self.directory.name, 'first'))
         second = ProductStore(shop_data_directory(self.directory.name, 'second'))
