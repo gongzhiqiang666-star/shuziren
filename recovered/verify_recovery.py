@@ -21,6 +21,7 @@ import threading
 import time
 import types
 import tempfile
+import wave
 import yaml
 from io import BytesIO
 from pathlib import Path
@@ -1000,7 +1001,11 @@ def verify_voice_v3_lifecycle():
         constructor_calls=[];infer_calls=[]
         class FakeIndexTTS:
             def __init__(self,**kwargs):constructor_calls.append(kwargs)
-            def infer_fast(self,*args,**kwargs):infer_calls.append((args,kwargs));Path(args[2]).write_bytes(b"RIFF")
+            def infer_fast(self,*args,**kwargs):
+                infer_calls.append((args,kwargs))
+                with wave.open(str(args[2]),"wb") as output:
+                    output.setnchannels(1);output.setsampwidth(2);output.setframerate(24000)
+                    output.writeframes(b"\0\0" * 16)
         module_name="bin.voice_infer_v3.indextts.infer"
         original_index=sys.modules.get(module_name);original_torch=sys.modules.get("torch")
         fake_torch=types.SimpleNamespace(

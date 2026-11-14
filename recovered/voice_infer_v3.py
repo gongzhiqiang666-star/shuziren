@@ -4,11 +4,58 @@ from __future__ import annotations
 
 import gc
 import logging
+import os
+import re
+import wave
 from pathlib import Path
 from threading import Lock
 from typing import Optional
 
 from .voice_infer_common import CacheMixin, apply_speed, atempo_filters, output_path, resolve_reference, temp_dir
+
+
+LONG_TEXT_CHARS = 300
+
+
+def split_synthesis_text(text, max_chars=LONG_TEXT_CHARS):
+    value = str(text or "").strip()
+    if not value:
+        return []
+    units = [item.strip() for item in re.findall(r".*?(?:[。！？!?；;\n]+|$)", value, re.S) if item.strip()]
+    chunks = []
+    for unit in units:
+        while len(unit) > max_chars:
+            boundary = max(unit.rfind(mark, 0, max_chars + 1) for mark in ("，", ",", "、", " "))
+            boundary = boundary + 1 if boundary >= max_chars // 2 else max_chars
+            chunks.append(unit[:boundary].strip())
+            unit = unit[boundary:].strip()
+        if not unit:
+            continue
+        if chunks and len(chunks[-1]) + len(unit) <= max_chars:
+            chunks[-1] += unit
+        else:
+            chunks.append(unit)
+    return chunks
+
+
+def concatenate_pcm_wavs(inputs, output):
+    if not inputs:
+        raise ValueError("没有可合并的 IndexTTS 音频片段")
+    parameters = None
+    with wave.open(os.fspath(output), "wb") as destination:
+        for path in inputs:
+            with wave.open(os.fspath(path), "rb") as source:
+                current = (source.getnchannels(), source.getsampwidth(), source.getframerate(), source.getcomptype())
+                if parameters is None:
+                    parameters = current
+                    destination.setnchannels(current[0])
+                    destination.setsampwidth(current[1])
+                    destination.setframerate(current[2])
+                    destination.setcomptype(current[3], source.getcompname())
+                elif current != parameters:
+                    raise ValueError("IndexTTS 分段音频参数不一致")
+                destination.writeframes(source.readframes(source.getnframes()))
+    return os.fspath(output)
 
 
 class VoiceSynthesizer(CacheMixin):
@@ -79,12 +126,34 @@ class VoiceSynthesizer(CacheMixin):
                     return cached
                 raw = output_path(self._get_temp_path())
                 result = output_path(self._get_temp_path()) if float(speed) != 1.0 else raw
+                staged = str(Path(raw).with_suffix(Path(raw).suffix + ".partial.wav"))
+                parts = []
                 import torch
-                with torch.inference_mode():
-                    self.model.infer_fast(call_reference_audio, text, raw, verbose=False)
-                if result != raw:
-                    self._apply_speed(raw, result, speed)
-                    Path(raw).unlink(missing_ok=True)
+                try:
+                    chunks = split_synthesis_text(text)
+                    if not chunks:
+                        raise ValueError("text cannot be empty")
+                    with torch.inference_mode():
+                        for index, chunk in enumerate(chunks):
+                            part = str(Path(raw).with_suffix(f".part-{index:04d}.wav"))
+                            parts.append(part)
+                            self.model.infer_fast(call_reference_audio, chunk, part, verbose=False)
+                            if not Path(part).is_file() or Path(part).stat().st_size <= 44:
+                                raise RuntimeError(f"IndexTTS 第 {index + 1} 段没有生成有效 WAV")
+                    concatenate_pcm_wavs(parts, staged)
+                    os.replace(staged, raw)
+                    if result != raw:
+                        accelerated = str(Path(result).with_suffix(Path(result).suffix + ".partial.wav"))
+                        try:
+                            self._apply_speed(raw, accelerated, speed)
+                            os.replace(accelerated, result)
+                        finally:
+                            Path(accelerated).unlink(missing_ok=True)
+                            Path(raw).unlink(missing_ok=True)
+                finally:
+                    Path(staged).unlink(missing_ok=True)
+                    for part in parts:
+                        Path(part).unlink(missing_ok=True)
                 self._record(
                     result, text, speed, language,
                     call_reference_audio, call_reference_text)
