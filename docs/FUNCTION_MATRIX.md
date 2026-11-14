@@ -45,7 +45,7 @@
 | CNT-007 | IP 文案爆款拆解与多版本改写 | `rewrite_ip_script` 主体和常量表 | `main.py`, `content_grounding.py` | 静态验证通过 | 每个版本及 fallback 成片稿均执行数字/价格事实门禁，任一版本编造则整次失败且不落盘；第二版本新增 `99`、fallback 无依据价格、两版事实保真 3 项及恢复五关通过，见 `evidence/a07-ip-rewrite-grounding.md`。真实 DeepSeek 爆款质量、人审和 Windows 原 `.pyd` 输出差分待外部条件 |
 | CNT-008 | 抖音/IP 对标视频提取 | `extract_douyin_benchmark` | `main.py`, `douyin_benchmark.py` | 静态验证通过 | 仅接受抖音官方 HTTPS 分享链接，下载产物必须位于工具目录、非空且为允许的视频扩展名，ASR 前用 FFprobe 验证真实视频轨；项目 benchmark 目录事务替换。4 项专项测试通过，本机 1 秒 H.264/AAC 媒体实测视频轨与时长有效。真实抖音登录/验证码/风控、失效短链及下载器升级待平台验证，见 `evidence/v02-douyin-benchmark.md` |
 | CNT-009 | IP 发布标题和标签生成 | `generate_ip_agent_publish_meta` wrapper/body `0x180142690/0x180142a40` | `main.py`, `generate_title.py`, `content_grounding.py` | 静态验证通过 | 原主体只生成/保存标题和标签，不含简介；结构/去重 4 项及标题事实门禁 3 项通过。API 集成确认编造标题不保存，事实标题只写原生 `publish_title/publish_tags_text` 两字段，2 项及恢复五关通过，见 `evidence/a07-ip-publish-meta.md`。真实 DeepSeek 质量和 Windows 原 `.pyd` 动态差分待外部条件 |
-| CNT-010 | IP 一键成片流水线 | 音频→视频→字幕→精加工→发布 API | `main.py`, `ip_pipeline.py`, `ip_agent_post_process.py` | 静态验证通过 | 稳定指纹、逐步检查点、产物复核、跨进程锁、崩溃事务恢复、续跑和幂等通过 6 项专项及完整契约。RTX 3060 真实 IndexTTS→TensorRT 口型→字幕→后期链注入字幕故障后仅续跑剩余步骤，最终 720×1280 H.264/AAC 成片完整解码；未对外发布，见 `evidence/v02-ip-pipeline-checkpoint.md` |
+| CNT-010 | IP 一键成片流水线 | 音频→视频→字幕→精加工→发布 API | `main.py`, `ip_pipeline.py`, `ip_agent_post_process.py` | Windows 验证通过 | 稳定指纹、逐步检查点、产物复核、跨进程锁、崩溃恢复、续跑和幂等 6 项通过，原子存储变更后复跑无回归。RTX 3060 真实 IndexTTS→TensorRT 口型→字幕→后期链注入故障后仅续跑剩余步骤，最终 720×1280 H.264/AAC 完整解码。真实平台发布归 CNT-011，见 `evidence/v02-ip-pipeline-checkpoint.md` |
 | CNT-011 | IP 视频发布 | `publish_ip_agent_video` | `main.py`, `ip_publish.py` | 静态验证通过 | 四平台白名单；媒体与字段门禁、预演、幂等、任务先落盘、同项目并发拒绝、异常可重试、中断结果未知确认、删除前独立审计归档；控制台支持事务式成片导入和完整发布表单。专项 13 项（含创建到删除审计全链）、控制台 HTTP 59 项及前端语法通过，未对外发布。真实账号登录、草稿/立即/定时发布及失败重试待授权平台验证，见 `evidence/v02-ip-publish.md` |
 | CNT-012 | 直播贴片项目管理 | main CRUD/helper wrapper/body 与 26 字段 YAML、五类固定输出、历史归档及旧项目迁移证据，见 `rea-output/main-live-sticker-project-notes.md` | `main.py` | 静态验证通过 | Windows 原 `.pyd` 响应差分、真实旧项目、连续生成归档、文件占用/权限错误和前端预览 |
 | CNT-013 | 贴片提示词、房间标题和图片生成 | 对应 `live_sticker_*` 原生模块 | `live_sticker_prompts.py`, `live_sticker_titles.py`, `runninghub_image.py` | 静态验证通过 | 真实 LLM/图片服务、失败重试和图片比例 |
@@ -97,10 +97,10 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 49 |
+| 静态验证通过 | 48 |
 | 开发中 | 0 |
 | 已分析 | 0 |
-| Windows 验证通过 | 9 |
+| Windows 验证通过 | 10 |
 | 端到端验证通过 | 0 |
 | 合计 | 58 |
 
