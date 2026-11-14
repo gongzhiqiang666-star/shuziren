@@ -2387,32 +2387,37 @@ class Api(PluginInstallerApi):
 
     def _import_cloud_dh_file(self, project_id, kind, source):
         if kind not in ("avatar", "audio"): raise ValueError("云数字人素材类型无效")
-        info = self._load_cloud_dh_project(project_id)
-        source = Path(source).expanduser().resolve()
-        if not source.is_file() or source.stat().st_size == 0: raise FileNotFoundError("素材文件不存在或为空")
-        outputs = self._get_cloud_dh_output_paths(project_id); target = Path(outputs[kind])
-        target.parent.mkdir(parents=True, exist_ok=True)
-        staged = target.with_name(f".{target.name}.importing"); staged.unlink(missing_ok=True)
+        event = self._begin_cloud_dh_job(project_id)
         try:
-            shutil.copy2(source, staged)
-            if kind == "avatar":
-                from PIL import Image
-                with Image.open(staged) as image:
-                    image.verify()
-                    if image.width < 64 or image.height < 64: raise ValueError("数字人形象尺寸过小")
-            else:
-                duration = float(get_audio_duration(str(staged)))
-                if not 0 < duration <= 3600: raise ValueError("口播音频时长无效")
-            archive = self._archive_cloud_dh_outputs(project_id, info) if any(
-                Path(path).is_file() for path in outputs.values()) else ""
-            os.replace(staged, target)
-            Path(outputs["video"]).unlink(missing_ok=True)
+            info = self._load_cloud_dh_project(project_id)
+            source = Path(source).expanduser().resolve()
+            if not source.is_file() or source.stat().st_size == 0: raise FileNotFoundError("素材文件不存在或为空")
+            outputs = self._get_cloud_dh_output_paths(project_id); target = Path(outputs[kind])
+            target.parent.mkdir(parents=True, exist_ok=True)
+            staged = target.with_name(f".{target.name}.importing"); staged.unlink(missing_ok=True)
+            try:
+                shutil.copy2(source, staged)
+                if kind == "avatar":
+                    from PIL import Image
+                    with Image.open(staged) as image:
+                        image.verify()
+                        if image.width < 64 or image.height < 64: raise ValueError("数字人形象尺寸过小")
+                else:
+                    duration = float(get_audio_duration(str(staged)))
+                    if not 0 < duration <= 3600: raise ValueError("口播音频时长无效")
+                if event.is_set(): raise InterruptedError("云数字人素材导入已取消")
+                archive = self._archive_cloud_dh_outputs(project_id, info) if any(
+                    Path(path).is_file() for path in outputs.values()) else ""
+                os.replace(staged, target)
+                Path(outputs["video"]).unlink(missing_ok=True)
+            finally:
+                staged.unlink(missing_ok=True)
+            info.pop("last_task", None)
+            if archive: info["last_archive"] = archive
+            info = self._save_cloud_dh_project(project_id, info)
+            return {"status": "success", "path": str(target), "project": self._attach_cloud_dh_previews(info)}
         finally:
-            staged.unlink(missing_ok=True)
-        info.pop("last_task", None)
-        if archive: info["last_archive"] = archive
-        info = self._save_cloud_dh_project(project_id, info)
-        return {"status": "success", "path": str(target), "project": self._attach_cloud_dh_previews(info)}
+            self._end_cloud_dh_job(project_id, event)
 
     def pick_cloud_dh_audio(self, data):
         project_id=(data or {}).get("project_id")
@@ -2426,20 +2431,25 @@ class Api(PluginInstallerApi):
 
     def generate_cloud_dh_avatar(self, data):
         from .cloud_dh_prompts import build_avatar_prompt
-        from .runninghub_image import generate_and_download
+        from .runninghub_image import _generate_and_download_cancellable
+        event = None; project_id = None
         try:
             project_id = data["project_id"]; info = self._load_cloud_dh_project(project_id)
+            event = self._begin_cloud_dh_job(project_id)
             prompt = build_avatar_prompt(data.get("description") or data.get("avatar_prompt") or info.get("avatar_prompt", ""))
             outputs = self._get_cloud_dh_output_paths(project_id); output = Path(outputs["avatar"])
             staged = output.with_name(".数字人形象.pending.png"); staged.unlink(missing_ok=True)
             try:
-                generate_and_download(api_key=self._resolve_cloud_dh_api_key(data), prompt=prompt, dest=staged,
-                                      aspect_ratio="9:16", resolution=data.get("resolution", "2k"), quality=data.get("quality", "low"),
-                                      poll_interval=int(data.get("poll_interval", 5)), poll_timeout=int(data.get("poll_timeout", 900)))
+                _generate_and_download_cancellable(
+                    api_key=self._resolve_cloud_dh_api_key(data), prompt=prompt, dest=staged,
+                    aspect_ratio="9:16", resolution=data.get("resolution", "2k"), quality=data.get("quality", "low"),
+                    poll_interval=int(data.get("poll_interval", 5)), poll_timeout=int(data.get("poll_timeout", 900)),
+                    cancel_check=event.is_set)
                 from PIL import Image
                 with Image.open(staged) as image:
                     image.verify()
                     if image.width < 64 or image.height < 64: raise ValueError("数字人形象尺寸过小")
+                if event.is_set(): raise InterruptedError("云数字人形象生成已取消")
                 archive = self._archive_cloud_dh_outputs(project_id, info) if any(
                     Path(path).is_file() for path in outputs.values()) else ""
                 os.replace(staged, output)
@@ -2453,7 +2463,11 @@ class Api(PluginInstallerApi):
             if archive: info["last_archive"] = archive
             info = self._save_cloud_dh_project(project_id, info)
             return {"status": "success", "project": self._attach_cloud_dh_previews(info)}
-        except Exception as error: return {"status": "error", "message": f"生成数字人形象失败: {error}"}
+        except Exception as error:
+            status = "cancelled" if isinstance(error, InterruptedError) else "error"
+            return {"status": status, "message": f"生成数字人形象失败: {error}"}
+        finally:
+            if event is not None: self._end_cloud_dh_job(project_id, event)
 
     def generate_cloud_dh_video(self, data):
         from .runninghub_talk import _generate_talk_video_cancellable
@@ -2499,6 +2513,17 @@ class Api(PluginInstallerApi):
         if not hasattr(self, "_cloud_dh_generation_lock"):
             self._cloud_dh_generation_lock = RLock(); self._cloud_dh_cancel_events = {}
         return self._cloud_dh_generation_lock, self._cloud_dh_cancel_events
+
+    def _begin_cloud_dh_job(self, project_id):
+        lock, jobs = self._cloud_dh_job_state()
+        with lock:
+            if project_id in jobs: raise RuntimeError("该云数字人项目正在生成或更新素材")
+            event = Event(); jobs[project_id] = event; return event
+
+    def _end_cloud_dh_job(self, project_id, event):
+        lock, jobs = self._cloud_dh_job_state()
+        with lock:
+            if jobs.get(project_id) is event: jobs.pop(project_id, None)
 
     def cancel_cloud_dh_generation(self, project_id):
         if not isinstance(project_id, str) or not project_id.strip():

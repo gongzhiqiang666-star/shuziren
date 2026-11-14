@@ -39,6 +39,8 @@ class RunningHubTalkTests(unittest.TestCase):
             Image.new('RGB', (96, 160), 'blue').save(outputs['avatar'], 'PNG')
             Path(outputs['audio']).write_bytes(b'audio')
             Path(outputs['video']).write_bytes(b'old-video')
+            replacement = Path(root)/'replacement.png'
+            Image.new('RGB', (96, 160), 'green').save(replacement, 'PNG')
             entered = threading.Event(); result = []
             def provider(**kwargs):
                 entered.set()
@@ -50,6 +52,11 @@ class RunningHubTalkTests(unittest.TestCase):
                 worker.start(); self.assertTrue(entered.wait(2))
                 duplicate = api.generate_cloud_dh_video({'project_id':project['id']})
                 self.assertIn('正在生成', duplicate['message'])
+                with self.assertRaisesRegex(RuntimeError, '正在生成或更新素材'):
+                    api._import_cloud_dh_file(project['id'], 'avatar', replacement)
+                avatar = api.generate_cloud_dh_avatar({'project_id':project['id']})
+                self.assertEqual(avatar['status'], 'error')
+                self.assertIn('正在生成或更新素材', avatar['message'])
                 self.assertEqual(api.cancel_cloud_dh_generation(project['id'])['status'], 'cancel_requested')
                 worker.join(2); self.assertFalse(worker.is_alive())
             self.assertEqual(result[0]['status'], 'cancelled')
@@ -98,7 +105,7 @@ class RunningHubTalkTests(unittest.TestCase):
             old_avatar = Path(outputs['avatar']).read_bytes()
 
             def invalid(**kwargs): Path(kwargs['dest']).write_bytes(b'broken-image')
-            with patch('recovered.runninghub_image.generate_and_download', side_effect=invalid):
+            with patch('recovered.runninghub_image._generate_and_download_cancellable', side_effect=invalid):
                 failed = api.generate_cloud_dh_avatar({'project_id': project['id']})
             self.assertEqual(failed['status'], 'error')
             self.assertEqual(Path(outputs['avatar']).read_bytes(), old_avatar)
@@ -106,7 +113,7 @@ class RunningHubTalkTests(unittest.TestCase):
             self.assertFalse(list(Path(outputs['avatar']).parent.glob('*.pending.png')))
 
             def valid(**kwargs): Image.new('RGB', (96, 160), 'blue').save(kwargs['dest'], 'PNG')
-            with patch('recovered.runninghub_image.generate_and_download', side_effect=valid):
+            with patch('recovered.runninghub_image._generate_and_download_cancellable', side_effect=valid):
                 completed = api.generate_cloud_dh_avatar({'project_id': project['id']})
             self.assertEqual(completed['status'], 'success')
             self.assertFalse(Path(outputs['video']).exists())
@@ -117,7 +124,7 @@ class RunningHubTalkTests(unittest.TestCase):
             blue_avatar = Path(outputs['avatar']).read_bytes()
             Path(outputs['video']).write_bytes(b'newer-video')
             def second(**kwargs): Image.new('RGB', (96, 160), 'green').save(kwargs['dest'], 'PNG')
-            with patch('recovered.runninghub_image.generate_and_download', side_effect=second):
+            with patch('recovered.runninghub_image._generate_and_download_cancellable', side_effect=second):
                 self.assertEqual(api.generate_cloud_dh_avatar({'project_id': project['id']})['status'], 'success')
             archived_avatars = list(history.rglob('数字人形象.png'))
             self.assertEqual(len(archived_avatars), 2)
