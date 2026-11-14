@@ -154,7 +154,8 @@ def console_command(data, port, python=None):
 
 
 def console_environment():
-    return {**{key: value for key, value in os.environ.items() if key.upper() not in {'PYTHONPATH', 'PYTHONHOME'}},
+    return {**{key: value for key, value in os.environ.items()
+               if key.upper() not in {'PYTHONPATH', 'PYTHONHOME', 'SHUZIREN_MANAGED_SHOP_ID'}},
             'PYTHONNOUSERSITE': '1'}
 
 
@@ -274,7 +275,6 @@ def run_release(root, port, with_media=False, shop_id=None):
             instance.enter_context(InstanceLock(lease))
             python = configured_media(data)[1] if with_media else None
         environment = console_environment()
-        environment.pop('SHUZIREN_MANAGED_SHOP_ID', None)
         if shop_id is not None:
             environment['SHUZIREN_MANAGED_SHOP_ID'] = shop_id
         return subprocess.call(console_command(data, port, python), cwd=release, env=environment)
