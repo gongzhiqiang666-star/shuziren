@@ -5,7 +5,7 @@ import os
 import wave
 import base64
 from datetime import datetime, timezone
-from unittest.mock import patch
+from unittest.mock import call, patch
 from pathlib import Path
 import tempfile
 import threading
@@ -16,10 +16,65 @@ from urllib.request import Request, urlopen
 
 from scripts.local_console import AUTHORIZATION_AUDIT_MAX_BYTES, InstanceLock, create_server
 from scripts.local_console_config import ConfigStore, shop_data_directory
+from scripts.local_accounts import LocalAccountStore
 from scripts.product_store import Conflict, ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
+    def test_required_login_binds_database_role_and_invalidates_logout(self):
+        shop_id = 'secure-shop'
+        data_root = Path(self.directory.name) / 'managed'
+        config = ConfigStore(shop_data_directory(data_root, shop_id))
+        accounts = data_root / 'accounts.sqlite3'
+        LocalAccountStore(accounts).set_account(
+            'alice', 'correct horse battery', shop_id, 'viewer')
+        server = create_server(config, port=0, shop_id=shop_id, require_login=True,
+                               account_database=accounts)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        client = ConsoleHTTPTests()
+        client.base = f'http://127.0.0.1:{server.server_port}'
+        client.token = ''
+        try:
+            self.assertEqual(client.call('/api/session')[1], {
+                'authenticated': False, 'login_required': True,
+                'tts_engine': 'indextts', 'shop_id': shop_id})
+            self.assertEqual(client.call('/api/products')[0], 401)
+            bad = client.call('/api/auth/login', {
+                'account_id': 'alice', 'password': 'wrong password value'})
+            self.assertEqual((bad[0], bad[1]['error']), (401, '账号、密码或店铺权限无效'))
+            status, login = client.call('/api/auth/login', {
+                'account_id': 'alice', 'password': 'correct horse battery'})
+            self.assertEqual((status, login['account_id'], login['access_role']),
+                             (200, 'alice', 'viewer'))
+            client.token = login['token']
+            session = client.call('/api/session', None, **{'X-Console-Token': client.token})[1]
+            self.assertTrue(session['authenticated'])
+            self.assertEqual((session['account_id'], session['access_role']), ('alice', 'viewer'))
+            denied = client.call('/api/products', {
+                'title': '不能写入', 'content': '只读账号', 'product_index': 1})
+            self.assertEqual((denied[0], denied[1]['access_role']), (403, 'viewer'))
+            self.assertEqual(client.call('/api/auth/logout', {})[0], 200)
+            self.assertEqual(client.call('/api/products')[0], 401)
+            status, login = client.call('/api/auth/login', {
+                'account_id': 'alice', 'password': 'correct horse battery'})
+            self.assertEqual(status, 200)
+            client.token = login['token']
+            LocalAccountStore(accounts).set_disabled('alice')
+            self.assertEqual(client.call('/api/products')[0], 401)
+            events = [json.loads(line) for line in
+                      (config.directory / 'authorization-audit.jsonl').read_text(encoding='utf-8').splitlines()]
+            self.assertEqual([(item['account_id'], item['path'], item['allowed']) for item in events], [
+                ('alice', '/api/auth/login', True),
+                ('alice', '/api/products', False),
+                ('alice', '/api/auth/logout', True),
+                ('alice', '/api/auth/login', True),
+            ])
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join(5)
+
     def test_workspace_traces_prepared_product_through_report_to_reusable_copy(self):
         store = ProductStore(self.directory.name)
         product = store.save(title='茶杯', content='商品说明', product_index=1, product_facts={
@@ -201,6 +256,17 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(clients['operator'].call('/api/preparation-templates', {
             'name': '无权模板', 'goal': '目标', 'audience': '', 'constraints': '',
         })[0], 403)
+        motion = {'image': 'missing.png', 'audio': 'missing.wav', 'action_prompt': '手持讲解',
+                  'resolution': '480p', 'fps': 25, 'low_cost': False}
+        self.assertEqual(clients['viewer'].call('/api/hold-product-motion/plan', motion)[0], 403)
+        self.assertEqual(clients['viewer'].call('/api/hold-product-motion/start',
+                                                {**motion, 'api_key': 'secret'})[0], 403)
+        self.assertEqual(clients['operator'].call('/api/hold-product-motion/plan', motion)[0], 403)
+        self.assertEqual(clients['operator'].call('/api/hold-product-motion/start',
+                                                  {**motion, 'api_key': 'secret'})[0], 403)
+        self.assertEqual(clients['viewer'].call('/api/cache/clear', {})[0], 403)
+        self.assertEqual(clients['operator'].call('/api/cache/clear', {})[0], 403)
+        self.assertEqual(clients['admin'].call('/api/hold-product-motion/plan', motion)[0], 400)
         self.assertEqual(clients['operator'].call('/api/live/stop', {'session_id': 'missing'})[0], 409)
         self.assertEqual(clients['admin'].call('/api/products', product)[0], 200)
         self.assertEqual(clients['viewer'].call('/api/products')[1]['products'], [])
@@ -209,7 +275,27 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual([(event['account_id'], event['path'], event['allowed']) for event in events], [
             ('account-viewer', '/api/products', False),
             ('account-viewer', '/api/live/content-package', False),
+            ('account-viewer', '/api/hold-product-motion/plan', False),
+            ('account-viewer', '/api/hold-product-motion/start', False),
+            ('account-viewer', '/api/cache/clear', False),
         ])
+
+    def test_cache_cleanup_route_is_bounded_and_reports_exact_totals(self):
+        cache_root = Path(self.directory.name) / 'controlled-temp'
+        owned = cache_root / 'short_video'
+        owned.mkdir(parents=True)
+        (owned / 'one.bin').write_bytes(b'a' * 17)
+        unrelated = cache_root / 'operator-notes.txt'
+        unrelated.write_text('keep', encoding='utf-8')
+        with patch('recovered.cache_cleanup.tempfile.gettempdir', return_value=str(cache_root)):
+            status, result = self.call('/api/cache/clear', {})
+        self.assertEqual(status, 200)
+        self.assertEqual((result['status'], result['removed'], result['removed_bytes']),
+                         ('success', 1, 17))
+        self.assertEqual(result['failures'], [])
+        self.assertFalse(owned.exists())
+        self.assertEqual(unrelated.read_text(encoding='utf-8'), 'keep')
+        self.assertEqual(self.call('/api/cache/clear', {'path': str(cache_root)})[0], 400)
 
     def test_shared_preparation_template_reuses_structure_without_shop_facts(self):
         clients = []
@@ -1546,6 +1632,14 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call('/api/avatar-preparation/cancel',{'task_id':0})[0],400)
         self.assertEqual(self.call('/api/avatar-preparation/start',request,**{'X-Console-Token':'bad'})[0],403)
 
+    def test_audio_editor_start_uses_managed_tool_service(self):
+        with patch('recovered.main.Api.launch_audio_editor',
+                   return_value={'status': 'success', 'pid': 1234}) as launch:
+            self.assertEqual(self.call('/api/tools/audio-editor/start', {}),
+                             (200, {'status': 'success', 'pid': 1234}))
+            launch.assert_called_once_with()
+        self.assertEqual(self.call('/api/tools/audio-editor/start', {'extra': True})[0], 400)
+
     def test_owned_avatar_import_selection_and_preview(self):
         import cv2
         import numpy as np
@@ -1682,6 +1776,22 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call('/api/ip-agent/delete', {'project_id': project_id})[0], 200)
         self.assertEqual(self.call('/api/ip-agent?project_id=' + project_id)[0], 400)
 
+    def test_ip_agent_uses_configured_runtime_for_media_probe(self):
+        runtime = Path(self.directory.name) / 'media-runtime'
+        runtime.mkdir()
+        internal = runtime / '_internal'
+        internal.mkdir()
+        self.store.save({'version': 1, 'runtime_root': str(runtime), 'port': 5158})
+        project = self.call('/api/ip-agent/create', {'name': '运行根接线'})[1]['project']
+        source = Path(self.directory.name) / 'runtime-probe.mp4'
+        source.write_bytes(b'video-fixture')
+        with patch('recovered.douyin_benchmark.resolve_ffprobe', return_value='ffprobe') as resolve, \
+                patch('recovered.douyin_benchmark.probe_video'):
+            status = self.call('/api/ip-agent/import-video', {
+                'project_id': project['id'], 'source': str(source)})[0]
+        self.assertEqual(status, 200)
+        resolve.assert_called_once_with(internal.resolve())
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
@@ -1730,6 +1840,155 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(saved['version'], original['version'] + 1)
         self.assertEqual(saved['extra']['product_facts'], facts)
         self.assertEqual(self.call('/api/products', update)[0], 409)
+
+    def test_recorded_interaction_http_lifecycle_is_admin_owned(self):
+        self.store.save({'version': 1, 'runtime_root': self.directory.name, 'port': 5158})
+        source = Path(self.directory.name) / 'source.mp4'
+        reply = Path(self.directory.name) / 'reply.wav'
+        source.write_bytes(b'video')
+        reply.write_bytes(b'audio')
+        running = {'id': 'recorded-1', 'status': 'running'}
+        cancelled = {'id': 'recorded-1', 'status': 'cancelled'}
+        with (patch('scripts.local_console.preflight', return_value={'runtime_root': self.directory.name}),
+              patch('scripts.recorded_interaction_tasks.RecordedInteractionTasks') as manager_type):
+            manager = manager_type.return_value
+            manager.ffmpeg = (Path(self.directory.name) / '_internal/env/ffmpeg/bin/ffmpeg.exe').resolve()
+            manager.start.return_value = running
+            manager.state.return_value = running
+            manager.cancel.return_value = cancelled
+            payload = {'source_video': str(source), 'replacements': [{
+                'start_ms': 100, 'end_ms': 300, 'reply_audio': str(reply), 'source_id': 'reply-1',
+            }]}
+            self.assertEqual(self.call('/api/recorded-interaction/start', payload), (202, {'task': running}))
+            self.assertEqual(self.call('/api/recorded-interaction/state'), (200, {'task': running}))
+            self.assertEqual(self.call('/api/recorded-interaction/cancel', {'task_id': 'recorded-1'}),
+                             (200, {'task': cancelled}))
+            manager.start.assert_called_once_with(str(source), payload['replacements'])
+            manager.cancel.assert_called_once_with('recorded-1')
+
+    def test_hold_product_http_plan_start_state_and_cancel(self):
+        avatar = Path(self.directory.name) / 'avatar.png'
+        product = Path(self.directory.name) / 'product.jpg'
+        avatar.write_bytes(b'avatar')
+        product.write_bytes(b'product')
+        plan = {'provider': 'runninghub', 'engine': 'qwen21', 'uploads': []}
+        running = {'id': 'held-1', 'status': 'running'}
+        cancelled = {'id': 'held-1', 'status': 'cancelled'}
+        with patch('scripts.hold_product_tasks.HoldProductTasks') as manager_type:
+            manager = manager_type.return_value
+            manager.plan.return_value = plan
+            manager.start.return_value = running
+            manager.state.return_value = running
+            manager.cancel.return_value = cancelled
+            base = {'avatar': str(avatar), 'product': str(product), 'product_name': '青瓷杯'}
+            self.assertEqual(self.call('/api/hold-product/plan', base), (200, {'plan': plan}))
+            self.assertEqual(self.call('/api/hold-product/start', {**base, 'api_key': 'request-only-key'}),
+                             (202, {'task': running}))
+            self.assertEqual(self.call('/api/hold-product/state'), (200, {'task': running}))
+            self.assertEqual(self.call('/api/hold-product/cancel', {'task_id': 'held-1'}),
+                             (200, {'task': cancelled}))
+            manager.plan.assert_called_once_with(**base)
+            manager.start.assert_called_once_with(**base, api_key='request-only-key')
+            manager.cancel.assert_called_once_with('held-1')
+
+    def test_hold_product_motion_http_plan_start_state_and_cancel(self):
+        image = Path(self.directory.name) / 'held.png'
+        audio = Path(self.directory.name) / 'speech.wav'
+        image.write_bytes(b'image')
+        audio.write_bytes(b'audio')
+        plan = {'provider': 'runninghub', 'engine': 'ltx', 'max_res': 1280}
+        running = {'id': 'motion-1', 'status': 'running'}
+        cancelled = {'id': 'motion-1', 'status': 'cancelled'}
+        with patch('scripts.hold_product_motion_tasks.HoldProductMotionTasks') as manager_type:
+            manager = manager_type.return_value
+            manager.plan.return_value = plan
+            manager.start.return_value = running
+            manager.state.return_value = running
+            manager.cancel.return_value = cancelled
+            base = {'image': str(image), 'audio': str(audio), 'action_prompt': '手持商品讲解',
+                    'resolution': '720p', 'fps': 25, 'low_cost': False}
+            self.assertEqual(self.call('/api/hold-product-motion/plan', base), (200, {'plan': plan}))
+            self.assertEqual(self.call('/api/hold-product-motion/start',
+                                       {**base, 'api_key': 'request-only-key'}),
+                             (202, {'task': running}))
+            self.assertEqual(self.call('/api/hold-product-motion/state'), (200, {'task': running}))
+            self.assertEqual(self.call('/api/hold-product-motion/cancel', {'task_id': 'motion-1'}),
+                             (200, {'task': cancelled}))
+            manager.plan.assert_called_once_with(**base)
+            manager.start.assert_called_once_with(**base, api_key='request-only-key')
+            manager.cancel.assert_called_once_with('motion-1')
+
+    def test_hold_product_motion_uses_owned_hold_result_without_client_path(self):
+        held = Path(self.directory.name) / 'owned-held.png'
+        held.write_bytes(b'owned-image')
+        audio = Path(self.directory.name) / 'speech.wav'
+        audio.write_bytes(b'audio')
+        plan = {'provider': 'runninghub', 'engine': 'ltx'}
+        running = {'id': 'motion-owned', 'status': 'running'}
+        with (patch('scripts.hold_product_tasks.HoldProductTasks') as hold_type,
+              patch('scripts.hold_product_motion_tasks.HoldProductMotionTasks') as motion_type):
+            hold = hold_type.return_value
+            hold.output.return_value = held
+            motion = motion_type.return_value
+            motion.plan.return_value = plan
+            motion.start.return_value = running
+            base = {'hold_task_id': 'held-owned', 'audio': str(audio),
+                    'action_prompt': '手持商品讲解', 'resolution': '480p',
+                    'fps': 25, 'low_cost': False}
+            self.assertEqual(self.call('/api/hold-product-motion/plan', base), (200, {'plan': plan}))
+            self.assertEqual(self.call('/api/hold-product-motion/start',
+                                       {**base, 'api_key': 'request-only-key'}),
+                             (202, {'task': running}))
+            hold.output.assert_has_calls([call('held-owned'), call('held-owned')])
+            expected = {key: value for key, value in base.items() if key != 'hold_task_id'}
+            expected['image'] = str(held)
+            motion.plan.assert_called_once_with(**expected)
+            motion.start.assert_called_once_with(**expected, api_key='request-only-key')
+
+    def test_hold_product_motion_uses_current_valid_tts_without_client_path(self):
+        image = Path(self.directory.name) / 'held.png'
+        audio = Path(self.directory.name) / 'tts' / 'managed.wav'
+        image.write_bytes(b'owned-image')
+        audio.parent.mkdir()
+        audio.write_bytes(b'owned-audio')
+        self.store.save({'version': 1, 'runtime_root': self.directory.name, 'port': 5158})
+        plan = {'provider': 'runninghub', 'engine': 'ltx'}
+        running = {'id': 'motion-tts', 'status': 'running'}
+        with (patch('scripts.local_console.preflight', return_value={'runtime_root': self.directory.name}),
+              patch('scripts.tts_tasks.TTSTasks') as tts_type,
+              patch('scripts.hold_product_motion_tasks.HoldProductMotionTasks') as motion_type):
+            tts_type.return_value.audio_path.return_value = audio
+            tts_type.return_value.runtime = Path(self.directory.name).resolve()
+            motion = motion_type.return_value
+            motion.plan.return_value = plan
+            motion.start.return_value = running
+            base = {'image': str(image), 'tts_task_id': 'tts-current',
+                    'action_prompt': '手持商品讲解', 'resolution': '720p',
+                    'fps': 25, 'low_cost': False}
+            self.assertEqual(self.call('/api/hold-product-motion/plan', base), (200, {'plan': plan}))
+            self.assertEqual(self.call('/api/hold-product-motion/start',
+                                       {**base, 'api_key': 'request-only-key'}),
+                             (202, {'task': running}))
+            tts_type.return_value.audio_path.assert_has_calls(
+                [call('tts-current'), call('tts-current')])
+            expected = {key: value for key, value in base.items() if key != 'tts_task_id'}
+            expected['audio'] = str(audio)
+            motion.plan.assert_called_once_with(**expected)
+            motion.start.assert_called_once_with(**expected, api_key='request-only-key')
+
+    def test_hold_product_motion_rejects_ambiguous_audio_sources(self):
+        base = {'image': str(Path(self.directory.name) / 'held.png'),
+                'audio': str(Path(self.directory.name) / 'speech.wav'),
+                'tts_task_id': 'tts-current', 'action_prompt': '手持商品讲解',
+                'resolution': '720p', 'fps': 25, 'low_cost': False}
+        self.assertEqual(self.call('/api/hold-product-motion/plan', base)[0], 400)
+
+    def test_hold_product_state_loads_persisted_result_after_service_restart(self):
+        persisted = {'id': 'held-persisted', 'status': 'succeeded'}
+        with patch('scripts.hold_product_tasks.HoldProductTasks') as manager_type:
+            manager_type.return_value.state.return_value = persisted
+            self.assertEqual(self.call('/api/hold-product/state'), (200, {'task': persisted}))
+            manager_type.assert_called_once_with(Path(self.directory.name))
 
     def test_session_reports_configured_speech_engine(self):
         self.assertEqual(self.call('/api/session')[1]['tts_engine'], 'indextts')
@@ -1787,6 +2046,14 @@ class ConsoleHTTPTests(unittest.TestCase):
             self.assertIn('应用模板并保留本店事实', page)
             self.assertIn('id="sticker-panel"', page)
             self.assertIn('id="cloud-dh-panel"', page)
+            self.assertIn('id="recorded-interaction-panel"', page)
+            self.assertIn('id="hold-product-panel"', page)
+            self.assertIn('id="hold-motion-preview"', page)
+            self.assertIn('id="media-tools-panel"', page)
+            self.assertIn('id="audio-editor-start"', page)
+            self.assertIn('href="#voice-panel"', page)
+            self.assertIn('href="#avatar-panel"', page)
+            self.assertIn('href="#tts-panel"', page)
             self.assertIn("frame-ancestors 'none'", response.headers['Content-Security-Policy'])
             self.assertIn("media-src 'self' blob:", response.headers['Content-Security-Policy'])
             self.assertIn("img-src 'self' data:", response.headers['Content-Security-Policy'])
@@ -1796,7 +2063,27 @@ class ConsoleHTTPTests(unittest.TestCase):
             self.assertIn("request('/api/preparation-templates'", script)
             self.assertIn("request('/api/preparation-templates/apply'", script)
             self.assertIn("request('/api/cloud-dh/create'", script)
+            self.assertIn("request('/api/recorded-interaction/start'", script)
+            self.assertIn("request('/api/hold-product/start'", script)
+            self.assertIn("request('/api/hold-product-motion/start'", script)
+            self.assertIn("request('/api/tools/audio-editor/start'", script)
         self.assertEqual(self.call('/console.json')[0], 404)
+
+    def test_built_avatar3d_is_served_under_owned_console_route(self):
+        root = Path(self.directory.name) / 'avatar3d-dist'
+        (root / 'assets').mkdir(parents=True)
+        (root / 'index.html').write_text('<script src="/avatar3d/assets/app.js"></script>', encoding='utf-8')
+        (root / 'assets' / 'app.js').write_text('globalThis.avatar3dReady=true', encoding='utf-8')
+        with patch('scripts.local_console.WEB3D', root):
+            with urlopen(self.base + '/avatar3d/', timeout=3) as response:
+                self.assertIn('/avatar3d/assets/app.js', response.read().decode())
+                policy = response.headers['Content-Security-Policy']
+                self.assertIn("worker-src 'self' blob:", policy)
+                self.assertIn("connect-src 'self' blob:", policy)
+            with urlopen(self.base + '/avatar3d/assets/app.js', timeout=3) as response:
+                self.assertEqual(response.headers['Content-Type'], 'text/javascript; charset=utf-8')
+                self.assertIn('avatar3dReady', response.read().decode())
+            self.assertEqual(self.call('/avatar3d/../console.json')[0], 404)
 
     def test_shutdown_requires_explicit_request_and_stops_server(self):
         self.assertEqual(self.call('/api/shutdown', {})[0], 400)

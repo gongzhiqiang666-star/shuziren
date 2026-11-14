@@ -30,7 +30,7 @@ MED-007退回开发中，完整矩阵保持58项；局部路径修复不能作�
 
 本机报告：`logs/validation/v03-voice-switch/run-1e80bb50365d49c4a63d9dcedb00a7a7/result.json`。这证明参考切换和模型复用链路；两份原文件不同不等于两位说话人，不宣称音色相似度或听感通过。音频/模型不提交。
 
-录音诊断已收敛：Realtek物理输入的PortAudio callback采集2秒成功，但样本全零（RMS=0）；此前16k不支持及WDM-KS阻塞API不支持已分别定位，不继续重复相同尝试。证据 `logs/validation/v03-quality/physical-callback-probe.json`。这不是浏览器录音通过，也不能把静音当作可用音色。浏览器麦克风实录、音色听感/身份核验仍是明确未通过项；已有导入参考音路径可继续独立测试。
+录音诊断已收敛：Realtek物理输入的PortAudio callback采集2秒成功，但样本全零（RMS=0）；此前16k不支持及WDM-KS阻塞API不支持已分别定位，不继续重复相同尝试。证据 `logs/validation/v03-quality/physical-callback-probe.json`。这不能把静音当作可用音色；物理麦克风真人实录、音色听感/身份核验仍是明确未通过项。浏览器交互链后来已由文末受控虚拟麦克风补验，两种证据范围不得混淆。
 
 执行约束：同一失败路径没有新证据时停止重复，及时报告“任务编号、具体错误、影响范围、替代路径”；不让单个设备问题阻止独立开发，也不跳过阶段验收发布。
 
@@ -42,3 +42,8 @@ MED-007退回开发中，完整矩阵保持58项；局部路径修复不能作�
 - 改用本机CAMPPlus模型自带speaker2人声样例作为第二参考，仅限本机实验；配对文本为本地ASR结果，未经人工校订，媒体不提交。两参考余弦0.08279；A/B/A三次禁缓存推理、完整解码、单次模型加载通过。三段识别CER均0，目标参考余弦0.633/0.636/0.647，相对另一参考优势0.541/0.656/0.605。
 - 通过报告：`logs/validation/v03-distinct-reference/run-c5eb1753014b4a20a22afad284dc6d1f/result.json`及`quality-result.json`。未声称真实身份认证、所有语料质量或人工听感通过。
 - 本地FunASR 1.2.3在当前权重的句级时间戳路径因缺失timestamp报错；本次仅需内容转写，显式关闭sentence_timestamp后成功。未来字幕/对齐接入仍需单独处理这一缺口，不能认为带时间戳ASR已经通过。
+## 浏览器录音制作补验（2026-11-14）
+
+`scripts/validate_microphone_ui.py` 使用 Chrome 受控虚拟麦克风真实执行页面的 `getUserMedia`、`MediaRecorder`、停止、试听状态和“保存录音为音色”，随后由随包 FFmpeg 走正式导入接口。`logs/validation/v03-microphone-ui-04/result.json` 记录通过：保存后自动选中，授权类型为 `self_recorded`，受管 WAV 为单声道 PCM16/24 kHz、1.8 秒，页面截图为同目录 `microphone-saved.png`。
+
+该证据关闭浏览器录音交互、权限、Blob 上传和规范化链路缺口。输入是可重复的虚拟音频夹具，不代表物理麦克风、真人语音清晰度或克隆听感；本机当前无物理麦克风，真人录音和第二人声主观听审继续保留。

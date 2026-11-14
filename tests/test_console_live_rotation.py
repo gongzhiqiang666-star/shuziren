@@ -239,6 +239,12 @@ class LiveRotationTests(unittest.TestCase):
             tts.voices.get.assert_called_once_with('assistant')
             worker.return_value.start.assert_called_once()
             self.assertEqual(state['assistant_voice_id'], 'assistant')
+            self.assertEqual(state['lifecycle_epoch'], 1)
+            live.status = {'status': 'stopped'}
+            with patch('scripts.console_live.threading.Thread'):
+                restarted = live.start(14)
+            self.assertEqual(restarted['lifecycle_epoch'], 2)
+            self.assertNotEqual(restarted['id'], state['id'])
 
     def test_failed_rotation_requires_new_request_and_never_enqueues_old_audio(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -33,4 +33,4 @@ Windows Computer Use 在 2026-11-14 再次报告 `native pipe is unavailable: �
 
 - 正式包页面内真实点击和前后端 JS 调用。
 - 用户鼠标点击关闭、任务管理器结束和异常窗口场景。
-- 页面当前版本的准备包预览、切换话术复审、载入轮播和场次报告复测。
+- 页面当前版本的准备包预览、切换话术复审、载入轮播和场次报告已由本机 Chrome 复测通过，证据 `logs/validation/v08-preparation-ui-03`。Computer Use 原生管道缺失仅影响该控制工具，不再作为这条业务链的待验项。

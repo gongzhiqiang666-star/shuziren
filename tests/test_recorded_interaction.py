@@ -1,11 +1,16 @@
 from pathlib import Path
+import json
+import os
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 
 from pydub import AudioSegment
 from pydub.generators import Sine
 
-from scripts.recorded_interaction import mix_replacements, validate_replacements
+from scripts.recorded_interaction import mix_replacements, render_replacements, validate_replacements
 
 
 class RecordedInteractionTests(unittest.TestCase):
@@ -71,6 +76,54 @@ class RecordedInteractionTests(unittest.TestCase):
         original = Sine(300).to_audio_segment(duration=500)
         self.assertEqual(mix_replacements(original, validate_replacements([], duration_ms=500)).raw_data,
                          original.raw_data)
+
+    def test_real_mp4_render_is_atomic_and_keeps_video_track(self):
+        bundled = Path(sys.executable).parent / "ffmpeg" / "bin" / "ffmpeg.exe"
+        ffmpeg = Path(os.environ.get("SHUZIREN_TEST_FFMPEG") or bundled)
+        if not ffmpeg.is_file():
+            located = shutil.which("ffmpeg")
+            if not located:
+                self.skipTest("FFmpeg is not available")
+            ffmpeg = Path(located)
+        ffprobe = ffmpeg.with_name("ffprobe.exe" if os.name == "nt" else "ffprobe")
+        if not ffprobe.is_file():
+            self.skipTest("FFprobe is not available")
+        source, output = self.root / "source.mp4", self.root / "result.mp4"
+        subprocess.run([
+            str(ffmpeg), "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "color=c=blue:s=320x240:r=25:d=1.5",
+            "-f", "lavfi", "-i", "sine=frequency=300:sample_rate=48000:duration=1.5",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(source),
+        ], check=True, capture_output=True, timeout=30)
+        source_probe = json.loads(subprocess.check_output([
+            str(ffprobe), "-v", "error", "-show_streams", "-show_format", "-of", "json", str(source),
+        ], timeout=30))
+        result = render_replacements(source, self.plan(), output, ffmpeg=ffmpeg, timeout=30)
+        self.assertEqual(result["replacement_count"], 2)
+        self.assertGreaterEqual(result["duration_ms"], 1500)
+        self.assertLessEqual(result["duration_ms"], 1530)
+        self.assertEqual(len(result["sha256"]), 64)
+        probe = json.loads(subprocess.check_output([
+            str(ffprobe), "-v", "error", "-show_streams", "-show_format", "-of", "json", str(output),
+        ], timeout=30))
+        self.assertEqual({item["codec_type"] for item in probe["streams"]}, {"video", "audio"})
+        video = next(item for item in probe["streams"] if item["codec_type"] == "video")
+        source_video = next(item for item in source_probe["streams"] if item["codec_type"] == "video")
+        self.assertEqual((video["width"], video["height"]), (320, 240))
+        self.assertEqual(int(video.get("nb_frames") or 0), int(source_video.get("nb_frames") or 0))
+        self.assertAlmostEqual(float(probe["format"]["duration"]),
+                               float(source_probe["format"]["duration"]), delta=0.03)
+        previous = output.read_bytes()
+        invalid = self.plan(); invalid[1]["start_ms"] = 400
+        with self.assertRaises(ValueError):
+            render_replacements(source, invalid, output, ffmpeg=ffmpeg, timeout=30)
+        self.assertEqual(output.read_bytes(), previous)
+        with self.assertRaises(InterruptedError):
+            render_replacements(source, self.plan(), output, ffmpeg=ffmpeg, timeout=30,
+                                cancel_check=lambda: True)
+        self.assertEqual(output.read_bytes(), previous)
+        self.assertFalse(list(self.root.glob("*.pending.mp4")))
+        self.assertFalse(list(self.root.glob("recorded-interaction-*")))
 
 
 if __name__ == "__main__":

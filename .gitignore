@@ -26,7 +26,9 @@ avatars/
 *.dylib
 *.bin
 *.engine
+*.glb
 *.marshal
+*.zip
 
 # Original packaged application and reverse-engineering workspaces
 yunchuang_v122/
@@ -45,3 +47,5 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.project_locks/
+test-results/

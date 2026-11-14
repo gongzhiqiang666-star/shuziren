@@ -12,8 +12,10 @@ from pathlib import Path
 import secrets
 import socket
 import sqlite3
+import subprocess
 import sys
 import threading
+from time import monotonic
 from urllib.parse import urlsplit, parse_qs
 
 # Support the documented direct-file form from an isolated installation.  In
@@ -34,6 +36,7 @@ from scripts.console_taobao import ConsoleTaobao
 from scripts.console_comment_reply import ConsoleCommentReply
 
 WEB = Path(__file__).parent / "local-console"
+WEB3D = Path(__file__).resolve().parents[1] / "web" / "dist"
 ACCESS_ROLES = ('viewer', 'operator', 'admin')
 ACCESS_ACCOUNT = re.compile(r'[a-z0-9][a-z0-9_-]{0,39}')
 AUTHORIZATION_AUDIT_MAX_BYTES = 4 * 1024 * 1024
@@ -164,7 +167,8 @@ def live_advice(session, repeated_questions=()):
 
 
 def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=None, shop_id=None,
-                  access_role='admin', access_account='local'):
+                  access_role='admin', access_account='local', require_login=False,
+                  account_database=None):
     if access_role not in ACCESS_ROLES:
         raise ValueError('控制台访问角色无效')
     if not valid_access_account(access_account):
@@ -172,11 +176,42 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
     token = secrets.token_urlsafe(32)
     lock = threading.RLock()
     audit_lock = threading.Lock()
-    def authorization_audit(path, allowed):
+    session_lock = threading.Lock()
+    login_sessions = {}
+    if require_login:
+        from scripts.local_accounts import LocalAccountStore
+        if not shop_id:
+            raise ValueError('启用账号登录时必须指定店铺编号')
+        account_store = LocalAccountStore(account_database or store.directory.parent.parent / 'accounts.sqlite3')
+    else:
+        account_store = None
+
+    def session_identity(value):
+        if not require_login:
+            return {'account_id': access_account, 'access_role': access_role, 'shop_id': shop_id}
+        if not value:
+            return None
+        with session_lock:
+            identity = login_sessions.get(value)
+            if identity is None:
+                return None
+            if identity['expires_at'] <= monotonic():
+                login_sessions.pop(value, None)
+                return None
+            current = account_store.validate_session(identity['account_id'], shop_id,
+                                                     identity['_revision'])
+            if current is None:
+                login_sessions.pop(value, None)
+                return None
+            return identity
+
+    def authorization_audit(path, allowed, identity=None):
         from datetime import datetime, timezone
+        identity = identity or {'account_id': access_account, 'access_role': access_role}
         event = {
             'occurred_at': datetime.now(timezone.utc).isoformat(),
-            'shop_id': shop_id, 'account_id': access_account, 'access_role': access_role,
+            'shop_id': shop_id, 'account_id': identity['account_id'],
+            'access_role': identity['access_role'],
             'path': path, 'allowed': allowed,
         }
         with audit_lock:
@@ -214,6 +249,9 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
     tts_manager = None
     avatar_manager = None
     render_manager = None
+    recorded_manager = None
+    hold_manager = None
+    hold_motion_manager = None
     sticker_manager = None
     live_manager = None
     taobao = ConsoleTaobao(store.directory)
@@ -230,7 +268,11 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
             if sticker_manager is None:
                 from recovered.main import Api
                 sticker_manager = Api.__new__(Api)
-                sticker_manager.runtime_dir = store.directory
+                configured_runtime = store.load().get('runtime_root')
+                runtime_directory = Path(configured_runtime).resolve() if configured_runtime else store.directory
+                if (runtime_directory / '_internal').is_dir():
+                    runtime_directory = runtime_directory / '_internal'
+                sticker_manager.runtime_dir = runtime_directory
                 sticker_manager.config = {}
                 sticker_manager._get_ip_agent_base_dir = lambda: str(store.directory / 'ip_agent_projects')
             return sticker_manager
@@ -263,6 +305,9 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
             if live_manager is not None: live_manager.close()
             if task_manager is not None: task_manager.close()
             if render_manager is not None: render_manager.close()
+            if recorded_manager is not None: recorded_manager.close()
+            if hold_manager is not None: hold_manager.close()
+            if hold_motion_manager is not None: hold_motion_manager.close()
             if tts_manager is not None: tts_manager.close()
             if avatar_manager is not None: avatar_manager.close()
             if sticker_manager is not None:
@@ -270,6 +315,11 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                 for event in tuple(jobs.values()): event.set()
                 _, cloud_jobs = sticker_manager._cloud_dh_job_state()
                 for event in tuple(cloud_jobs.values()): event.set()
+                editor = getattr(sticker_manager, '_audio_editor_process', None)
+                if editor is not None and editor.poll() is None:
+                    editor.terminate()
+                    try: editor.wait(timeout=10)
+                    except subprocess.TimeoutExpired: editor.kill(); editor.wait(timeout=5)
     def preparation():
         nonlocal avatar_manager
         with lock:
@@ -306,6 +356,37 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
             elif Path(root).resolve()!=render_manager.runtime:
                 raise Conflict('运行资源目录已修改，请重启控制台后合成视频')
             return render_manager
+    def recorded():
+        nonlocal recorded_manager
+        with lock:
+            if tasks_closed: raise ProductError('控制台正在退出')
+            root = preflight(store.load())['runtime_root']
+            if not root: raise ProductError('请先配置录播互动运行资源目录')
+            ffmpeg = Path(root) / '_internal/env/ffmpeg/bin/ffmpeg.exe'
+            if recorded_manager is None:
+                from scripts.recorded_interaction_tasks import RecordedInteractionTasks
+                recorded_manager = RecordedInteractionTasks(store.directory, ffmpeg)
+            elif ffmpeg.resolve() != recorded_manager.ffmpeg:
+                raise Conflict('运行资源目录已修改，请重启控制台后制作录播互动成片')
+            return recorded_manager
+    def held_products():
+        nonlocal hold_manager
+        with lock:
+            if tasks_closed: raise ProductError('控制台正在退出')
+            if hold_manager is None:
+                from scripts.hold_product_tasks import HoldProductTasks
+                hold_manager = HoldProductTasks(store.directory)
+            return hold_manager
+    def held_product_motions():
+        nonlocal hold_motion_manager
+        with lock:
+            if tasks_closed: raise ProductError('控制台正在退出')
+            if hold_motion_manager is None:
+                from scripts.hold_product_motion_tasks import HoldProductMotionTasks
+                root = preflight(store.load())['runtime_root']
+                ffprobe = Path(root) / '_internal/env/ffmpeg/bin/ffprobe.exe' if root else None
+                hold_motion_manager = HoldProductMotionTasks(store.directory, ffprobe)
+            return hold_motion_manager
     try:
         settings = store.load()
         configured_port = settings["port"]
@@ -323,7 +404,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
         def log_message(self, fmt, *args):
             logging.info("HTTP %s", fmt % args)
 
-        def respond(self, status, body, content_type="application/json; charset=utf-8", *, attachment=None):
+        def respond(self, status, body, content_type="application/json; charset=utf-8", *,
+                    attachment=None, extra_headers=()):
             content = json.dumps(body, ensure_ascii=False).encode("utf-8") if isinstance(body, dict) else body
             try:
                 self.send_response(status)
@@ -331,9 +413,11 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                 self.send_header("Content-Length", str(len(content)))
                 if attachment:
                     self.send_header("Content-Disposition", f'attachment; filename="{attachment}"')
+                for name, value in extra_headers:
+                    self.send_header(name, value)
                 self.send_header("Cache-Control", "no-store")
                 self.send_header("X-Content-Type-Options", "nosniff")
-                self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'")
+                self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'")
                 self.end_headers()
                 self.wfile.write(content)
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
@@ -344,10 +428,23 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
         def trusted_host(self):
             return self.headers.get("Host") == "127.0.0.1:%d" % self.server.server_port
 
+        def request_token(self):
+            header = self.headers.get('X-Console-Token', '')
+            if header:
+                return header
+            for item in self.headers.get('Cookie', '').split(';'):
+                name, separator, value = item.strip().partition('=')
+                if separator and name == 'Shuziren-Session':
+                    return value
+            return ''
+
         def do_GET(self):
             if not self.trusted_host():
                 return self.respond(403, {"error": "请求地址不允许"})
             path = urlsplit(self.path).path
+            identity = session_identity(self.request_token())
+            if require_login and path.startswith('/api/') and path != '/api/session' and identity is None:
+                return self.respond(401, {'error': '请先登录当前店铺'})
             try:
                 if path == "/api/state":
                     with lock:
@@ -552,8 +649,17 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         return self.respond(503, {'error': '无法读取音频设备：' + str(error)})
                     return self.respond(200, {'devices': devices})
                 if path == "/api/session":
-                    return self.respond(200, {"token": token, "tts_engine": tts_engine, "shop_id": shop_id,
-                                              "access_role": access_role, "account_id": access_account})
+                    if require_login and identity is None:
+                        return self.respond(200, {'authenticated': False, 'login_required': True,
+                                                  'tts_engine': tts_engine,
+                                                  'shop_id': shop_id})
+                    identity = identity or session_identity(token)
+                    return self.respond(200, {"authenticated": True,
+                                              "login_required": require_login,
+                                              "token": self.request_token() if require_login else token,
+                                              "tts_engine": tts_engine, "shop_id": shop_id,
+                                              "access_role": identity['access_role'],
+                                              "account_id": identity['account_id']})
                 if path == '/api/voices':
                     voices=VoiceStore(store.directory)
                     return self.respond(200,{'voices':voices.list(),'selected':voices.selected()})
@@ -609,6 +715,33 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     task=(render_manager.state() if render_manager is not None else
                           renders().state() if preflight(store.load())['runtime_root'] else None)
                     return self.respond(200,{'task':task})
+                if path == '/api/recorded-interaction/state':
+                    task = (recorded_manager.state() if recorded_manager is not None else
+                            recorded().state() if preflight(store.load())['runtime_root'] else None)
+                    return self.respond(200, {'task': task})
+                if path == '/api/recorded-interaction/video':
+                    ids = parse_qs(urlsplit(self.path).query).get('task_id', [])
+                    if len(ids) != 1 or not isinstance(ids[0], str):
+                        raise ProductError('请选择有效录播互动任务')
+                    from scripts.media_http import serve_file
+                    manager = recorded_manager if recorded_manager is not None else recorded()
+                    return serve_file(self, manager.output(ids[0]), 'video/mp4')
+                if path == '/api/hold-product/state':
+                    return self.respond(200, {'task': held_products().state()})
+                if path == '/api/hold-product/image':
+                    ids = parse_qs(urlsplit(self.path).query).get('task_id', [])
+                    if len(ids) != 1 or not isinstance(ids[0], str):
+                        raise ProductError('请选择有效手持商品任务')
+                    from scripts.media_http import serve_file
+                    return serve_file(self, held_products().output(ids[0]), 'image/png')
+                if path == '/api/hold-product-motion/state':
+                    return self.respond(200, {'task': hold_motion_manager.state() if hold_motion_manager else None})
+                if path == '/api/hold-product-motion/video':
+                    ids = parse_qs(urlsplit(self.path).query).get('task_id', [])
+                    if len(ids) != 1 or not isinstance(ids[0], str):
+                        raise ProductError('请选择有效手持商品动作任务')
+                    from scripts.media_http import serve_file
+                    return serve_file(self, held_product_motions().output(ids[0]), 'video/mp4')
                 if path in {'/api/render/video', '/api/render/subtitle', '/api/render/cover'}:
                     ids=parse_qs(urlsplit(self.path).query).get('task_id',[])
                     if len(ids)!=1: raise ProductError('请选择有效视频任务')
@@ -750,6 +883,20 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         if any(segment['type'] in {'assistant', 'pause'} for segment in segments):
                             script['segments'] = segments
                     return self.respond(200, {"scripts": scripts, 'selected': data.selected_script(ids[0])})
+                if path in {'/avatar3d', '/avatar3d/'} or path.startswith('/avatar3d/'):
+                    relative = 'index.html' if path in {'/avatar3d', '/avatar3d/'} else path.removeprefix('/avatar3d/')
+                    target = (WEB3D / relative).resolve()
+                    if (not WEB3D.is_dir() or not target.is_relative_to(WEB3D.resolve())
+                            or not target.is_file()):
+                        return self.respond(404, {"error": "3D预览尚未构建或资源不存在"})
+                    mime = {
+                        '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+                        '.css': 'text/css; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
+                        '.glb': 'model/gltf-binary', '.bin': 'application/octet-stream',
+                        '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+                        '.webp': 'image/webp', '.svg': 'image/svg+xml',
+                    }.get(target.suffix.lower(), 'application/octet-stream')
+                    return self.respond(200, target.read_bytes(), mime)
                 filename = {"/": "index.html", "/app.js": "app.js", "/style.css": "style.css",'/voice-recorder.js':'voice-recorder.js'}.get(path)
                 if filename:
                     mime = {"index.html": "text/html", "app.js": "text/javascript", "style.css": "text/css",'voice-recorder.js':'text/javascript'}[filename]
@@ -765,8 +912,35 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
         def do_POST(self):
             nonlocal live_manager
             origin = "http://127.0.0.1:%d" % self.server.server_port
-            if (not self.trusted_host() or self.headers.get("Origin") != origin
-                    or not secrets.compare_digest(self.headers.get("X-Console-Token", ""), token)):
+            path = urlsplit(self.path).path
+            origin_valid = self.trusted_host() and self.headers.get('Origin') == origin
+            if require_login and path == '/api/auth/login':
+                if not origin_valid:
+                    return self.respond(403, {'error': '请求来源无效'})
+                try:
+                    if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
+                        raise ConfigError('需要JSON请求')
+                    length = int(self.headers.get('Content-Length', '0'))
+                    if not 0 < length <= 4096:
+                        raise ConfigError('请求长度无效')
+                    value = json.loads(self.rfile.read(length).decode('utf-8'))
+                    if not isinstance(value, dict) or set(value) != {'account_id', 'password'}:
+                        raise ConfigError('登录字段无效')
+                    identity = account_store.authenticate(value['account_id'], value['password'], shop_id)
+                    session_token = secrets.token_urlsafe(32)
+                    with session_lock:
+                        login_sessions[session_token] = {**identity, 'expires_at': monotonic() + 8 * 3600}
+                    authorization_audit('/api/auth/login', True, identity)
+                    public_identity = {key: identity[key] for key in ('account_id', 'shop_id', 'access_role')}
+                    return self.respond(200, {**public_identity, 'authenticated': True, 'token': session_token},
+                        extra_headers=(('Set-Cookie', 'Shuziren-Session=' + session_token +
+                                        '; HttpOnly; SameSite=Strict; Path=/'),))
+                except (ValueError, UnicodeError, json.JSONDecodeError) as error:
+                    return self.respond(401, {'error': str(error)})
+            request_token = self.request_token()
+            identity = session_identity(request_token)
+            valid_token = identity is not None if require_login else secrets.compare_digest(request_token, token)
+            if not origin_valid or not valid_token:
                 # Drain small rejected requests so Windows does not reset the socket
                 # before the client can receive the explicit 403 response.
                 length=self.headers.get('Content-Length','0')
@@ -784,12 +958,20 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                 value = json.loads(self.rfile.read(length).decode("utf-8"))
                 if not isinstance(value, dict):
                     raise ConfigError("请求必须为对象")
-                path = urlsplit(self.path).path
-                allowed = role_allows_post(access_role, path)
+                if require_login and path == '/api/auth/logout':
+                    if value:
+                        raise ConfigError('退出字段无效')
+                    with session_lock:
+                        login_sessions.pop(request_token, None)
+                    authorization_audit(path, True, identity)
+                    return self.respond(200, {'authenticated': False},
+                        extra_headers=(('Set-Cookie', 'Shuziren-Session=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/'),))
+                allowed = role_allows_post(identity['access_role'], path)
                 if path != '/api/preflight':
-                    authorization_audit(path, allowed)
+                    authorization_audit(path, allowed, identity)
                 if not allowed:
-                    return self.respond(403, {"error": "当前账号角色无权执行此操作", "access_role": access_role})
+                    return self.respond(403, {"error": "当前账号角色无权执行此操作",
+                                              "access_role": identity['access_role']})
                 if path in {'/api/taobao/goods', '/api/taobao/explain'}:
                     fields = {'capture_id'} if path.endswith('/goods') else {'capture_id', 'goods_id'}
                     if set(value) != fields or not isinstance(value['capture_id'], str):
@@ -824,6 +1006,13 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             return self.respond(202, {'capture': taobao.login()})
                         return self.respond(200, {'capture': taobao.stop()})
                     live_active = live_manager is not None and live_manager.state()['status'] in ConsoleLive.active_states
+                    if path == '/api/cache/clear':
+                        if value:
+                            raise ProductError('缓存清理请求字段无效')
+                        if live_active:
+                            raise Conflict('直播期间不能清理缓存')
+                        from recovered.cache_cleanup import clear_known_caches
+                        return self.respond(200, clear_known_caches())
                     if live_active and path in {'/api/config', '/api/products', '/api/products/select', '/api/avatars/select',
                                                 '/api/voices/select', '/api/avatar-preparation/start', '/api/render/start',
                                                 '/api/live/content-render'}:
@@ -944,6 +1133,13 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             raise AvatarError('形象导入字段无效')
                         avatar=AvatarStore(store.directory).import_prepared(value['source'],value['name'])
                         return self.respond(201,{'avatar':avatar})
+                    if path == '/api/tools/audio-editor/start':
+                        if value != {}:
+                            raise ProductError('音频编辑器启动字段无效')
+                        result = stickers().launch_audio_editor()
+                        if result.get('status') != 'success':
+                            raise ProductError(result.get('message') or '音频编辑器启动失败')
+                        return self.respond(200, result)
                     if path == '/api/stickers/create':
                         if set(value) != {'name'} or not isinstance(value['name'], str) or len(value['name']) > 100:
                             raise ProductError('贴片项目名称无效')
@@ -1106,6 +1302,92 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         if avatar_manager is not None and (avatar_manager.state() or {}).get('status')=='running':
                             raise Conflict('正在制作形象，请完成或取消后再合成视频')
                         return self.respond(202,{'task':renders().start(**value)})
+                    if path == '/api/recorded-interaction/start':
+                        if set(value) != {'source_video', 'replacements'} or not isinstance(
+                                value['source_video'], str) or not isinstance(value['replacements'], list):
+                            raise ProductError('录播互动任务字段无效')
+                        return self.respond(202, {'task': recorded().start(
+                            value['source_video'], value['replacements'])})
+                    if path == '/api/recorded-interaction/cancel':
+                        if set(value) != {'task_id'} or not isinstance(value['task_id'], str):
+                            raise ProductError('录播互动取消字段无效')
+                        manager = recorded_manager if recorded_manager is not None else recorded()
+                        return self.respond(200, {'task': manager.cancel(value['task_id'])})
+                    if path == '/api/hold-product/plan':
+                        if (set(value) not in ({'avatar', 'product', 'product_name'},
+                                              {'avatar', 'product', 'product_name', 'prompt'})
+                                or not all(isinstance(value.get(key), str)
+                                           for key in ('avatar', 'product', 'product_name'))):
+                            raise ProductError('手持商品预演字段无效')
+                        return self.respond(200, {'plan': held_products().plan(**value)})
+                    if path == '/api/hold-product/start':
+                        required = {'api_key', 'avatar', 'product', 'product_name'}
+                        if (not required <= set(value) or set(value) - required - {'prompt'}
+                                or not all(isinstance(value.get(key), str) for key in required)):
+                            raise ProductError('手持商品任务字段无效')
+                        return self.respond(202, {'task': held_products().start(**value)})
+                    if path == '/api/hold-product/cancel':
+                        if set(value) != {'task_id'} or not isinstance(value['task_id'], str):
+                            raise ProductError('手持商品取消字段无效')
+                        return self.respond(200, {'task': held_products().cancel(value['task_id'])})
+                    if path == '/api/hold-product-motion/plan':
+                        common = {'action_prompt', 'resolution', 'fps', 'low_cost'}
+                        image_fields = set(value) & {'image', 'hold_task_id'}
+                        audio_fields = set(value) & {'audio', 'tts_task_id'}
+                        if (image_fields not in ({'image'}, {'hold_task_id'})
+                                or audio_fields not in ({'audio'}, {'tts_task_id'})
+                                or set(value) != common | image_fields | audio_fields
+                                or not all(isinstance(value.get(key), str)
+                                           for key in ('action_prompt', 'resolution'))
+                                or not isinstance(value.get('fps'), (int, float))
+                                or isinstance(value.get('fps'), bool)
+                                or not isinstance(value.get('low_cost'), bool)):
+                            raise ProductError('手持商品动作预演字段无效')
+                        motion = dict(value)
+                        if 'hold_task_id' in motion:
+                            if not isinstance(motion['hold_task_id'], str):
+                                raise ProductError('手持商品图任务无效')
+                            motion['image'] = str(held_products().output(motion.pop('hold_task_id')))
+                        elif not isinstance(motion.get('image'), str):
+                            raise ProductError('手持商品图路径无效')
+                        if 'tts_task_id' in motion:
+                            if not isinstance(motion['tts_task_id'], str):
+                                raise ProductError('讲解音频任务无效')
+                            motion['audio'] = str(tts().audio_path(motion.pop('tts_task_id')))
+                        elif not isinstance(motion.get('audio'), str):
+                            raise ProductError('讲解音频路径无效')
+                        return self.respond(200, {'plan': held_product_motions().plan(**motion)})
+                    if path == '/api/hold-product-motion/start':
+                        common = {'api_key', 'action_prompt', 'resolution', 'fps', 'low_cost'}
+                        image_fields = set(value) & {'image', 'hold_task_id'}
+                        audio_fields = set(value) & {'audio', 'tts_task_id'}
+                        if (image_fields not in ({'image'}, {'hold_task_id'})
+                                or audio_fields not in ({'audio'}, {'tts_task_id'})
+                                or set(value) != common | image_fields | audio_fields
+                                or not all(isinstance(value.get(key), str)
+                                           for key in ('api_key', 'action_prompt', 'resolution'))
+                                or not isinstance(value.get('fps'), (int, float))
+                                or isinstance(value.get('fps'), bool)
+                                or not isinstance(value.get('low_cost'), bool)):
+                            raise ProductError('手持商品动作任务字段无效')
+                        motion = dict(value)
+                        if 'hold_task_id' in motion:
+                            if not isinstance(motion['hold_task_id'], str):
+                                raise ProductError('手持商品图任务无效')
+                            motion['image'] = str(held_products().output(motion.pop('hold_task_id')))
+                        elif not isinstance(motion.get('image'), str):
+                            raise ProductError('手持商品图路径无效')
+                        if 'tts_task_id' in motion:
+                            if not isinstance(motion['tts_task_id'], str):
+                                raise ProductError('讲解音频任务无效')
+                            motion['audio'] = str(tts().audio_path(motion.pop('tts_task_id')))
+                        elif not isinstance(motion.get('audio'), str):
+                            raise ProductError('讲解音频路径无效')
+                        return self.respond(202, {'task': held_product_motions().start(**motion)})
+                    if path == '/api/hold-product-motion/cancel':
+                        if set(value) != {'task_id'} or not isinstance(value['task_id'], str):
+                            raise ProductError('手持商品动作取消字段无效')
+                        return self.respond(200, {'task': held_product_motions().cancel(value['task_id'])})
                     if path == '/api/live/content-render':
                         required = {'session_id','task_id','avatar_id'}
                         if (not required <= set(value)
@@ -1426,6 +1708,8 @@ def main(argv=None):
                         help="当前本机入口的访问角色")
     parser.add_argument("--account-id", default=os.environ.get('SHUZIREN_MANAGED_ACCOUNT_ID', 'local'),
                         help="写入本店权限审计的账号编号")
+    parser.add_argument('--require-login', action='store_true', help='要求使用本地账号密码登录')
+    parser.add_argument('--account-database', type=Path, help='共享本地账号数据库；默认位于数据根目录')
     parser.add_argument("--port", type=int)
     parser.add_argument("--tts-engine", choices=("indextts", "zipvoice", "omnivoice"), default="indextts")
     parser.add_argument("--tts-model-root", type=Path)
@@ -1444,7 +1728,8 @@ def main(argv=None):
         server = create_server(store, args.port, tts_engine=args.tts_engine,
                                tts_model_root=args.tts_model_root,
                                shop_id=args.shop_id or os.environ.get('SHUZIREN_MANAGED_SHOP_ID'),
-                               access_role=args.access_role, access_account=args.account_id)
+                               access_role=args.access_role, access_account=args.account_id,
+                               require_login=args.require_login, account_database=args.account_database)
     except OSError as error:
         instance.__exit__()
         logging.error("启动失败：%s", error)

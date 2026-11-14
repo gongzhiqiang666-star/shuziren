@@ -2,8 +2,11 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import stat
+import subprocess
+import sys
 
 
 MANIFEST_NAME = "installer-manifest.json"
@@ -14,6 +17,12 @@ APPROVED_INSTALLERS = (
     "windowsdesktop-runtime-9.0.6-win-x64.exe",
 )
 MAX_INSTALLER_SIZE = 1024 * 1024 * 1024
+EXPECTED_SIGNERS = {
+    "MicrosoftEdgeWebview2Setup.exe": "Microsoft Corporation",
+    "windowsdesktop-runtime-8.0.17-win-x64.exe": "Microsoft Corporation",
+    "windowsdesktop-runtime-9.0.6-win-x64.exe": "Microsoft Corporation",
+    "VBCABLE_Driver_Pack45/VBCABLE_Setup_x64.exe": "BUREL VINCENT",
+}
 
 
 def _reparse(path):
@@ -97,13 +106,80 @@ def verify(plugin_root):
     return manifest
 
 
+def audit_signatures(plugin_root, *, runner=subprocess.run):
+    """Verify Windows Authenticode and expected publishers before manifest build."""
+    if sys.platform != "win32":
+        raise OSError("Authenticode audit requires Windows")
+    root, files = _approved_files(plugin_root)
+    requests = [{"relative": relative, "path": str(root / Path(relative))} for relative in files]
+    script = r"""
+$ErrorActionPreference = 'Stop'
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+Import-Module (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1') -Force
+$requests = [Console]::In.ReadToEnd() | ConvertFrom-Json
+$result = foreach ($item in $requests) {
+  $signature = Get-AuthenticodeSignature -LiteralPath $item.path
+  [pscustomobject]@{
+    relative = $item.relative
+    status = [string]$signature.Status
+    subject = if ($signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { $null }
+    thumbprint = if ($signature.SignerCertificate) { $signature.SignerCertificate.Thumbprint } else { $null }
+  }
+}
+@($result) | ConvertTo-Json -Depth 3 -Compress
+"""
+    environment = dict(os.environ)
+    system_root = Path(environment.get("SystemRoot", r"C:\Windows"))
+    environment["PSModulePath"] = os.pathsep.join((
+        str(system_root / "System32/WindowsPowerShell/v1.0/Modules"),
+        str(Path(environment.get("ProgramFiles", r"C:\Program Files")) / "WindowsPowerShell/Modules"),
+    ))
+    powershell = system_root / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    completed = runner(
+        [str(powershell), "-NoProfile", "-NonInteractive", "-Command", script],
+        input=json.dumps(requests), capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), env=environment,
+    )
+    if completed.returncode:
+        detail = (completed.stderr or "").strip().splitlines()
+        suffix = f": {detail[-1]}" if detail else ""
+        raise ValueError("Authenticode audit failed to run" + suffix)
+    try:
+        records = json.loads(completed.stdout)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise ValueError("Authenticode audit returned invalid output") from error
+    if not isinstance(records, list) or len(records) != len(requests):
+        raise ValueError("Authenticode audit returned an incomplete result")
+    by_relative = {record.get("relative"): record for record in records if isinstance(record, dict)}
+    result = {}
+    for request in requests:
+        relative = request["relative"]
+        record = by_relative.get(relative)
+        expected = EXPECTED_SIGNERS[relative]
+        if not record or record.get("status") != "Valid":
+            raise ValueError(f"installer Authenticode signature is not valid: {relative}")
+        subject = str(record.get("subject") or "")
+        if expected.casefold() not in subject.casefold():
+            raise ValueError(f"installer publisher is not approved: {relative}")
+        thumbprint = str(record.get("thumbprint") or "").strip().upper()
+        if len(thumbprint) != 40 or any(character not in "0123456789ABCDEF" for character in thumbprint):
+            raise ValueError(f"installer signer thumbprint is invalid: {relative}")
+        result[relative] = {"status": "Valid", "subject": subject, "thumbprint": thumbprint}
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("build", "verify"))
+    parser.add_argument("command", choices=("audit-signatures", "build", "verify"))
     parser.add_argument("--plugin-root", required=True, type=Path)
     args = parser.parse_args()
-    manifest = build(args.plugin_root) if args.command == "build" else verify(args.plugin_root)
-    print(json.dumps({"verified": True, "files": len(manifest["files"])}, ensure_ascii=False))
+    if args.command == "audit-signatures":
+        signatures = audit_signatures(args.plugin_root)
+        print(json.dumps({"verified": True, "files": len(signatures), "signatures": signatures}, ensure_ascii=False))
+    else:
+        manifest = build(args.plugin_root) if args.command == "build" else verify(args.plugin_root)
+        print(json.dumps({"verified": True, "files": len(manifest["files"])}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

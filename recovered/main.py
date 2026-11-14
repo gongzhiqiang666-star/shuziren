@@ -541,7 +541,12 @@ class Api(PluginInstallerApi):
         try:
             process = getattr(self, "_audio_editor_process", None)
             if process and process.poll() is None: return {"status": "success", "message": "音频编辑器已在运行", "pid": process.pid}
-            self._audio_editor_process = subprocess.Popen([sys.executable, "-m", "recovered.edit_audio"], cwd=str(Path(__file__).resolve().parent.parent))
+            environment = os.environ.copy()
+            environment["YUNCHUANG_RUNTIME_DIR"] = str(Path(self.runtime_dir).resolve())
+            self._audio_editor_process = subprocess.Popen(
+                [sys.executable, "-m", "recovered.edit_audio"],
+                cwd=str(Path(__file__).resolve().parent.parent), env=environment,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             return {"status": "success", "pid": self._audio_editor_process.pid}
         except Exception as error: return {"status": "error", "message": f"启动音频编辑器失败: {error}"}
 
@@ -1555,25 +1560,27 @@ class Api(PluginInstallerApi):
 
     def _save_ip_agent_project(self, project_id, data):
         from datetime import datetime
+        from .project_file_lock import project_file_lock
         with self._IP_PROJECT_SAVE_LOCK:
-            project_dir = self._get_ip_agent_project_dir(project_id)
-            if not os.path.isdir(project_dir):
-                raise FileNotFoundError("IP项目不存在")
-            info_path = self._get_ip_agent_project_info_path(project_id)
-            existing = self._read_yaml_file(info_path)
-            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            defaults = self._default_ip_agent_project_info(
-                project_id, existing.get("name") or f"IP项目-{project_id}"
-            )
-            value = {**defaults, **existing, **(data or {})}
-            value["id"] = project_id
-            value["update_time"] = now
-            if not value.get("create_time"):
-                value["create_time"] = now
-            value.pop("subtitle_debug_json_path", None)
-            self._write_yaml_file(info_path, value)
-            result = self._load_ip_agent_project(project_id)
-            return result if isinstance(result, dict) else None
+            with project_file_lock(self._get_ip_agent_base_dir(), project_id):
+                project_dir = self._get_ip_agent_project_dir(project_id)
+                if not os.path.isdir(project_dir):
+                    raise FileNotFoundError("IP项目不存在")
+                info_path = self._get_ip_agent_project_info_path(project_id)
+                existing = self._read_yaml_file(info_path)
+                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                defaults = self._default_ip_agent_project_info(
+                    project_id, existing.get("name") or f"IP项目-{project_id}"
+                )
+                value = {**defaults, **existing, **(data or {})}
+                value["id"] = project_id
+                value["update_time"] = now
+                if not value.get("create_time"):
+                    value["create_time"] = now
+                value.pop("subtitle_debug_json_path", None)
+                self._write_yaml_file(info_path, value)
+                result = self._load_ip_agent_project(project_id)
+                return result if isinstance(result, dict) else None
 
     def create_ip_agent_project(self, name):
         from uuid import uuid4
@@ -1599,7 +1606,8 @@ class Api(PluginInstallerApi):
             os.makedirs(base_dir, exist_ok=True)
             for project_id in os.listdir(base_dir):
                 project_dir = os.path.join(base_dir, project_id)
-                if not os.path.isdir(project_dir):
+                if (not os.path.isdir(project_dir)
+                        or not os.path.isfile(os.path.join(project_dir, "project_info.yaml"))):
                     continue
                 info = self._load_ip_agent_project(project_id)
                 if info:
@@ -1658,18 +1666,21 @@ class Api(PluginInstallerApi):
                 except OSError: pass
 
     def delete_ip_agent_project(self, project_id):
+        from .project_file_lock import project_file_lock
         try:
-            target = self._get_ip_agent_project_dir(project_id)
-            if not os.path.isdir(target):
-                return {"error": "IP项目不存在"}
-            if hasattr(self, "_ip_publish_lock"):
-                with self._ip_publish_lock:
-                    if str(project_id) in self._ip_publish_active:
-                        return {"error": "项目正在发布，不能删除", "code": "publish_in_progress"}
-            info_path = self._get_ip_agent_project_info_path(project_id)
-            info = self._read_yaml_file(info_path) if os.path.isfile(info_path) else {}
-            audit_path = self._archive_ip_agent_publish_audit(project_id, info)
-            shutil.rmtree(target)
+            with self._IP_PROJECT_SAVE_LOCK:
+                with project_file_lock(self._get_ip_agent_base_dir(), project_id):
+                    target = self._get_ip_agent_project_dir(project_id)
+                    if not os.path.isdir(target):
+                        return {"error": "IP项目不存在"}
+                    if hasattr(self, "_ip_publish_lock"):
+                        with self._ip_publish_lock:
+                            if str(project_id) in self._ip_publish_active:
+                                return {"error": "项目正在发布，不能删除", "code": "publish_in_progress"}
+                    info_path = self._get_ip_agent_project_info_path(project_id)
+                    info = self._read_yaml_file(info_path) if os.path.isfile(info_path) else {}
+                    audit_path = self._archive_ip_agent_publish_audit(project_id, info)
+                    shutil.rmtree(target)
             result = {"status": "success", "message": "删除成功"}
             if audit_path:
                 result["publish_audit_path"] = audit_path
@@ -2269,28 +2280,30 @@ class Api(PluginInstallerApi):
 
     def _save_live_sticker_project(self, project_id, data):
         from datetime import datetime
+        from .project_file_lock import project_file_lock
         with self._STICKER_PROJECT_SAVE_LOCK:
-            directory = self._get_live_sticker_project_dir(project_id)
-            if not os.path.isdir(directory):
-                raise FileNotFoundError("贴片项目不存在")
-            current = self._read_yaml_file(self._get_live_sticker_project_info_path(project_id)) or {}
-            name = str(current.get("name") or data.get("name") or f"贴片项目-{project_id}").strip()
-            value = self._default_live_sticker_project_info(project_id, name)
-            value.update(current)
-            value.update(data)
-            value["id"] = project_id
-            value["name"] = str(value.get("name") or f"贴片项目-{project_id}").strip()
-            value["create_time"] = value.get("create_time") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            value["update_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            titles = value.get("room_titles")
-            if isinstance(titles, str):
-                titles = [item.strip() for item in titles.replace("，", ",").split(",") if item.strip()]
-            elif not isinstance(titles, list):
-                titles = []
-            value["room_titles"] = titles
-            value["room_title"] = str(value.get("room_title") or (titles[0] if titles else "")).strip()
-            self._write_yaml_file(self._get_live_sticker_project_info_path(project_id), value)
-            return self._load_live_sticker_project(project_id)
+            with project_file_lock(self._get_live_sticker_base_dir(), project_id):
+                directory = self._get_live_sticker_project_dir(project_id)
+                if not os.path.isdir(directory):
+                    raise FileNotFoundError("贴片项目不存在")
+                current = self._read_yaml_file(self._get_live_sticker_project_info_path(project_id)) or {}
+                name = str(current.get("name") or data.get("name") or f"贴片项目-{project_id}").strip()
+                value = self._default_live_sticker_project_info(project_id, name)
+                value.update(current)
+                value.update(data)
+                value["id"] = project_id
+                value["name"] = str(value.get("name") or f"贴片项目-{project_id}").strip()
+                value["create_time"] = value.get("create_time") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                value["update_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                titles = value.get("room_titles")
+                if isinstance(titles, str):
+                    titles = [item.strip() for item in titles.replace("，", ",").split(",") if item.strip()]
+                elif not isinstance(titles, list):
+                    titles = []
+                value["room_titles"] = titles
+                value["room_title"] = str(value.get("room_title") or (titles[0] if titles else "")).strip()
+                self._write_yaml_file(self._get_live_sticker_project_info_path(project_id), value)
+                return self._load_live_sticker_project(project_id)
 
     def _live_sticker_image_ready(self, image_config):
         return bool(image_config) and all(Path(path).is_file() for path in image_config.values())
@@ -2397,12 +2410,16 @@ class Api(PluginInstallerApi):
         except Exception as error: return {"error": f"保存贴片项目失败: {error}"}
 
     def delete_live_sticker_project(self, project_id):
+        from .project_file_lock import project_file_lock
         if not isinstance(project_id, str):
             raise TypeError("project_id must be a str")
         try:
-            target = Path(self._get_live_sticker_project_dir(project_id))
-            if not target.is_dir(): return {"error": "贴片项目不存在"}
-            shutil.rmtree(target); return {"status": "success", "message": "删除成功"}
+            with self._STICKER_PROJECT_SAVE_LOCK:
+                with project_file_lock(self._get_live_sticker_base_dir(), project_id):
+                    target = Path(self._get_live_sticker_project_dir(project_id))
+                    if not target.is_dir(): return {"error": "贴片项目不存在"}
+                    shutil.rmtree(target)
+            return {"status": "success", "message": "删除成功"}
         except Exception as error: return {"error": f"删除贴片项目失败: {error}"}
 
     def generate_live_sticker_prompts(self, data):
@@ -2542,20 +2559,26 @@ class Api(PluginInstallerApi):
     def _save_cloud_dh_project(self, project_id, data):
         from datetime import datetime
         import yaml
+        from .project_file_lock import project_file_lock
         with self._CLOUD_PROJECT_SAVE_LOCK:
-            directory = Path(self._get_cloud_dh_project_dir(project_id)); directory.mkdir(parents=True, exist_ok=True)
-            value = dict(data); value["id"] = project_id; value["outputs"] = self._get_cloud_dh_output_paths(project_id)
-            value["updated_at"] = datetime.now().isoformat(timespec="seconds")
-            target = Path(self._get_cloud_dh_project_info_path(project_id))
-            temporary = target.with_name(".project_info.yaml.pending")
-            try:
-                with temporary.open("w", encoding="utf-8", newline="\n") as stream:
-                    stream.write(yaml.safe_dump(value, allow_unicode=True, sort_keys=False))
-                    stream.flush(); os.fsync(stream.fileno())
-                os.replace(temporary, target)
-            finally:
-                temporary.unlink(missing_ok=True)
-            return value
+            with project_file_lock(self._get_cloud_dh_base_dir(), project_id) as lock_path:
+                if lock_path.with_suffix(".deleted").is_file():
+                    raise FileNotFoundError("云数字人项目已删除")
+                directory = Path(self._get_cloud_dh_project_dir(project_id)); directory.mkdir(parents=True, exist_ok=True)
+                target = Path(self._get_cloud_dh_project_info_path(project_id))
+                existing = self._load_cloud_dh_project(project_id) if target.is_file() else {}
+                value = {**existing, **dict(data)}
+                value["id"] = project_id; value["outputs"] = self._get_cloud_dh_output_paths(project_id)
+                value["updated_at"] = datetime.now().isoformat(timespec="seconds")
+                temporary = target.with_name(".project_info.yaml.pending")
+                try:
+                    with temporary.open("w", encoding="utf-8", newline="\n") as stream:
+                        stream.write(yaml.safe_dump(value, allow_unicode=True, sort_keys=False))
+                        stream.flush(); os.fsync(stream.fileno())
+                    os.replace(temporary, target)
+                finally:
+                    temporary.unlink(missing_ok=True)
+                return value
 
     def _recover_cloud_dh_project(self, project_id, info):
         task = info.get("generation_task")
@@ -2639,10 +2662,20 @@ class Api(PluginInstallerApi):
         except Exception as error: return {"status": "error", "message": str(error)}
 
     def delete_cloud_dh_project(self, project_id):
+        from .project_file_lock import project_file_lock
         try:
-            target = Path(self._get_cloud_dh_project_dir(project_id))
-            if not target.is_dir(): raise FileNotFoundError("云数字人项目不存在")
-            shutil.rmtree(target); return {"status": "success"}
+            with self._CLOUD_PROJECT_SAVE_LOCK:
+                with project_file_lock(self._get_cloud_dh_base_dir(), project_id) as lock_path:
+                    target = Path(self._get_cloud_dh_project_dir(project_id))
+                    if not target.is_dir(): raise FileNotFoundError("云数字人项目不存在")
+                    marker = lock_path.with_suffix(".deleted")
+                    marker.write_text("deleted\n", encoding="ascii")
+                    try:
+                        shutil.rmtree(target)
+                    except BaseException:
+                        marker.unlink(missing_ok=True)
+                        raise
+            return {"status": "success"}
         except Exception as error: return {"status": "error", "message": str(error)}
 
     def _pick_cloud_dh_file(self, project_id, kind, extensions):

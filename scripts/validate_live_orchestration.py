@@ -36,7 +36,12 @@ def main():
     parser.add_argument('--capture-seconds', type=int, default=35)
     parser.add_argument('--capture-buffer-mb', type=int, default=16)
     parser.add_argument('--camera-device', help='Require this explicit virtual camera for rotation')
+    parser.add_argument('--camera-input', default='C920', help='Exact DirectShow video input name')
     parser.add_argument('--rtmp-url', help='Use an RTMP driving source matching the fixture dimensions')
+    parser.add_argument('--browser-actions', action='store_true',
+                        help='Start the first scene, configure its first rotation, and stop it through Chrome')
+    parser.add_argument('--browser', type=Path,
+                        default=Path(r'C:\Program Files\Google\Chrome\Application\chrome.exe'))
     args = parser.parse_args()
     if args.capture_buffer_mb < 1:
         parser.error('--capture-buffer-mb must be positive')
@@ -57,6 +62,8 @@ def main():
         parser.error('--timed-shifts requires a second reference and at least one interaction')
     if args.shift_count < 1:
         parser.error('--shift-count must be positive')
+    if args.browser_actions and not args.browser.is_file():
+        parser.error('Chrome executable is missing')
 
     directory = args.report_directory.resolve()
     directory.mkdir(parents=True, exist_ok=False)
@@ -121,6 +128,7 @@ def main():
     address = f'http://127.0.0.1:{server.server_port}'
     token = None
     capture = None
+    playwright = browser = page = None
     report = {'status': 'running', 'requested_starts': args.cycles, 'requested_interactions': interactions,
               'tts_engine': args.tts_engine, 'rotation_language': args.rotation_language,
               'assistant_voice_configured': assistant is not None,
@@ -162,12 +170,19 @@ def main():
         wait('/api/tts/state', 'task', lambda state: state['id'] == task['id'] and state['status'] == 'succeeded')
         return task['id']
 
-    def rotate(session_id, *, exercise_pause=False):
+    def rotate(session_id, *, exercise_pause=False, through_browser=False):
         prepared = call('/api/live/preparation/rotation', {'revision': preparation_revision})
         items = [{key: item[key] for key in ('product_id', 'product_version', 'script_id')}
                  for item in prepared['items']]
-        call('/api/live/rotation', {'session_id': session_id, 'product_ids': [product_id, second['id']],
-                                    'preparation': {'revision': prepared['revision'], 'items': items}})
+        if through_browser:
+            page.locator('#live-products').select_option([product_id, second['id']])
+            page.locator('#live-rotation-start').click()
+            live(lambda value: value.get('rotation_products') == [product_id, second['id']])
+            page.screenshot(path=str(directory / 'browser-rtmp-rotation.png'), full_page=True)
+            report['browser_rotation_configured'] = True
+        else:
+            call('/api/live/rotation', {'session_id': session_id, 'product_ids': [product_id, second['id']],
+                                        'preparation': {'revision': prepared['revision'], 'items': items}})
         sequence = [product_id, second['id']]
         for count, product in enumerate(sequence, 1):
             state = live(lambda value: value.get('rotation_completed', 0) >= count)
@@ -212,14 +227,31 @@ def main():
         device = next(item for item in call('/api/live/devices')['devices']
                       if 'CABLE Input' in item['name'] and 'WASAPI' in item['host'])
         report['device'] = device
+        if args.browser_actions:
+            from playwright.sync_api import sync_playwright
+            playwright = sync_playwright().start()
+            browser = playwright.chromium.launch(executable_path=str(args.browser), headless=True)
+            page = browser.new_page(viewport={'width': 1440, 'height': 1000})
+            page.goto(address, wait_until='networkidle')
+            page.locator('a[href="#live-panel"]').click()
+            page.locator('#live-devices').click()
+            page.locator('#live-audio').select_option(str(device['id']))
+            if args.rtmp_url:
+                page.locator('#live-rtmp-url').fill(args.rtmp_url)
         old_session = None
         for cycle in range(args.cycles):
-            session_id = call('/api/live/start', {
-                'audio_device': device['id'], 'rotation_language': args.rotation_language,
-                'assistant_voice_id': assistant,
-                **({'rtmp_url': args.rtmp_url} if args.rtmp_url else {}),
-                **({'camera_device': args.camera_device} if args.camera_device else {}),
-            }, 202)['session']['id']
+            if args.browser_actions and cycle == 0:
+                page.locator('#live-start').click()
+                running = live(lambda state: state['status'] == 'running')
+                session_id = running['id']
+                report['browser_start_verified'] = running.get('input_mode') == ('rtmp' if args.rtmp_url else 'camera')
+            else:
+                session_id = call('/api/live/start', {
+                    'audio_device': device['id'], 'rotation_language': args.rotation_language,
+                    'assistant_voice_id': assistant,
+                    **({'rtmp_url': args.rtmp_url} if args.rtmp_url else {}),
+                    **({'camera_device': args.camera_device} if args.camera_device else {}),
+                }, 202)['session']['id']
             running = live(lambda state: state['id'] == session_id and state['status'] == 'running')
             if args.camera_device:
                 assert running['requested_camera_device'] == running['camera_device'] == args.camera_device
@@ -231,8 +263,8 @@ def main():
                 ffmpeg = args.runtime_root / '_internal/env/ffmpeg/bin/ffmpeg.exe'
                 report['capture_buffer_mb'] = args.capture_buffer_mb
                 capture = DeviceCapture(ffmpeg, directory, args.capture_seconds, dshow_video_clock=True,
-                                        buffer_mb=args.capture_buffer_mb)
-                rotate(session_id, exercise_pause=True)
+                                        buffer_mb=args.capture_buffer_mb,camera_input=args.camera_input)
+                rotate(session_id, exercise_pause=True, through_browser=args.browser_actions and cycle == 0)
                 for interaction in range(interactions):
                     urgent = speech()
                     call('/api/live/insert', {'session_id': session_id, 'task_id': urgent}, 202)
@@ -279,7 +311,11 @@ def main():
                     '-enc_time_base:v', '1:1000', '-f', 'null', '-',
                 ], check=True, timeout=max(30, args.capture_seconds + 10))
                 report['capture_decode_verified'] = True
-            call('/api/live/stop', {'session_id': session_id})
+            if args.browser_actions and cycle == 0:
+                page.locator('#live-stop').click()
+                report['browser_stop_dispatched'] = True
+            else:
+                call('/api/live/stop', {'session_id': session_id})
             stopped = live(lambda state: state['id'] == session_id and state['status'] == 'stopped')
             if cycle == 0 and interactions:
                 controls = call(f'/api/live/control/events?session_id={session_id}')['events']
@@ -363,6 +399,10 @@ def main():
         save()
         if capture:
             capture.close()
+        if browser:
+            browser.close()
+        if playwright:
+            playwright.stop()
         server.shutdown()
         server.server_close()
         thread.join()

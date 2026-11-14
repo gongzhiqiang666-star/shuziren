@@ -16,6 +16,7 @@ def main():
     parser=argparse.ArgumentParser();parser.add_argument('--ffmpeg',type=Path,required=True)
     parser.add_argument('--audio-output',type=int,required=True);parser.add_argument('--report-directory',type=Path,required=True)
     parser.add_argument('--video-delay-ms',type=float,default=0)
+    parser.add_argument('--camera-input',default='C920')
     args=parser.parse_args();root=args.report_directory/('run-'+uuid.uuid4().hex);root.mkdir(parents=True)
     report={'status':'failed','physical_sound_tested':False,'platform_tested':False,'avatar_inference_tested':False}
     sink=None;process=None;trace=[];sender=None;sender_errors=[];first_frame=threading.Event()
@@ -23,10 +24,15 @@ def main():
         def presented(row):
             trace.append(row)
             if row['event']=='video_sent':first_frame.set()
-        sink=AVDeviceSink(720,1280,args.audio_output,on_present=presented,video_delay_ms=args.video_delay_ms)
+        # Match ConsoleLive's production device path.  The previous validator
+        # used the legacy two-frame/BGR/free-running configuration instead of
+        # the current I420/smoothed-clock path.
+        sink=AVDeviceSink(720,1280,args.audio_output,on_present=presented,
+                          video_delay_ms=args.video_delay_ms,smooth_clock=True,
+                          buffer_frames=8,camera_i420=True)
         def send():
             try:
-                for index in range(2,150):
+                for index in range(8,150):
                     image=np.full((1280,720,3),96,np.uint8)
                     for bit in range(8):image[80:160,40+bit*80:100+bit*80]=224 if index&(1<<bit) else 32
                     image[200:320,40:680]=224 if is_flash(index) else 32
@@ -35,7 +41,7 @@ def main():
                     sink.submit(index,image,pcm.tobytes())
                 sink.draining=True
             except BaseException as error:sender_errors.append(str(error))
-        for index in range(2):
+        for index in range(8):
             image=np.full((1280,720,3),96,np.uint8)
             for bit in range(8):image[80:160,40+bit*80:100+bit*80]=224 if index&(1<<bit) else 32
             sink.submit(index,image,bytes(1920))
@@ -44,9 +50,12 @@ def main():
         with (root/'capture.log').open('wb') as log:
             process=subprocess.Popen([str(args.ffmpeg),'-nostdin','-y','-hide_banner','-loglevel','error',
                 '-use_wallclock_as_timestamps','1','-f','dshow','-audio_buffer_size','20','-video_size','720x1280','-framerate','25','-i',
-                'video=C920:audio=CABLE Output (VB-Audio Virtual Cable)',
+                f'video={args.camera_input}:audio=CABLE Output (VB-Audio Virtual Cable)',
                 '-t','5','-c:v','ffv1','-c:a','pcm_s16le',str(root/'receiver.mkv')],stdout=subprocess.DEVNULL,stderr=log)
             process.wait(timeout=15)
+            if process.returncode:
+                sink.abort(); sender.join(3)
+                raise RuntimeError('Combined receiver failed; see capture.log')
         sender.join(3)
         if sender.is_alive() or sender_errors:raise RuntimeError('Device sender failed: '+str(sender_errors))
         sink.close()

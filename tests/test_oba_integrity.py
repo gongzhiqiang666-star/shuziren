@@ -58,6 +58,16 @@ class ObaIntegrityTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "HTTPS"):
                 api._ensure_oba_live_installer()
 
+    def test_reference_style_url_without_digest_is_rejected_before_network(self):
+        with tempfile.TemporaryDirectory() as root:
+            api = Api.__new__(Api)
+            api.runtime_dir = Path(root)
+            api.config = {"oba_live_installer_url": "https://downloads.example.com/oba.exe"}
+            with mock.patch("requests.get") as get:
+                with self.assertRaisesRegex(ValueError, "SHA-256"):
+                    api._ensure_oba_live_installer()
+            get.assert_not_called()
+
     def test_saved_executable_must_be_under_approved_install_root(self):
         with tempfile.TemporaryDirectory() as root:
             local = Path(root) / "local"

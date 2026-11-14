@@ -8,7 +8,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from scripts.console_llm import LLMError, environment_config, generate
+from scripts.console_llm import LLMError, environment_config, generate, status
 from scripts.console_comment_reply import generate_reply
 from scripts.product_store import ProductStore, Conflict
 from scripts.llm_tasks import LLMTasks
@@ -129,6 +129,19 @@ class ConsoleLLMTests(unittest.TestCase):
         for endpoint in ['http://example.com/chat','https://user:secret@example.com/chat','https://example.com/chat?key=secret']:
             with self.assertRaises(LLMError):
                 environment_config({'SHUZIREN_LLM_ENDPOINT':endpoint,'SHUZIREN_LLM_MODEL':'x','SHUZIREN_LLM_API_KEY':'x'})
+
+    def test_status_names_deepseek_without_returning_key(self):
+        env = {'SHUZIREN_LLM_ENDPOINT':'https://api.deepseek.com/chat/completions',
+               'SHUZIREN_LLM_MODEL':'deepseek-chat', 'SHUZIREN_LLM_API_KEY':'secret-sentinel'}
+        result = status(env)
+        self.assertTrue(result['configured'])
+        self.assertEqual((result['provider'], result['model']), ('DeepSeek', 'deepseek-chat'))
+        self.assertNotIn('secret-sentinel', json.dumps(result))
+        missing = status({'SHUZIREN_LLM_ENDPOINT':env['SHUZIREN_LLM_ENDPOINT']})
+        self.assertEqual(missing['reason'], 'missing_configuration')
+        self.assertEqual(missing['missing_environment'], ['SHUZIREN_LLM_MODEL', 'SHUZIREN_LLM_API_KEY'])
+        invalid = status({**env, 'SHUZIREN_LLM_ENDPOINT':'http://example.com/chat'})
+        self.assertEqual((invalid['configured'], invalid['reason']), (False, 'invalid_configuration'))
 
     def tasks(self):
         env = {'SHUZIREN_LLM_ENDPOINT':self.config['endpoint'], 'SHUZIREN_LLM_API_KEY':self.config['api_key'],

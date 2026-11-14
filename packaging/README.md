@@ -12,9 +12,10 @@ python -m pip check
 
 源码包包含控制台、恢复源码和依赖版本说明。形象、音频、驱动、模型及 GPU 运行环境需要另行配置。当前媒体运行仍需兼容的外置运行目录。模型和依赖独立交付、升级回滚和干净 Windows 验收另有任务记录。
 
-若发布包附带 `assets/plugin` 下的可选驱动或运行库安装器，必须先在最终待发布目录生成并复核完整性清单。工具只接受产品代码中已有入口对应的四个固定文件名，拒绝额外 EXE、链接/重解析文件、空文件和超过 1 GiB 的文件；安装器本身仍须由维护者从可信官方来源取得并完成签名审查，不提交到仓库。
+若发布包附带 `assets/plugin` 下的可选驱动或运行库安装器，必须先在最终待发布目录执行 Authenticode/发布者审计，再生成并复核完整性清单。工具只接受产品代码中已有入口对应的四个固定文件名，拒绝额外 EXE、链接/重解析文件、空文件和超过 1 GiB 的文件；WebView2/.NET 必须由 Microsoft 签名，VB-CABLE 必须由 BUREL VINCENT 签名。安装器仍须由维护者从可信官方来源取得，不提交到仓库；参考商业包中的同名文件即使签名有效也不自动取得再分发资格。
 
 ```powershell
+python -m scripts.plugin_installer_manifest audit-signatures --plugin-root "<发布目录>\assets\plugin"
 python -m scripts.plugin_installer_manifest build --plugin-root "<发布目录>\assets\plugin"
 python -m scripts.plugin_installer_manifest verify --plugin-root "<发布目录>\assets\plugin"
 ```
@@ -69,7 +70,39 @@ python -m scripts.console_package run --root "C:\数字人控制台"
 python -m scripts.console_package rollback --root "C:\数字人控制台"
 ```
 
-多店入口使用 `--shop-id <店铺编号>` 隔离数据。可同时使用 `--account-id <账号编号> --access-role viewer|operator|admin` 指定审计身份和限定当前入口权限：只读角色只能查看数据和执行资源预检，运营角色可以控制直播与平台采集，管理员拥有全部写权限。默认账号和角色为 `local` / `admin`，保持单店既有启动方式兼容。授权决策按店写入 `authorization-audit.jsonl`；资源预检是只读操作，不写审计。审计文件达到 4 MiB 后轮换为 `.1`，保留当前代和上一代。账号和角色由受控启动入口指定，`account-id` 只用于归属和审计，不是登录凭据；当前版本尚未提供账号注册、登录、密码或单点登录。
+出现启动、升级或媒体运行时问题时，先运行无副作用诊断。输出仅包含版本选择、数据架构、发布文件完整性、数据目录状态和媒体运行时是否就绪；不枚举用户素材，不读取 Token，也不回显密钥或完整控制台配置。可将输出重定向到文件后交给支持人员。诊断返回非零时，先根据 `checks` 中的失败项修复，不要手工改写 `active.json`、`data-schema.json` 或包清单。
+
+```powershell
+python -m scripts.console_package diagnose --root "C:\数字人控制台" > "C:\TEMP\shuziren-diagnostic.json"
+```
+
+基础控制台允许媒体运行时尚未配置，因此普通诊断会在报告中显示 `configured=false`，但不会单因该项失败。高级媒体交付验收必须加 `--require-media`；它同时要求本地视频直驱的 WeNet 提供方和静音特征。未配置或任一关键文件不全时命令返回非零，避免把只能打开控制台的包冒充完整高级包。
+
+```powershell
+python -m scripts.console_package diagnose --root "C:\数字人控制台" --require-media
+```
+
+`--require-media` 只验证文件布局完整性，不证明 Python 依赖可以发布。完整高级包放行必须使用 `--require-media-software`；它同时执行媒体文件门禁、三份精确版本锁定、核心环境隔离和 `pip check`。报告只输出聚合计数，不回显 pip 完整诊断路径。
+
+```powershell
+python -m scripts.console_package diagnose --root "C:\数字人控制台" --require-media-software
+```
+
+准备离线安装资源时，可把受控 wheel 目录同时交给诊断。该检查只执行 `--no-index --dry-run`，不会安装或修改媒体环境；输出直接锁总数、已有/缺失数和完整解析数量，不回显 pip 的本机路径诊断。快手 OCR 使用独立 profile，不能混入核心媒体解释器。
+
+```powershell
+python -m scripts.console_package diagnose --root "C:\数字人控制台" --wheelhouse "D:\受控wheelhouse"
+python -m scripts.console_package diagnose --root "C:\数字人控制台" --wheelhouse "D:\快手OCR-wheelhouse" --wheelhouse-profile kuaishou-ocr
+```
+
+多店入口使用 `--shop-id <店铺编号>` 隔离数据。可同时使用 `--account-id <账号编号> --access-role viewer|operator|admin` 指定兼容单机入口的审计身份和角色：只读角色只能查看数据和执行资源预检，运营角色可以控制直播与平台采集，管理员拥有全部写权限。默认账号和角色为 `local` / `admin`。授权决策按店写入 `authorization-audit.jsonl`；资源预检是只读操作，不写审计。审计文件达到 4 MiB 后轮换为 `.1`，保留当前代和上一代。该启动参数本身不是身份认证；需要认证时使用下述账号密码模式。
+
+生产型本机多账号入口可启用密码登录。先交互式设置账号（命令不会回显或输出密码），再启动指定店铺；账号可在不同店铺绑定不同角色。改密码或禁用账号会使现有会话在下一请求失效。`--account-id/--access-role` 仍仅用于兼容的受控单机入口，启用登录后权限以共享账号数据库为准。
+
+```powershell
+python -m scripts.console_package account-set --root "C:\数字人控制台" --account operator-1 --shop-id shop-a --role operator
+python -m scripts.console_package run --root "C:\数字人控制台" --shop-id shop-a --require-login
+```
 
 多店工作台中的准备模板保存在安装数据根的共享模板库。模板只包含场次目标、目标人群和本场限制；应用到另一店铺时保留该店铺自己的商品、活动、库存和发货条件。模板名称和通用文本仍由管理员负责脱敏，不应手工填写客户专属价格、活动或账号信息。
 

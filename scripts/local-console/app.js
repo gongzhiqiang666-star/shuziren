@@ -19,12 +19,12 @@ document.querySelector('.workspace-nav').addEventListener('click', event => {
   }
 });
 const productFactsText = product => product?.extra?.product_facts === undefined ? '' : JSON.stringify(product.extra.product_facts, null, 2);
-let token = '';
+let token = sessionStorage.getItem('shuziren-session') || '';
 function clearChecks() { $('checks').replaceChildren(); $('scope').textContent = '尚未检查当前资源。'; }
 $('runtime-root').addEventListener('input', clearChecks);
 function config() { return {version: 1, runtime_root: $('runtime-root').value, port: Number($('port').value)}; }
 async function request(path, value) {
-  const response = await fetch(path, value === undefined ? {cache:'no-store'} : {
+  const response = await fetch(path, value === undefined ? {cache:'no-store',headers:{'X-Console-Token':token}} : {
     method:'POST', headers:{'Content-Type':'application/json','X-Console-Token':token}, body:JSON.stringify(value)
   });
   const result = await response.json();
@@ -42,11 +42,13 @@ async function action(work) {
   $('error').textContent = ''; $('message').textContent = '';
   document.querySelectorAll('button').forEach(b => b.disabled = true);
   try { await work(); } catch(error) { $('error').textContent = error.message || '无法连接本地服务'; }
-  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); renderRecordingButtons(); renderTTSButtons(); renderAvatarVideoButtons(); renderVideoButtons(); renderLiveButtons(); renderTaobao(); renderStickerButtons(); renderCloudButtons(); renderIPButtons(); }
+  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); renderRecordingButtons(); renderTTSButtons(); renderAvatarVideoButtons(); renderVideoButtons(); renderRecordedButtons(); renderHoldButtons(); renderHoldMotionButtons(); renderLiveButtons(); renderTaobao(); renderStickerButtons(); renderCloudButtons(); renderIPButtons(); }
 }
-async function load() {
+async function load(knownSession) {
   clearChecks();
-  const session = await request('/api/session'); token = session.token;
+  const session = knownSession || await request('/api/session');
+  if (session.authenticated === false) throw new Error('请先登录当前店铺');
+  token = session.token; sessionStorage.setItem('shuziren-session', token);
   const engineName = {indextts: 'IndexTTS', zipvoice: 'ZipVoice', omnivoice: 'OmniVoice'}[session.tts_engine];
   $('tts-language-field').hidden = session.tts_engine !== 'omnivoice';
   if ($('tts-language-field').hidden) $('tts-language').value = 'zh-CN';
@@ -61,6 +63,23 @@ async function load() {
     + '账号：' + session.account_id + ' · 角色：' + roleName + ' · 配置目录：' + state.data_directory;
   document.title = session.shop_id ? '数字人工作台 · ' + session.shop_id : '数字人工作台';
 }
+$('login-form').addEventListener('submit', async event => {
+  event.preventDefault(); $('login-error').textContent = '';
+  const button = event.submitter; button.disabled = true;
+  try {
+    const session = await request('/api/auth/login', {
+      account_id:$('login-account').value.trim(), password:$('login-password').value});
+    token = session.token; sessionStorage.setItem('shuziren-session', token); $('login-password').value = '';
+    $('login-panel').hidden = true; $('workspace').hidden = false; $('logout').hidden = false;
+    await initializeWorkspace(session);
+  } catch(error) { $('login-error').textContent = error.message || '登录失败'; }
+  finally { button.disabled = false; }
+});
+$('logout').addEventListener('click', async () => {
+  try { await request('/api/auth/logout', {}); } catch (_) {}
+  token = ''; sessionStorage.removeItem('shuziren-session');
+  $('workspace').hidden = true; $('login-panel').hidden = false; $('login-account').focus();
+});
 $('settings').addEventListener('submit', event => {event.preventDefault(); action(async () => {
   const result = await request('/api/config', config()); await load(); $('message').textContent = result.message;
 });});
@@ -72,17 +91,40 @@ $('preflight').addEventListener('click', () => action(async () => {
   }));
 }));
 $('reload').addEventListener('click', () => action(load));
+$('audio-editor-start').addEventListener('click', () => action(async () => {
+  $('audio-editor-error').textContent='';
+  try {
+    const result=await request('/api/tools/audio-editor/start',{});
+    $('audio-editor-status').textContent=result.message || '音频编辑器已启动。';
+  } catch(error) {
+    $('audio-editor-error').textContent=error.message || '音频编辑器启动失败';
+  }
+}));
+$('cache-clear').addEventListener('click', () => action(async () => {
+  $('cache-clear-status').textContent=''; $('cache-clear-error').textContent='';
+  try {
+    const result=await request('/api/cache/clear',{});
+    const failures=result.failures?.length ? ` · 未清理 ${result.failures.length} 项` : '';
+    $('cache-clear-status').textContent=`${result.message} · 文件 ${result.removed} 个 · ${result.removed_bytes} 字节${failures}`;
+  } catch(error) {
+    $('cache-clear-error').textContent=error.message || '缓存清理失败';
+  }
+}));
 $('shutdown').addEventListener('click', () => action(async () => {
   await request('/api/shutdown', {confirm:true});
   consoleClosed = true; clearTimeout(taskTimer);
   recorder.discard();
   clearTimeout(ttsTimer);clearTTSPreview();$('tts-panel').hidden=true;
   clearTimeout(renderTimer);clearRenderPreview();$('render-panel').hidden=true;
+  clearTimeout(recordedTimer);clearRecordedPreview();$('recorded-interaction-panel').hidden=true;
+  clearTimeout(holdTimer);clearHoldPreview();$('hold-product-panel').hidden=true;
+  clearTimeout(holdMotionTimer);clearHoldMotionPreview();
   clearTimeout(avatarVideoTimer);$('avatar-preview').removeAttribute('src');$('avatar-panel').hidden=true;
   $('live-status').textContent = '控制台已退出';
   $('message').textContent = '本地服务已收到退出请求，可以关闭本页。';
   $('settings').hidden = true; $('shutdown').hidden = true;
   $('products-panel').hidden = true;
+  $('media-tools-panel').hidden = true;
   $('sticker-panel').hidden = true; $('cloud-dh-panel').hidden = true; $('ip-agent-panel').hidden = true;
   $('voice-preview').pause(); $('voice-preview').removeAttribute('src'); $('voice-preview').load(); $('voice-panel').hidden=true;
 }));
@@ -91,6 +133,10 @@ let savedProducts = [];
 let currentScriptId=null;
 let ttsTimer=null,ttsState=null,ttsPreviewTask=null;
 let renderState=null,renderTimer=null,renderPreviewTask=null,renderBusy=false,renderStarting=false,renderCancelRequested=false,renderGeneration=0;
+let recordedState=null,recordedTimer=null,recordedPreviewTask=null,recordedBusy=false;
+let recordedReplacements=[];
+let holdState=null,holdTimer=null,holdPreviewTask=null,holdBusy=false;
+let holdMotionState=null,holdMotionTimer=null,holdMotionPreviewTask=null,holdMotionBusy=false;
 let parentScriptId = null;
 let currentTask = null;
 let taskTimer = null;
@@ -104,7 +150,14 @@ async function loadTask() {
   clearTimeout(taskTimer);
   if (consoleClosed) return;
   const result = await request('/api/llm/state');
-  $('llm-configured').textContent = result.configured ? '已配置专用生成服务。生成结果请人工核对后使用。' : '未配置专用生成服务，请在本机设置控制台LLM环境变量后重启。';
+  if (result.configured) {
+    $('llm-configured').textContent = `${result.provider} 已配置 · 模型 ${result.model} · ${result.endpoint}。API Key 已从本机环境读取但不会显示；生成结果请人工核对。`;
+  } else {
+    const missing = (result.missing_environment || []).join('、');
+    $('llm-configured').textContent = result.reason === 'invalid_configuration'
+      ? 'DeepSeek 配置无效，请检查完整 HTTPS 接口地址、模型和本机 API Key 后重启。'
+      : `DeepSeek 尚未配置${missing ? `，缺少 ${missing}` : ''}。请只在本机设置环境变量后重启。`;
+  }
   currentTask = result.task;
   const labels = {running:'正在生成',succeeded:'已保存生成话术',failed:'生成失败',cancelled:'已取消',interrupted:'上次生成已中断'};
   $('llm-task').textContent = currentTask ? (labels[currentTask.status] || currentTask.status) + ' · ' + (currentTask.product_title || '商品') + ' · 版本 ' + currentTask.product_version + (currentTask.error ? '：' + currentTask.error : '') : '暂无生成任务';
@@ -1824,6 +1877,200 @@ $('render-preview').addEventListener('error',()=>{
 window.addEventListener('pagehide',()=>{clearTimeout(renderTimer);clearRenderPreview();});
 renderVideoButtons();
 
+function clearRecordedPreview() {
+  $('recorded-preview').pause();
+  $('recorded-preview').removeAttribute('src');
+  $('recorded-preview').load();
+  $('recorded-download').hidden=true;
+  $('recorded-download').removeAttribute('href');
+  recordedPreviewTask=null;
+}
+function renderRecordedPlan() {
+  $('recorded-replacements').replaceChildren(...recordedReplacements.map((item,index)=>{
+    const row=document.createElement('li');
+    const text=document.createElement('span');
+    text.textContent=`${item.start_ms}–${item.end_ms} 毫秒 · ${item.source_id} · ${item.reply_audio}`;
+    const remove=document.createElement('button');
+    remove.type='button';remove.className='secondary';remove.textContent='删除';
+    remove.addEventListener('click',()=>{recordedReplacements.splice(index,1);renderRecordedPlan();renderRecordedButtons();});
+    row.append(text,' ',remove);return row;
+  }));
+}
+function renderRecordedButtons() {
+  const running=recordedState?.status==='running';
+  $('recorded-add').disabled=consoleClosed || recordedBusy || running || recordedReplacements.length>=100;
+  $('recorded-start-task').disabled=consoleClosed || recordedBusy || running || !recordedReplacements.length;
+  $('recorded-cancel').disabled=consoleClosed || recordedBusy || !running;
+  $('recorded-refresh').disabled=consoleClosed || recordedBusy;
+  $('recorded-clear').disabled=consoleClosed || recordedBusy || running || !recordedReplacements.length;
+}
+async function loadRecorded() {
+  clearTimeout(recordedTimer);if(consoleClosed) return;
+  const response=await request('/api/recorded-interaction/state');
+  recordedState=response.task;
+  const labels={running:'正在生成录播互动成片',succeeded:'录播互动成片已生成',failed:'录播互动生成失败',cancelled:'录播互动生成已取消',interrupted:'上次录播互动生成已中断'};
+  $('recorded-status').textContent=recordedState ? (labels[recordedState.status] || recordedState.status)+(recordedState.error ? '：'+recordedState.error : '') : '暂无录播互动任务';
+  if(recordedState?.status==='succeeded') {
+    const url='/api/recorded-interaction/video?task_id='+encodeURIComponent(recordedState.id);
+    $('recorded-download').href=url;$('recorded-download').hidden=false;
+    if(recordedPreviewTask!==recordedState.id) {$('recorded-preview').src=url;$('recorded-preview').load();recordedPreviewTask=recordedState.id;}
+  } else if(recordedPreviewTask) clearRecordedPreview();
+  renderRecordedButtons();
+  if(recordedState?.status==='running') recordedTimer=setTimeout(()=>loadRecorded().catch(error=>{$('recorded-error').textContent=error.message;}),1000);
+}
+async function recordedAction(work) {
+  if(recordedBusy || consoleClosed) return;recordedBusy=true;renderRecordedButtons();$('recorded-error').textContent='';
+  try {await work();} catch(error) {$('recorded-error').textContent=error.message || '录播互动服务无法连接';}
+  finally {recordedBusy=false;renderRecordedButtons();}
+}
+$('recorded-add').addEventListener('click',()=>recordedAction(async()=>{
+  const start=Number($('recorded-start').value),end=Number($('recorded-end').value);
+  const audio=$('recorded-audio').value.trim(),sourceId=$('recorded-source-id').value.trim();
+  if(!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start<0 || end<=start) throw new Error('回复区间必须是有效的非负毫秒范围');
+  if(!audio || !sourceId) throw new Error('请填写回复音频路径和回复编号');
+  if(!audio.toLowerCase().endsWith('.wav')) throw new Error('回复音频当前仅支持 WAV');
+  if(recordedReplacements.some(item=>start<item.end_ms && end>item.start_ms)) throw new Error('回复区间不能重叠');
+  recordedReplacements.push({start_ms:start,end_ms:end,reply_audio:audio,source_id:sourceId});
+  recordedReplacements.sort((a,b)=>a.start_ms-b.start_ms);renderRecordedPlan();
+}));
+$('recorded-clear').addEventListener('click',()=>{recordedReplacements=[];renderRecordedPlan();renderRecordedButtons();});
+$('recorded-start-task').addEventListener('click',()=>recordedAction(async()=>{
+  const source=$('recorded-source').value.trim();if(!source) throw new Error('请填写源视频路径');
+  clearRecordedPreview();
+  const response=await request('/api/recorded-interaction/start',{source_video:source,replacements:recordedReplacements});
+  recordedState=response.task;await loadRecorded();
+}));
+$('recorded-cancel').addEventListener('click',()=>recordedAction(async()=>{
+  if(!recordedState) throw new Error('暂无录播互动任务');
+  await request('/api/recorded-interaction/cancel',{task_id:recordedState.id});await loadRecorded();
+}));
+$('recorded-refresh').addEventListener('click',()=>recordedAction(loadRecorded));
+$('recorded-preview').addEventListener('error',()=>{if($('recorded-preview').getAttribute('src')) {$('recorded-error').textContent='录播互动成片已失效或无法加载。';clearRecordedPreview();}});
+window.addEventListener('pagehide',()=>{clearTimeout(recordedTimer);clearRecordedPreview();});
+renderRecordedPlan();renderRecordedButtons();
+
+function clearHoldPreview() {
+  $('hold-preview').hidden=true;$('hold-preview').removeAttribute('src');
+  $('hold-download').hidden=true;$('hold-download').removeAttribute('href');holdPreviewTask=null;
+}
+function holdPayload() {
+  return {avatar:$('hold-avatar').value.trim(),product:$('hold-product').value.trim(),
+    product_name:$('hold-product-name').value.trim(),prompt:$('hold-prompt').value.trim()};
+}
+function renderHoldButtons() {
+  const running=holdState?.status==='running';
+  $('hold-plan').disabled=consoleClosed || holdBusy || running;
+  $('hold-start').disabled=consoleClosed || holdBusy || running;
+  $('hold-cancel').disabled=consoleClosed || holdBusy || !running;
+  $('hold-refresh').disabled=consoleClosed || holdBusy;
+}
+async function loadHold() {
+  clearTimeout(holdTimer);if(consoleClosed) return;
+  const response=await request('/api/hold-product/state');holdState=response.task;
+  const labels={running:'正在生成手持商品图',succeeded:'手持商品图已生成',failed:'手持商品图生成失败',cancelled:'手持商品图生成已取消',interrupted:'上次手持商品任务已中断'};
+  $('hold-status').textContent=holdState ? (labels[holdState.status] || holdState.status)+(holdState.error ? '：'+holdState.error : '') : '暂无手持商品任务';
+  if(holdState?.status==='succeeded') {
+    const url='/api/hold-product/image?task_id='+encodeURIComponent(holdState.id);
+    $('hold-preview').src=url;$('hold-preview').hidden=false;$('hold-download').href=url;$('hold-download').hidden=false;holdPreviewTask=holdState.id;
+  } else if(holdPreviewTask) clearHoldPreview();
+  renderHoldButtons();
+  if(holdState?.status==='running') holdTimer=setTimeout(()=>loadHold().catch(error=>{$('hold-error').textContent=error.message;}),1000);
+}
+async function holdAction(work) {
+  if(holdBusy || consoleClosed) return;holdBusy=true;renderHoldButtons();$('hold-error').textContent='';
+  try {await work();} catch(error) {$('hold-error').textContent=error.message || '手持商品服务无法连接';}
+  finally {holdBusy=false;renderHoldButtons();}
+}
+$('hold-plan').addEventListener('click',()=>holdAction(async()=>{
+  const payload=holdPayload();
+  if(!payload.avatar || !payload.product || !payload.product_name) throw new Error('请填写主播图、商品图和商品名称');
+  const result=await request('/api/hold-product/plan',payload);
+  $('hold-plan-result').textContent=JSON.stringify(result.plan,null,2);
+}));
+$('hold-start').addEventListener('click',()=>holdAction(async()=>{
+  const payload=holdPayload(),apiKey=$('hold-api-key').value.trim();
+  if(!payload.avatar || !payload.product || !payload.product_name) throw new Error('请填写主播图、商品图和商品名称');
+  if(!apiKey) throw new Error('请填写本次使用的 RunningHub API Key');
+  clearHoldPreview();
+  const result=await request('/api/hold-product/start',{...payload,api_key:apiKey});
+  $('hold-api-key').value='';holdState=result.task;await loadHold();
+}));
+$('hold-cancel').addEventListener('click',()=>holdAction(async()=>{
+  if(!holdState) throw new Error('暂无手持商品任务');
+  await request('/api/hold-product/cancel',{task_id:holdState.id});await loadHold();
+}));
+$('hold-refresh').addEventListener('click',()=>holdAction(loadHold));
+$('hold-preview').addEventListener('error',()=>{if($('hold-preview').getAttribute('src')) {$('hold-error').textContent='手持商品图已失效或无法加载。';clearHoldPreview();}});
+window.addEventListener('pagehide',()=>{clearTimeout(holdTimer);clearHoldPreview();});
+renderHoldButtons();
+
+function clearHoldMotionPreview() {
+  const preview=$('hold-motion-preview');preview.pause();preview.hidden=true;preview.removeAttribute('src');preview.load();
+  $('hold-motion-download').hidden=true;$('hold-motion-download').removeAttribute('href');holdMotionPreviewTask=null;
+}
+function holdMotionPayload() {
+  const fps=Number($('hold-motion-fps').value);
+  if(!Number.isFinite(fps) || fps<1 || fps>60) throw new Error('动作视频帧率必须为 1～60');
+  const image=$('hold-motion-image').value.trim();
+  const audio=$('hold-motion-audio').value.trim();
+  const payload={
+    action_prompt:$('hold-motion-prompt').value.trim(),resolution:$('hold-motion-resolution').value,
+    fps,low_cost:$('hold-motion-low-cost').checked};
+  if(image) payload.image=image;
+  else if(holdState?.status==='succeeded') payload.hold_task_id=holdState.id;
+  if(audio) payload.audio=audio;
+  else if(ttsState?.status==='succeeded') payload.tts_task_id=ttsState.id;
+  return payload;
+}
+function renderHoldMotionButtons() {
+  const running=holdMotionState?.status==='running';
+  $('hold-motion-plan').disabled=consoleClosed || holdMotionBusy || running;
+  $('hold-motion-start').disabled=consoleClosed || holdMotionBusy || running;
+  $('hold-motion-cancel').disabled=consoleClosed || holdMotionBusy || !running;
+  $('hold-motion-refresh').disabled=consoleClosed || holdMotionBusy;
+}
+async function loadHoldMotion() {
+  clearTimeout(holdMotionTimer);if(consoleClosed) return;
+  const response=await request('/api/hold-product-motion/state');holdMotionState=response.task;
+  const labels={running:'正在生成手持商品动作视频',succeeded:'手持商品动作视频已生成',failed:'手持商品动作视频生成失败',cancelled:'手持商品动作视频生成已取消',interrupted:'上次动作视频任务已中断'};
+  $('hold-motion-status').textContent=holdMotionState ? (labels[holdMotionState.status] || holdMotionState.status)+(holdMotionState.error ? '：'+holdMotionState.error : '') : '暂无手持商品动作任务';
+  if(holdMotionState?.status==='succeeded') {
+    const url='/api/hold-product-motion/video?task_id='+encodeURIComponent(holdMotionState.id);
+    if(holdMotionPreviewTask!==holdMotionState.id) {
+      $('hold-motion-preview').src=url;$('hold-motion-preview').hidden=false;
+      $('hold-motion-download').href=url;$('hold-motion-download').hidden=false;holdMotionPreviewTask=holdMotionState.id;
+    }
+  } else if(holdMotionPreviewTask) clearHoldMotionPreview();
+  renderHoldMotionButtons();
+  if(holdMotionState?.status==='running') holdMotionTimer=setTimeout(()=>loadHoldMotion().catch(error=>{$('hold-motion-error').textContent=error.message;}),1000);
+}
+async function holdMotionAction(work) {
+  if(holdMotionBusy || consoleClosed) return;holdMotionBusy=true;renderHoldMotionButtons();$('hold-motion-error').textContent='';
+  try {await work();} catch(error) {$('hold-motion-error').textContent=error.message || '手持商品动作服务无法连接';}
+  finally {holdMotionBusy=false;renderHoldMotionButtons();}
+}
+$('hold-motion-plan').addEventListener('click',()=>holdMotionAction(async()=>{
+  const payload=holdMotionPayload();if((!payload.image && !payload.hold_task_id) || (!payload.audio && !payload.tts_task_id) || !payload.action_prompt) throw new Error('请先生成或填写手持商品图，并生成或填写讲解音频和动作提示词');
+  const result=await request('/api/hold-product-motion/plan',payload);
+  $('hold-motion-plan-result').textContent=JSON.stringify(result.plan,null,2);
+}));
+$('hold-motion-start').addEventListener('click',()=>holdMotionAction(async()=>{
+  const payload=holdMotionPayload(),apiKey=$('hold-motion-api-key').value.trim();
+  if((!payload.image && !payload.hold_task_id) || (!payload.audio && !payload.tts_task_id) || !payload.action_prompt) throw new Error('请先生成或填写手持商品图，并生成或填写讲解音频和动作提示词');
+  if(!apiKey) throw new Error('请填写本次使用的 RunningHub API Key');
+  clearHoldMotionPreview();
+  const result=await request('/api/hold-product-motion/start',{...payload,api_key:apiKey});
+  $('hold-motion-api-key').value='';holdMotionState=result.task;await loadHoldMotion();
+}));
+$('hold-motion-cancel').addEventListener('click',()=>holdMotionAction(async()=>{
+  if(!holdMotionState) throw new Error('暂无手持商品动作任务');
+  await request('/api/hold-product-motion/cancel',{task_id:holdMotionState.id});await loadHoldMotion();
+}));
+$('hold-motion-refresh').addEventListener('click',()=>holdMotionAction(loadHoldMotion));
+$('hold-motion-preview').addEventListener('error',()=>{if($('hold-motion-preview').getAttribute('src')) {$('hold-motion-error').textContent='手持商品动作视频已失效或无法加载。';clearHoldMotionPreview();}});
+window.addEventListener('pagehide',()=>{clearTimeout(holdMotionTimer);clearHoldMotionPreview();});
+renderHoldMotionButtons();
+
 let liveSession = {status:'idle'}, liveTimer, liveBusy = false;
 let rotationSelectionEdited = false;
 let rotationEventCursor = 0;
@@ -3153,14 +3400,31 @@ $('ip-import-video').addEventListener('click', () => ipAction(async () => {
 for (const [id,path] of [['ip-dry-run','/api/ip-agent/publish-dry-run'],['ip-publish','/api/ip-agent/publish']]) {
   $(id).addEventListener('click', () => ipAction(async () => {
     ipBusy = true; renderIPButtons(); $('ip-status').textContent = path.endsWith('dry-run') ? '正在执行发布预演…' : '正在调用平台发布…';
+    let result;
     try {
-      const result = await request(path, ipPublishPayload());
-      $('ip-result').textContent = JSON.stringify(result.publish_result || result.publish_plan || result, null, 2);
+      result = await request(path, ipPublishPayload());
     } finally { ipBusy = false; }
     await loadIPProject(ipProject.id);
+    $('ip-result').textContent = JSON.stringify(result.publish_result || result.publish_plan || result, null, 2);
   }));
 }
 $('ip-delete').addEventListener('click', () => ipAction(async () => {
   await request('/api/ip-agent/delete', {project_id:ipProject.id}); showIPProject(null); await loadIPProjects();
 }));
-action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await loadPreparation(); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender);await loadLive();await loadTaobao();await loadStickers();await loadCloudProjects();await loadIPProjects(); });
+async function initializeWorkspace(session) {
+  await action(async () => { await load(session); await productAction(async () => { await loadProducts(); await loadTask(); }); await loadPreparation(); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender);await recordedAction(loadRecorded);await holdAction(loadHold);await holdMotionAction(loadHoldMotion);await loadLive();await loadTaobao();await loadStickers();await loadCloudProjects();await loadIPProjects(); });
+}
+(async () => {
+  try {
+    const session = await request('/api/session');
+    if (session.authenticated === false) {
+      token = ''; sessionStorage.removeItem('shuziren-session');
+      $('workspace').hidden = true; $('login-panel').hidden = false; $('login-account').focus();
+      return;
+    }
+    $('logout').hidden = !session.login_required;
+    await initializeWorkspace(session);
+  } catch(error) {
+    $('error').textContent = error.message || '无法连接本地服务';
+  }
+})();

@@ -390,10 +390,13 @@ def check_release(root, commit):
     return release, manifest
 
 
-def console_command(data, port, python=None):
+def console_command(data, port, python=None, *, require_login=False, account_database=None):
     command = [str(python or sys.executable), '-B', '-X', 'utf8', '-m', 'scripts.local_console', '--data-directory', str(data)]
     if port is not None:
         command.extend(('--port', str(port)))
+    if require_login:
+        command.append('--require-login')
+        command.extend(('--account-database', str(account_database)))
     return command
 
 
@@ -413,6 +416,107 @@ def configured_media(data):
     if not configured or not inspect_runtime(configured)['ready']:
         raise ValueError('Configure a complete independent media runtime before starting with media')
     return config, runtime_python(configured)
+
+
+def diagnose_installation(root, *, require_media=False, require_media_software=False,
+                          wheelhouse=None, wheelhouse_profile='core'):
+    """Return a bounded, credential-free support snapshot for an installation."""
+    root = Path(root).resolve()
+    checks = []
+
+    def record(name, operation):
+        try:
+            detail = operation()
+            checks.append({'name': name, 'ok': True, 'detail': detail})
+        except (OSError, ValueError, UnicodeError, json.JSONDecodeError) as error:
+            checks.append({'name': name, 'ok': False, 'error': str(error)[:512]})
+
+    state = {'current': None, 'previous': None}
+
+    def active_check():
+        nonlocal state
+        state = read_active(root)
+        return {'installed': state['current'] is not None, **state}
+
+    record('version-selection', active_check)
+    record('data-schema', lambda: {'version': read_data_schema(root, state)})
+    if state['current'] is not None:
+        record('release-integrity', lambda: {
+            'commit': state['current'],
+            'files': len(check_release(root, state['current'])[1]['files']),
+        })
+    else:
+        checks.append({'name': 'release-integrity', 'ok': False, 'error': 'No release is installed'})
+
+    def data_check():
+        data = root / 'data'
+        if data.exists() and (data.is_symlink() or not data.is_dir()):
+            raise ValueError('User data path is not a local directory')
+        return {'exists': data.is_dir(), 'writable_parent': os.access(data if data.exists() else root, os.W_OK)}
+
+    record('user-data', data_check)
+
+    def media_check():
+        from scripts.local_console_config import ConfigStore
+        from scripts.media_runtime import inspect_runtime
+
+        configured = ConfigStore(root / 'data').load()['runtime_root']
+        if not configured:
+            if require_media:
+                raise ValueError('Media runtime is not configured')
+            return {'configured': False, 'ready': False}
+        report = inspect_runtime(configured, include_origin_video=require_media)
+        if require_media and not report['ready']:
+            raise ValueError('Configured media runtime is incomplete')
+        return {'configured': True, 'ready': report['ready'],
+                'required_files': len(report['checks']),
+                'missing_files': sum(not item['present'] for item in report['checks'])}
+
+    record('media-runtime', media_check)
+    if require_media_software:
+        def media_software_check():
+            from scripts.local_console_config import ConfigStore
+            from scripts.media_runtime import software_report
+
+            configured = ConfigStore(root / 'data').load()['runtime_root']
+            if not configured:
+                raise ValueError('Media runtime is not configured')
+            report = software_report(configured)
+            failed_versions = sum(not item['verified'] for item in report['packages'])
+            summary = {'ready': report['ready'], 'python': report['python'],
+                       'locked_packages': len(report['packages']),
+                       'version_mismatches': failed_versions,
+                       'forbidden_core_packages': len(report['forbidden_core_packages']),
+                       'dependency_check_ok': report['dependency_check_ok']}
+            if not report['ready']:
+                raise ValueError('Media software dependencies are not release-ready: ' +
+                                 json.dumps(summary, sort_keys=True))
+            return summary
+
+        record('media-software', media_software_check)
+    if wheelhouse is not None:
+        def wheelhouse_check():
+            from scripts.local_console_config import ConfigStore
+            from scripts.media_runtime import wheelhouse_report
+
+            configured = ConfigStore(root / 'data').load()['runtime_root']
+            if not configured:
+                raise ValueError('Media runtime is not configured')
+            report = wheelhouse_report(configured, wheelhouse, profile=wheelhouse_profile)
+            summary = {'ready': report['ready'], 'profile': report['profile'],
+                       'wheel_files': report['wheel_files'],
+                       'direct_pins': len(report['direct_pins']),
+                       'direct_present': report['direct_present'],
+                       'direct_missing': len(report['direct_missing']),
+                       'resolved_distributions': report['resolved_distributions']}
+            if not report['ready']:
+                raise ValueError('Offline wheelhouse is not release-ready: ' +
+                                 json.dumps(summary, sort_keys=True))
+            return summary
+
+        record('media-wheelhouse', wheelhouse_check)
+    return {'version': 1, 'root': str(root), 'ready': all(item['ok'] for item in checks),
+            'checks': checks}
 
 
 def check_startup(release, root, media=None):
@@ -512,7 +616,8 @@ def switch_release(root, archive=None, with_media=False):
         return active
 
 
-def run_release(root, port, with_media=False, shop_id=None, access_role='admin', account_id='local'):
+def run_release(root, port, with_media=False, shop_id=None, access_role='admin', account_id='local',
+                require_login=False):
     from scripts.local_console import InstanceLock
     from scripts.local_console_config import shop_data_directory
 
@@ -520,6 +625,8 @@ def run_release(root, port, with_media=False, shop_id=None, access_role='admin',
         raise ValueError('Invalid managed access role')
     if not isinstance(account_id, str) or re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,39}', account_id) is None:
         raise ValueError('Invalid managed account id')
+    if require_login and shop_id is None:
+        raise ValueError('Login-protected console requires --shop-id')
     root = root.resolve()
     with ExitStack() as instance:
         with InstanceLock(root / '.deployment'):
@@ -545,7 +652,9 @@ def run_release(root, port, with_media=False, shop_id=None, access_role='admin',
             environment['SHUZIREN_MANAGED_SHOP_ID'] = shop_id
         environment['SHUZIREN_MANAGED_ACCESS_ROLE'] = access_role
         environment['SHUZIREN_MANAGED_ACCOUNT_ID'] = account_id
-        return subprocess.call(console_command(data, port, python), cwd=release, env=environment)
+        return subprocess.call(console_command(data, port, python, require_login=require_login,
+                                               account_database=root / 'data' / 'accounts.sqlite3'),
+                               cwd=release, env=environment)
 
 
 def main():
@@ -571,6 +680,12 @@ def main():
             command.add_argument('--access-role', choices=('viewer', 'operator', 'admin'), default='admin',
                                  help='当前本机入口的访问角色')
             command.add_argument('--account-id', default='local', help='写入本店权限审计的账号编号')
+            command.add_argument('--require-login', action='store_true', help='要求店铺账号密码登录')
+    account = commands.add_parser('account-set')
+    account.add_argument('--root', required=True, type=Path)
+    account.add_argument('--account', required=True)
+    account.add_argument('--shop-id', required=True)
+    account.add_argument('--role', required=True, choices=('viewer', 'operator', 'admin'))
     migration = commands.add_parser('migrate-data')
     migration.add_argument('--root', type=Path, required=True)
     migration.add_argument('--source', type=Path, required=True)
@@ -589,7 +704,23 @@ def main():
     restore = commands.add_parser('restore-data')
     restore.add_argument('--root', type=Path, required=True)
     restore.add_argument('--backup', required=True, help='backups 目录中的备份编号')
+    doctor = commands.add_parser('diagnose')
+    doctor.add_argument('--root', type=Path, required=True)
+    doctor.add_argument('--require-media', action='store_true',
+                        help='Fail unless the configured independent media runtime is complete')
+    doctor.add_argument('--require-media-software', action='store_true',
+                        help='Also require locked package versions, isolation, and pip check')
+    doctor.add_argument('--wheelhouse', type=Path,
+                        help='Also require a complete offline wheelhouse without installing it')
+    doctor.add_argument('--wheelhouse-profile', choices=('core', 'kuaishou-ocr'), default='core')
     args = parser.parse_args()
+    if args.command == 'diagnose':
+        result = diagnose_installation(args.root,
+            require_media=args.require_media or args.require_media_software,
+            require_media_software=args.require_media_software,
+            wheelhouse=args.wheelhouse, wheelhouse_profile=args.wheelhouse_profile)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result['ready'] else 1
     if args.command == 'restore-data':
         print(json.dumps(restore_data_backup(args.root, args.backup), ensure_ascii=False))
         return 0
@@ -606,8 +737,20 @@ def main():
         from scripts.console_data_migration import migrate_data
         print(json.dumps(migrate_data(args.source, args.root, args.shop_id), ensure_ascii=False))
         return 0
+    if args.command == 'account-set':
+        import getpass
+        from scripts.local_accounts import LocalAccountStore
+        first = getpass.getpass('新密码: ')
+        second = getpass.getpass('再次输入: ')
+        if first != second:
+            parser.error('两次密码不一致')
+        result = LocalAccountStore(args.root.resolve() / 'data' / 'accounts.sqlite3').set_account(
+            args.account, first, args.shop_id, args.role)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
     if args.command == 'run':
-        return run_release(args.root, args.port, args.with_media, args.shop_id, args.access_role, args.account_id)
+        return run_release(args.root, args.port, args.with_media, args.shop_id, args.access_role,
+                           args.account_id, args.require_login)
     if args.command in {'deploy', 'rollback'}:
         print(json.dumps(switch_release(args.root, getattr(args, 'archive', None), args.with_media)))
         return 0

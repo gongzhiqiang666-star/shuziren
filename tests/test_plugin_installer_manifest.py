@@ -3,8 +3,9 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 
-from scripts.plugin_installer_manifest import build, verify
+from scripts.plugin_installer_manifest import audit_signatures, build, verify
 
 
 class PluginInstallerManifestTests(unittest.TestCase):
@@ -70,6 +71,31 @@ class PluginInstallerManifestTests(unittest.TestCase):
         manifest_path.write_text(json.dumps(payload), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "does not match"):
             verify(self.root)
+
+    @patch("scripts.plugin_installer_manifest.sys.platform", "win32")
+    def test_authenticode_audit_requires_valid_approved_publishers(self):
+        self.installer()
+        self.installer("VBCABLE_Driver_Pack45/VBCABLE_Setup_x64.exe", b"driver")
+        runner = Mock(return_value=Mock(returncode=0, stdout=json.dumps([
+            {"relative": "MicrosoftEdgeWebview2Setup.exe", "status": "Valid",
+             "subject": "CN=Microsoft Corporation, O=Microsoft Corporation", "thumbprint": "A" * 40},
+            {"relative": "VBCABLE_Driver_Pack45/VBCABLE_Setup_x64.exe", "status": "Valid",
+             "subject": "CN=BUREL VINCENT Entrepreneur individuel", "thumbprint": "B" * 40},
+        ])))
+        result = audit_signatures(self.root, runner=runner)
+        self.assertEqual(set(result), {
+            "MicrosoftEdgeWebview2Setup.exe", "VBCABLE_Driver_Pack45/VBCABLE_Setup_x64.exe"})
+        request = json.loads(runner.call_args.kwargs["input"])
+        self.assertEqual([item["relative"] for item in request], list(result))
+
+        runner.return_value.stdout = json.dumps([
+            {"relative": "MicrosoftEdgeWebview2Setup.exe", "status": "NotSigned",
+             "subject": None, "thumbprint": None},
+            {"relative": "VBCABLE_Driver_Pack45/VBCABLE_Setup_x64.exe", "status": "Valid",
+             "subject": "CN=BUREL VINCENT", "thumbprint": "B" * 40},
+        ])
+        with self.assertRaisesRegex(ValueError, "not valid"):
+            audit_signatures(self.root, runner=runner)
 
 
 if __name__ == "__main__":

@@ -85,7 +85,7 @@ G09-03 通过本机 Chrome 投放方案测试。用测试账单保存 500 分预
 
 解释器路径为 `D:\BaiduNetdiskDownload\huanyuzhilian_v179\_internal\env\python.exe`，本次未启动该商业应用。完整恢复日志保留在 `logs/validation/2026-11-10-recovery-baseline.log`（不进 Git）。
 
-失败原因：校验器默认读取工作树 `yunchuang_v122/_internal`，当前缺少该原始对照目录。下一步定位本机原 yunchuang 包，核对版本、路径与映射；若资源在外部目录，修正校验器的显式路径配置并保留必需资源缺失即失败的语义，复测直到 V00 通过。禁止改断言为跳过、创建空模块、用新包 210 个模块替代原包 128 个模块，或把缺失当作成功。
+当时失败原因：校验器默认读取工作树 `yunchuang_v122/_internal`，当时尚未指定外部授权运行根。后续已通过显式 `RuntimeRoot` 找到原包并完成恢复五关；本段只保留首次失败历史。仍禁止改断言为跳过、创建空模块、用新包替代原包清单，或把缺失当作成功。
 
 以上为当时的失败和未验证范围，不表示后来提交无进展；以下续记更新当前已知条件。FUNCTION_MATRIX.md 的功能状态不能只因文档更新改变。
 
@@ -99,7 +99,7 @@ G09-03 通过本机 Chrome 投放方案测试。用测试账单保存 500 分预
 - 已读取对应 `tts/result.json`：原 IndexTTS 常驻、禁用缓存、3 份不同 WAV 哈希，并行 RTF 约 0.60~0.71。报告中的 live_tts_tested=false、virtual_camera_or_platform_tested=false；未验证新音频持续切入画面流。
 - 此次是核对已有报告，不是重新跑性能测试；只计原生运行链的局部实机证据，不代表重建源码或整关通过。完整证据目录见开发计划第 2 节。
 
-下一步：先完成 N01/V00 的代码/矩阵集成与恢复校验，核对已有界面及 V01~V04 具体用例，通过后开发 N03/V05 持续新 TTS 入队与实际音画输出。不重复从零选型，也不跳过未验证环节。
+该续记中的“下一步从 V00 开始”已被后续复测取代。当前 V00 恢复五关持续通过，V01～V09 本机开发主链已闭环；最新执行顺序以 `evidence/phase1-entry-audit.md` 和 `EXTERNAL_VALIDATION_QUEUE.md` 为准，不重复早期已完成任务。
 
 ## 当前 Windows 全量回归
 
@@ -198,3 +198,7 @@ SYS-009 Windows 缓存清理专项 4 项通过。实际创建已知缓存和无�
 LIV-014 RTMP reader 签名兼容修复后，专项 10 项通过，覆盖首帧、EOF、取消、停止释放及输入节奏。完整恢复契约以 `D:\TEMP\v122-minimum-proof-ready\runtime\yunchuang_v122\_internal` 为授权原运行根，显式加入随包 FFmpeg 并使用 UTF-8 解释器，最终报告 `PASS: 128/128`，二进制类方法签名缺口清零。首轮缺 FFmpeg、第二轮 GBK 越南语输出失败均为环境条件，保留在执行过程但不作为代码失败。
 
 LIV-014 原 `.pyd` manifest v2 差分完成。证据目录 `logs/validation/liv014-original-manifest-v2-01` 使用同一 320×240/25fps/1.2 秒含声输入；原版实测返回 success、绝对 face/hand 路径和 manifest 字典。恢复版对齐默认参数、原始 PCM RMS、随机长段切割、返回结构及 v2 manifest，实际输出 2+2 段且四段媒体规格均为 1080×1920、25fps、48 kHz 单声道。两端设相同随机种子后，规范化 manifest 完全相等，切点分别为 face 600/1200、hand 775/1200 ms。真实场次长稳另验。
+
+当前跨阶段 Windows 短回归执行 648 项，633 通过、15 项显式运行条件跳过、0 失败，用时 266.535 秒。随后设置随包 FFmpeg、FFprobe、运行根及测试进程 PATH，补跑手持动作6项、直接编码3项、TTS worker3项、音频尾部1项、音色6项和控制台HTTP70项，覆盖其中14个条件跳过项且全部通过。剩余 SRS 集成因当前随包服务占用 1935/1985/8080，不终止它重跑启停测试；沿用 `scripts.validate_existing_srs` 唯一流完成的版本 API、RTMP 推送、HTTP-FLV 拉取及音视频解码，结构化结果在 `logs/validation/a04-existing-srs-01/result.json`，自有启停和端口释放沿用既有 A04-03 证据。
+
+新增设备安全 WeNet 回归：原视频 `image_infer_v2` CPU 特征和产品对齐窗口通过；离线 `image_clone` 改为按模型参数设备放置输入，保留提供方整数分块时的补零尾块语义。真实 CPU ONNX 与 RTX 3060 CUDA 两条路径均输出 720×1280、25 fps、H.264/AAC 双轨短片并完整解码。CPU 生成 1.2 秒视频耗时 36.596 秒，仅作兼容/诊断回退；高级款仍使用常驻 GPU/TensorRT/NVENC 路径。

@@ -98,17 +98,21 @@ class TTSTasks:
         self.worker_usable=True
         return self.process
 
-    def audio(self,task_id):
+    def audio_path(self,task_id):
         with self.lock:
             state=self.state()
             if not state or state['id']!=task_id or state['status']!='succeeded':
                 raise Conflict('音频任务不存在、未完成或已失效')
             result=state['result'];path=Path(result['output']).resolve()
             if path.parent!=(self.data/'tts').resolve(): raise ProductError('音频路径越界')
-            content=path.read_bytes()
-            if hashlib.sha256(content).hexdigest()!=result['sha256']:
+            if not path.is_file() or path.is_symlink():
+                raise Conflict('音频文件已失效，请重新合成')
+            if hashlib.sha256(path.read_bytes()).hexdigest()!=result['sha256']:
                 raise Conflict('音频文件已变化，请重新合成')
-            return content
+            return path
+
+    def audio(self,task_id):
+        return self.audio_path(task_id).read_bytes()
 
     def _stop_worker(self):
         self.worker_usable=False

@@ -15,6 +15,20 @@ from scripts.media_runtime import (
 
 
 class ConsoleConfigTests(unittest.TestCase):
+    def test_product_media_distributions_are_explicitly_pinned(self):
+        locked = pinned_requirements()
+        required = {
+            'pandas': '2.2.3',
+            'pycuda': '2024.1.2',
+            'ultralytics': '8.3.70',
+        }
+        self.assertEqual({name: locked[name]['version'] for name in required}, required)
+        platform = (Path(__file__).resolve().parents[1] / 'recovered' /
+                    'requirements-kuaishou-ocr.txt').read_text(encoding='utf-8')
+        self.assertIn('ddddocr==1.5.6', platform.splitlines())
+        self.assertIn('opencv-python-headless==4.10.0.84', platform.splitlines())
+        self.assertNotIn('ddddocr', locked)
+
     def test_software_report_separates_pins_from_dependency_health(self):
         requirements = self.root / 'requirements'
         requirements.mkdir()
@@ -115,6 +129,9 @@ class ConsoleConfigTests(unittest.TestCase):
         command = run.call_args.args[0]
         self.assertTrue(report['ready'])
         self.assertEqual(report['resolved_distributions'], 3)
+        self.assertEqual(report['wheel_files'], 0)
+        self.assertEqual(report['direct_present'], 0)
+        self.assertEqual(report['direct_missing'], ['numpy', 'torch', 'PyAudio'])
         self.assertIn('--dry-run', command)
         self.assertIn('--no-index', command)
         self.assertIn('--ignore-installed', command)
@@ -142,6 +159,63 @@ class ConsoleConfigTests(unittest.TestCase):
         self.assertFalse(report['ready'])
         self.assertIsNone(report['resolved_distributions'])
         self.assertIn('No matching distribution', report['diagnostic'])
+
+    def test_wheelhouse_gate_inventories_all_direct_pins_before_resolution(self):
+        requirements = self.root / 'requirements'
+        requirements.mkdir()
+        for filename, value in zip(
+                ('requirements-core.txt', 'requirements-ai-cu118.txt', 'requirements-windows.txt'),
+                ('numpy==1.24.0\nPillow==10.4.0\n', 'torch==2.6.0+cu118\n', '')):
+            (requirements / filename).write_text(value, encoding='utf-8')
+        runtime = self.root / 'runtime'
+        runtime.mkdir()
+        (runtime / MANIFEST_NAME).write_text(
+            json.dumps({**INDEPENDENT, 'python': LEGACY_PYTHON}), encoding='utf-8')
+        python = runtime / LEGACY_PYTHON
+        python.parent.mkdir(parents=True)
+        python.write_bytes(b'python fixture')
+        wheelhouse = self.root / 'wheelhouse'
+        wheelhouse.mkdir()
+        (wheelhouse / 'numpy-1.24.0-cp310-cp310-win_amd64.whl').write_bytes(b'fixture')
+        (wheelhouse / 'torch-2.6.0+cu118-cp310-cp310-win_amd64.whl').write_bytes(b'fixture')
+        failed = SimpleNamespace(returncode=1, stdout='', stderr='Pillow unavailable', args=[])
+        with patch('scripts.media_runtime.subprocess.run', return_value=failed):
+            report = wheelhouse_report(runtime, wheelhouse, requirements)
+        self.assertEqual(report['wheel_files'], 2)
+        self.assertEqual(report['direct_present'], 2)
+        self.assertEqual(report['direct_missing'], ['Pillow'])
+        self.assertEqual(report['direct_pins'][0]['candidates'],
+                         ['numpy-1.24.0-cp310-cp310-win_amd64.whl'])
+        self.assertFalse(report['ready'])
+
+    def test_kuaishou_ocr_wheelhouse_uses_only_platform_lock(self):
+        requirements = self.root / 'requirements'
+        requirements.mkdir()
+        (requirements / 'requirements-kuaishou-ocr.txt').write_text(
+            'ddddocr==1.5.6\nopencv-python-headless==4.10.0.84\n', encoding='utf-8')
+        runtime = self.root / 'runtime'
+        runtime.mkdir()
+        (runtime / MANIFEST_NAME).write_text(
+            json.dumps({**INDEPENDENT, 'python': LEGACY_PYTHON}), encoding='utf-8')
+        python = runtime / LEGACY_PYTHON
+        python.parent.mkdir(parents=True)
+        python.write_bytes(b'python fixture')
+        wheelhouse = self.root / 'wheelhouse'
+        wheelhouse.mkdir()
+        completed = SimpleNamespace(returncode=1, stdout='', stderr='ddddocr unavailable')
+        with patch('scripts.media_runtime.subprocess.run', return_value=completed) as run:
+            report = wheelhouse_report(runtime, wheelhouse, requirements, 'kuaishou-ocr')
+        command = run.call_args.args[0]
+        self.assertIn('--no-index', command)
+        self.assertNotIn('--index-url', command)
+        self.assertEqual(command.count('-r'), 1)
+        self.assertIn(str(requirements / 'requirements-kuaishou-ocr.txt'), command)
+        self.assertNotIn(str(requirements / 'requirements-core.txt'), command)
+        self.assertEqual(report['profile'], 'kuaishou-ocr')
+        self.assertEqual(report['requirements'], ['requirements-kuaishou-ocr.txt'])
+        self.assertFalse(report['ready'])
+        self.assertIsNone(report['resolved_distributions'])
+        self.assertIn('ddddocr unavailable', report['diagnostic'])
 
     def test_media_inventory_survives_relocation_and_detects_changes(self):
         runtime = self.root / 'media'

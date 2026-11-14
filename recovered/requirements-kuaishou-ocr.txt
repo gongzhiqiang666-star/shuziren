@@ -1,0 +1,4 @@
+# Optional Kuaishou verification worker. Keep outside the core media interpreter:
+# ddddocr requires headless OpenCV while the media UI uses desktop opencv-python.
+ddddocr==1.5.6
+opencv-python-headless==4.10.0.84

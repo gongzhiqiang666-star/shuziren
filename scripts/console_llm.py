@@ -9,6 +9,11 @@ class LLMError(ValueError):
     pass
 
 
+REQUIRED_ENVIRONMENT = (
+    'SHUZIREN_LLM_ENDPOINT', 'SHUZIREN_LLM_MODEL', 'SHUZIREN_LLM_API_KEY',
+)
+
+
 def environment_config(environ=None):
     env = os.environ if environ is None else environ
     config = {key: env.get('SHUZIREN_LLM_' + name, '').strip() for key, name in
@@ -31,12 +36,30 @@ def environment_config(environ=None):
     return config
 
 
-def status():
+def status(environ=None):
+    env = os.environ if environ is None else environ
+    missing = [name for name in REQUIRED_ENVIRONMENT if not str(env.get(name, '')).strip()]
     try:
-        environment_config()
-        return {'configured': True}
+        config = environment_config(env)
+        host = (urlsplit(config['endpoint']).hostname or '').lower()
+        return {
+            'configured': True,
+            'provider': 'DeepSeek' if 'deepseek' in host else 'OpenAI-compatible',
+            'model': config['model'],
+            'endpoint': config['endpoint'],
+            'api_key_configured': True,
+            'required_environment': list(REQUIRED_ENVIRONMENT),
+            'missing_environment': [],
+        }
     except LLMError:
-        return {'configured': False}
+        return {
+            'configured': False,
+            'provider': 'DeepSeek',
+            'reason': 'missing_configuration' if missing else 'invalid_configuration',
+            'api_key_configured': False if 'SHUZIREN_LLM_API_KEY' in missing else True,
+            'required_environment': list(REQUIRED_ENVIRONMENT),
+            'missing_environment': missing,
+        }
 
 
 def generate(store, product_id, expected_version, instructions='', *, config=None):

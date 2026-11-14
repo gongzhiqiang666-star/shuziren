@@ -70,6 +70,7 @@ def main():
     parser.add_argument('--device-audio-output',type=int)
     parser.add_argument('--capture-devices',action='store_true')
     parser.add_argument('--capture-buffer-mb', type=int, default=16)
+    parser.add_argument('--camera-input', default='C920', help='Exact DirectShow video input name')
     parser.add_argument('--tts-engine', choices=('indextts', 'zipvoice', 'omnivoice'), default='indextts')
     parser.add_argument('--tts-model-root', type=Path)
     parser.add_argument('--dshow-video-clock',action='store_true')
@@ -181,7 +182,7 @@ def main():
                     if not first_device_frame.wait(2):raise TimeoutError('Camera did not send its first frame')
                     if session.stop_event.is_set():return
                     capture=DeviceCapture(ffmpeg,root,max(1,args.seconds-2),dshow_video_clock=args.dshow_video_clock,
-                                          buffer_mb=args.capture_buffer_mb)
+                                          buffer_mb=args.capture_buffer_mb,camera_input=args.camera_input)
                 previous=None
                 for offset,case_id,text in schedule:
                     if session.stop_event.wait(max(0,schedule_start+offset-time.monotonic())):return

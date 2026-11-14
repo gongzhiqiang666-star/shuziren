@@ -27,6 +27,7 @@ class ConsoleLive:
         self.client = None
         self.cancel = threading.Event()
         self.status = {'status': 'idle'}
+        self.lifecycle_epoch = 0
         self.rotation = None
         self.reply_session = None
         self.completed = SimpleQueue()
@@ -75,7 +76,9 @@ class ConsoleLive:
                 self.tts.voices.get(assistant_voice_id)
             self.cancel.clear()
             session_id = uuid.uuid4().hex
+            self.lifecycle_epoch += 1
             self.status = {'id': session_id, 'status': 'preparing', 'audio_device': audio_device,
+                           'lifecycle_epoch': self.lifecycle_epoch,
                            'frames': 0, 'rotation_language': language, 'assistant_voice_id': assistant_voice_id,
                            'requested_at': time.time()}
             if camera_device is not None:
@@ -227,7 +230,9 @@ class ConsoleLive:
                 raise ProductError('视频直驱缺少媒体组件：' + '、'.join(missing))
             self.cancel.clear()
             session_id = uuid.uuid4().hex
+            self.lifecycle_epoch += 1
             self.status = {'id': session_id, 'status': 'preparing', 'mode': 'local_video',
+                           'lifecycle_epoch': self.lifecycle_epoch,
                            'audio_device': audio_device, 'backend': backend, 'frames': 0, 'requested_at': time.time()}
             self.rotation = self.reply_session = None
             self.video_commands = Queue(maxsize=1)

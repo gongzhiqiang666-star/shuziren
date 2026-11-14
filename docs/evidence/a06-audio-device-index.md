@@ -34,6 +34,12 @@ Windows 实测选择 VB-Audio CABLE Input 全局编号 4，使用产品播放器
 
 故障注入令第二次 `os.replace`（TXT 提交）抛出磁盘错误，验证 WAV 字节、TXT 内容和 `original_text` 均与操作前一致，事务目录由上下文清理。随后完整恢复基线通过。
 
+## Windows 编辑器交互
+
+使用随包 Python/pywebview 启动真实 Windows 编辑器窗口，在隔离运行根预置中文 `片段01.wav/.txt`。窗口加载后页面真实渲染一条音频卡片；验证程序填写“茶杯→水杯”并调用页面按钮对应的 `runKeywordReplace()`，请求经 pywebview JS API 进入恢复后端。页面显示“替换完成，共处理 1 条”，TXT 落盘为“这是一杯青瓷水杯”，试听接口返回有效 `data:audio/wav;base64,`，窗口随后关闭。
+
+结构化证据位于 `logs/validation/a06-audio-editor-webview-01/result.json`，可由 `scripts/validate_audio_editor_webview.py` 复跑。此前 `a06-audio-editor-window-01` 只证明工作台按钮、进程和窗口生命周期；本次补齐窗口内部的渲染、JS 桥、编辑持久化和试听数据链。未在本轮调用重合成模型，因此语音自然度与不同参考音色仍需人工质量验收；物理热插拔和独占冲突继续后置。
+
 ## WAV/MP3 真实 FunASR 切片
 
 修复 `process_audio_clip` 写死 `static_sources/pretrained_models/asr` 的路径错误，统一使用已有 ASR 双路径解析器；当前本机真实模型位于 `assets/pretrained_models/asr`。每次请求使用 UUID 独立输出目录，失败只删除本任务目录，不再与并发或上次结果共用 `temp` 根。

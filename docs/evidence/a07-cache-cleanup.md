@@ -10,13 +10,16 @@
 - 统计删除文件数和字节数；占用导致的失败逐项返回，不用固定成功响应隐藏错误。
 - Windows 文件被不共享删除的句柄占用时返回 `partial`，文件保留；句柄释放后重试成功。
 - 新增 Windows reparse point 防护。真实目录 junction 放在缓存内时，只删除联接条目，不递归进入联接指向的外部客户目录；外部文件内容保持不变。
+- 本地控制台提供“清理应用缓存”入口，明确提示不会删除模型、项目、商品、音色和形象；直播期间沿用后端冲突保护。
+- 真实 Chrome 点击清理两个受控缓存目录，页面正确显示删除 2 个文件、40 字节；同一临时根目录中的无关文件保持不变。
 
 ## 自动化证据
 
 - `tests/test_cache_cleanup.py`：5 项通过。
+- `tests/test_local_console_http.py`：新增 2 项路由边界通过，覆盖白名单清理精确统计、任意路径字段拒绝，以及 viewer/operator 权限拒绝和审计。
+- `scripts/validate_cache_cleanup_ui.py`：真实 Chrome 页面点击通过；证据位于 `logs/validation/a07-cache-cleanup-ui-01/`，含结果 JSON 和页面截图。
 - 恢复基线五关全部退出 0。
 
 ## 尚未扩大证明的范围
 
-- 页面按钮点击受 Computer Use 原生管道限制，继续待验。
 - 数十 GiB 生产缓存、杀毒软件长期占用和清理性能留待第一版集中压力验收。

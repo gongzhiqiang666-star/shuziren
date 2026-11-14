@@ -10,7 +10,7 @@ import wave
 from zipfile import ZipFile
 
 from scripts.console_package import (MANIFEST, REQUIRED, create_data_backup, digest, install,
-                                     restore_data_backup, run_release, switch_release,
+                                     diagnose_installation, restore_data_backup, run_release, switch_release,
                                      verify_data_backup)
 from scripts.console_data_migration import import_v122_products, migrate_data, migrate_v122_assets, migrate_v122_products
 from scripts.avatar_store import AvatarStore
@@ -21,6 +21,106 @@ from scripts.voice_store import VoiceStore, fingerprint
 
 
 class ConsolePackageTests(unittest.TestCase):
+    def test_diagnostic_is_bounded_and_does_not_disclose_console_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            data = root / 'data'
+            data.mkdir()
+            (data / 'console.json').write_text(json.dumps({
+                'version': 1, 'runtime_root': '', 'port': 5158,
+            }), encoding='utf-8')
+            (data / 'token.txt').write_text('private-token-value', encoding='utf-8')
+            report = diagnose_installation(root)
+            encoded = json.dumps(report, ensure_ascii=False)
+            self.assertFalse(report['ready'])
+            self.assertNotIn('private-token-value', encoded)
+            self.assertNotIn('token.txt', encoded)
+            self.assertEqual([item['name'] for item in report['checks']], [
+                'version-selection', 'data-schema', 'release-integrity', 'user-data', 'media-runtime',
+            ])
+            self.assertEqual(report['checks'][-1]['detail'], {'configured': False, 'ready': False})
+
+    def test_diagnostic_can_require_a_complete_media_runtime(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            data = root / 'data'
+            data.mkdir()
+            (data / 'console.json').write_text(json.dumps({
+                'version': 1, 'runtime_root': '', 'port': 5158,
+            }), encoding='utf-8')
+            with (patch('scripts.console_package.read_active', return_value={
+                    'current': 'a' * 40, 'previous': None}),
+                  patch('scripts.console_package.read_data_schema', return_value=1),
+                  patch('scripts.console_package.check_release', return_value=(
+                      root, {'files': {'scripts/local_console.py': 'digest'}}))):
+                optional = diagnose_installation(root)
+                required = diagnose_installation(root, require_media=True)
+            self.assertTrue(optional['ready'])
+            self.assertFalse(required['ready'])
+            media = next(item for item in required['checks'] if item['name'] == 'media-runtime')
+            self.assertFalse(media['ok'])
+            self.assertEqual(media['error'], 'Media runtime is not configured')
+
+    def test_diagnostic_software_gate_reports_summary_without_pip_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            data = root / 'data'
+            data.mkdir()
+            (data / 'console.json').write_text(json.dumps({
+                'version': 1, 'runtime_root': str(root / 'media'), 'port': 5158,
+            }), encoding='utf-8')
+            software = {'ready': False, 'python': '3.10.16',
+                        'packages': [{'verified': True}, {'verified': False}],
+                        'forbidden_core_packages': [{'name': 'streamlit'}],
+                        'dependency_check_ok': False, 'dependency_check': 'secret local path'}
+            with (patch('scripts.console_package.read_active', return_value={
+                    'current': 'a' * 40, 'previous': None}),
+                  patch('scripts.console_package.read_data_schema', return_value=1),
+                  patch('scripts.console_package.check_release', return_value=(
+                      root, {'files': {'scripts/local_console.py': 'digest'}})),
+                  patch('scripts.media_runtime.inspect_runtime', return_value={
+                      'ready': True, 'checks': [{'present': True}] * 24}),
+                  patch('scripts.media_runtime.software_report', return_value=software)):
+                report = diagnose_installation(root, require_media_software=True)
+            self.assertFalse(report['ready'])
+            encoded = json.dumps(report)
+            self.assertNotIn('secret local path', encoded)
+            gate = next(item for item in report['checks'] if item['name'] == 'media-software')
+            self.assertFalse(gate['ok'])
+            self.assertIn('"version_mismatches": 1', gate['error'])
+            self.assertIn('"forbidden_core_packages": 1', gate['error'])
+
+    def test_diagnostic_wheelhouse_gate_reports_bounded_complete_counts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            data = root / 'data'
+            data.mkdir()
+            wheelhouse = root / 'wheelhouse'
+            wheelhouse.mkdir()
+            (data / 'console.json').write_text(json.dumps({
+                'version': 1, 'runtime_root': str(root / 'media'), 'port': 5158,
+            }), encoding='utf-8')
+            wheels = {'ready': False, 'profile': 'core', 'wheel_files': 3,
+                      'direct_pins': [{}, {}, {}], 'direct_present': 2,
+                      'direct_missing': ['PyAudio'], 'resolved_distributions': None,
+                      'diagnostic': 'secret local resolver output'}
+            with (patch('scripts.console_package.read_active', return_value={
+                    'current': 'a' * 40, 'previous': None}),
+                  patch('scripts.console_package.read_data_schema', return_value=1),
+                  patch('scripts.console_package.check_release', return_value=(
+                      root, {'files': {'scripts/local_console.py': 'digest'}})),
+                  patch('scripts.media_runtime.inspect_runtime', return_value={
+                      'ready': True, 'checks': [{'present': True}] * 24}),
+                  patch('scripts.media_runtime.wheelhouse_report', return_value=wheels)):
+                report = diagnose_installation(root, wheelhouse=wheelhouse)
+            encoded = json.dumps(report)
+            self.assertFalse(report['ready'])
+            self.assertNotIn('secret local resolver output', encoded)
+            gate = next(item for item in report['checks'] if item['name'] == 'media-wheelhouse')
+            self.assertFalse(gate['ok'])
+            self.assertIn('"direct_missing": 1', gate['error'])
+            self.assertIn('"direct_present": 2', gate['error'])
+
     def test_release_backup_copies_files_and_sqlite_consistently(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
@@ -192,6 +292,20 @@ class ConsolePackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(ValueError, 'account id'):
                 run_release(Path(directory), 0, account_id='../other-shop')
+
+    def test_managed_release_login_uses_shared_account_database(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            with self.assertRaisesRegex(ValueError, 'requires --shop-id'):
+                run_release(root, 0, require_login=True)
+            with (patch('scripts.console_package.read_active', return_value={'current': 'release'}),
+                  patch('scripts.console_package.check_release', return_value=(root, {'data_schema': 1})),
+                  patch('scripts.console_package.subprocess.call', return_value=0) as launch):
+                self.assertEqual(run_release(root, 0, shop_id='pilot', require_login=True), 0)
+            command = launch.call_args.args[0]
+            self.assertIn('--require-login', command)
+            database = command[command.index('--account-database') + 1]
+            self.assertEqual(Path(database), root / 'data' / 'accounts.sqlite3')
 
     def test_shop_migration_preserves_prepared_avatar(self):
         try:

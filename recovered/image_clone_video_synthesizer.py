@@ -81,13 +81,14 @@ class VideoSynthesizer:
 
     def extract_audio_features(self,audio_path):
         if self._closed:raise RuntimeError("VideoSynthesizer 已关闭")
-        try:from bin.image_clone.wenet.compute_ctc_att_bnf import get_weget,load_ppg_model
+        try:from bin.image_clone.wenet import compute_ctc_att_bnf as provider
         except ImportError as error:raise RuntimeError("离线克隆需要 WeNet 特征提取模块") from error
+        from .wenet_features import compute_bnf
         probe=subprocess.run([shutil.which("ffprobe") or "ffprobe","-v","error","-show_entries","format=duration","-of","default=nw=1:nk=1",str(audio_path)],capture_output=True,text=True,check=True,timeout=30)
         duration=float(probe.stdout.strip());frame_count=max(1,round(duration*25))
         if self.wenet_model is None:
-            self.wenet_model=load_ppg_model(self.wenet_conf_path,self.wenet_model_path,self.device)
-        features=np.asarray(get_weget(str(audio_path),self.wenet_model,560000))
+            self.wenet_model=provider.load_ppg_model(self.wenet_conf_path,self.wenet_model_path,self.device)
+        features=np.asarray(compute_bnf(provider,audio_path,self.wenet_model,560000))
         if features.ndim!=2 or features.shape[0]<20 or features.shape[1]!=256:
             raise ValueError(f"WeNet特征形状无效: {features.shape}")
         max_start=max(0,len(features)-20);denominator=max(frame_count-1,1)

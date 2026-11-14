@@ -30,11 +30,15 @@ ORIGIN_VIDEO_PROVIDER = 'bin/image_infer_v2/wenet'
 ORIGIN_VIDEO_SILENCE = '_internal/assets/pretrained_models/image_infer_v2/silence.npy'
 ORIGIN_VIDEO_FILES = (f'_internal/{ORIGIN_VIDEO_PROVIDER}/compute_ctc_att_bnf.py', ORIGIN_VIDEO_SILENCE)
 REQUIREMENT_FILES = ('requirements-core.txt', 'requirements-ai-cu118.txt', 'requirements-windows.txt')
+REQUIREMENT_PROFILES = {
+    'core': REQUIREMENT_FILES,
+    'kuaishou-ocr': ('requirements-kuaishou-ocr.txt',),
+}
 # These distributions are present in the old all-in-one environment but are not
 # imported by the product runtime. Their dependency constraints conflict with
 # the measured NumPy/protobuf model baseline, so they belong in separate tool
 # environments rather than the core media interpreter.
-FORBIDDEN_CORE_DISTRIBUTIONS = ('jax', 'jaxlib', 'py3langid', 'streamlit')
+FORBIDDEN_CORE_DISTRIBUTIONS = ('ddddocr', 'jax', 'jaxlib', 'py3langid', 'streamlit')
 
 
 def independent_runtime(root):
@@ -117,10 +121,10 @@ def verify_fingerprints(root, expected):
     return {'verified': not mismatches, 'files': len(actual), 'mismatches': mismatches}
 
 
-def pinned_requirements(directory=None):
+def pinned_requirements(directory=None, requirement_files=REQUIREMENT_FILES):
     directory = Path(directory or Path(__file__).resolve().parents[1] / 'recovered')
     expected = {}
-    for filename in REQUIREMENT_FILES:
+    for filename in requirement_files:
         path = directory / filename
         if not path.is_file():
             raise ValueError(f'缺少媒体依赖锁定文件: {filename}')
@@ -176,7 +180,7 @@ def software_report(root, requirements_directory=None):
             'ready': versions_verified and not forbidden and check.returncode == 0}
 
 
-def wheelhouse_report(root, wheelhouse, requirements_directory=None):
+def wheelhouse_report(root, wheelhouse, requirements_directory=None, profile='core'):
     """Resolve the locked runtime entirely offline without changing the runtime."""
     python = runtime_python(root)
     if not python.is_file():
@@ -184,11 +188,25 @@ def wheelhouse_report(root, wheelhouse, requirements_directory=None):
     wheelhouse = Path(wheelhouse).resolve()
     if not wheelhouse.is_dir():
         raise ValueError('受控 wheelhouse 目录不存在')
+    if profile not in REQUIREMENT_PROFILES:
+        raise ValueError('未知媒体依赖配置')
+    requirement_files = REQUIREMENT_PROFILES[profile]
     requirements = Path(requirements_directory or Path(__file__).resolve().parents[1] / 'recovered')
-    pinned_requirements(requirements)
+    expected = pinned_requirements(requirements, requirement_files)
+    wheel_names = sorted(path.name for path in wheelhouse.glob('*.whl') if path.is_file())
+    direct = []
+    for key, record in expected.items():
+        # Wheel distribution names escape runs of '-', '_' and '.' as '_'.  This
+        # inventory is intentionally only a direct-pin presence hint; pip's
+        # offline resolver below remains authoritative for tags and transitives.
+        wheel_prefix = re.sub(r'[-_.]+', '_', record['name']).lower() + '-'
+        version_prefix = record['version'].lower() + '-'
+        candidates = [name for name in wheel_names
+                      if name.lower().startswith(wheel_prefix + version_prefix)]
+        direct.append({**record, 'candidates': candidates, 'present': bool(candidates)})
     command = [str(python), '-I', '-m', 'pip', 'install', '--dry-run', '--ignore-installed',
                '--no-index', '--find-links', str(wheelhouse), '--disable-pip-version-check']
-    for filename in REQUIREMENT_FILES:
+    for filename in requirement_files:
         command.extend(('-r', str(requirements / filename)))
     with tempfile.TemporaryDirectory() as directory:
         report_path = Path(directory) / 'pip-resolution.json'
@@ -206,7 +224,11 @@ def wheelhouse_report(root, wheelhouse, requirements_directory=None):
     if len(diagnostic) > 64 * 1024:
         diagnostic = diagnostic[:64 * 1024] + '\n[truncated]'
     return {'version': 1, 'layout': INDEPENDENT['layout'], 'offline': True,
-            'wheelhouse': str(wheelhouse), 'requirements': list(REQUIREMENT_FILES),
+            'profile': profile, 'wheelhouse': str(wheelhouse),
+            'requirements': list(requirement_files),
+            'wheel_files': len(wheel_names), 'direct_pins': direct,
+            'direct_present': sum(item['present'] for item in direct),
+            'direct_missing': [item['name'] for item in direct if not item['present']],
             'resolved_distributions': resolved, 'diagnostic': diagnostic,
             'ready': result.returncode == 0}
 
@@ -218,6 +240,8 @@ def main():
     parser.add_argument('--inventory', type=Path)
     parser.add_argument('--output', type=Path, help='Write software report as JSON')
     parser.add_argument('--wheelhouse', type=Path, help='Offline wheel directory for wheelhouse resolution')
+    parser.add_argument('--profile', choices=tuple(REQUIREMENT_PROFILES), default='core',
+                        help='Locked dependency profile for wheelhouse resolution')
     parser.add_argument('--requirements-directory', type=Path, help='Directory containing the three locked requirement files')
     parser.add_argument('--include-origin-video', action='store_true', help='Include direct video requirements in check or fingerprint')
     args = parser.parse_args()
@@ -227,7 +251,7 @@ def main():
     if args.command == 'wheelhouse':
         if args.wheelhouse is None:
             parser.error('--wheelhouse is required')
-        result = wheelhouse_report(root, args.wheelhouse, args.requirements_directory)
+        result = wheelhouse_report(root, args.wheelhouse, args.requirements_directory, args.profile)
         if args.output is not None:
             with args.output.open('x', encoding='utf-8') as stream:
                 json.dump(result, stream, ensure_ascii=False, indent=2)

@@ -115,6 +115,18 @@ class MainWebviewLifecycleTests(unittest.TestCase):
         stop_power.assert_called_once_with()
         self.assertTrue(second["already_stopped"])
 
+    def test_audio_editor_launch_receives_configured_runtime(self):
+        api = Api.__new__(Api)
+        api.runtime_dir = Path(tempfile.gettempdir()) / "managed-runtime"
+        process = mock.Mock(pid=4321)
+        with mock.patch("recovered.main.subprocess.Popen", return_value=process) as launch:
+            self.assertEqual(api.launch_audio_editor(), {"status": "success", "pid": 4321})
+        arguments = launch.call_args
+        self.assertEqual(arguments.args[0][1:], ["-m", "recovered.edit_audio"])
+        self.assertEqual(arguments.kwargs["env"]["YUNCHUANG_RUNTIME_DIR"],
+                         str(api.runtime_dir.resolve()))
+        self.assertIn("creationflags", arguments.kwargs)
+
 
 if __name__ == "__main__":
     unittest.main()

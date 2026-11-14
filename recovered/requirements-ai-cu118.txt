@@ -11,3 +11,8 @@ modelscope==1.22.3
 huggingface-hub==1.11.0
 transformers==5.3.0
 accelerate==1.13.0
+# Product-imported media distributions recovered from the validated runtime.
+# Their transitive dependencies must still resolve through the controlled wheelhouse.
+pandas==2.2.3
+pycuda==2024.1.2
+ultralytics==8.3.70

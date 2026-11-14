@@ -5,11 +5,20 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+import importlib.util
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 MATRIX = ROOT / "docs" / "FUNCTION_MATRIX.md"
+_routing_spec = importlib.util.spec_from_file_location(
+    "shuziren_function_routing", ROOT / "scripts" / "audit_function_completion.py"
+)
+if _routing_spec is None or _routing_spec.loader is None:
+    raise RuntimeError("cannot load function routing audit")
+_routing_module = importlib.util.module_from_spec(_routing_spec)
+_routing_spec.loader.exec_module(_routing_module)
+QUEUES = _routing_module.QUEUES
 ROW_RE = re.compile(r"^\| ((?:SYS|CNT|MED|LIV)-\d{3}) \|(?:[^|]*\|){3} ([^|]+) \|")
 SUMMARY_RE = re.compile(r"^\| (静态验证通过|开发中|已分析|Windows 验证通过|端到端验证通过) \| (\d+) \|$")
 ALLOWED_STATUSES = {
@@ -63,9 +72,23 @@ def main() -> None:
         value = declared_total.group(1) if declared_total else "缺失"
         raise SystemExit(f"合计不一致: 统计={value}, 实际={len(rows)}")
 
-    print(f"PASS: {len(rows)} 项功能，ID/状态/统计一致")
+    routed = [item for values in QUEUES.values() for item in values]
+    routed_counts = Counter(routed)
+    routing_errors = {
+        "duplicates": sorted(item for item, count in routed_counts.items() if count != 1),
+        "missing": sorted(set(ids) - set(routed)),
+        "unknown": sorted(set(routed) - set(ids)),
+    }
+    if any(routing_errors.values()):
+        raise SystemExit(
+            "功能矩阵验收分流不一致: "
+            + "; ".join(f"{name}={values}" for name, values in routing_errors.items() if values)
+        )
+
+    print(f"PASS: {len(rows)} 项功能，ID/状态/统计及验收分流一致")
     for status, count in sorted(actual.items()):
         print(f"  {status}: {count}")
+    print("  分流: " + ", ".join(f"{name}={len(values)}" for name, values in QUEUES.items()))
 
 
 if __name__ == "__main__":
