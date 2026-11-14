@@ -127,6 +127,19 @@ _SIGN_SCRIPT = (
 )
 
 
+def _request_websocket_info(requests, url, headers):
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if getattr(response, "status_code", 200) != 200:
+            raise ValueError("websocket info status")
+        value = response.json()
+        if not isinstance(value, dict) or not isinstance(value.get("data"), dict):
+            raise ValueError("websocket info payload")
+        return value
+    except Exception as error:
+        raise RuntimeError("快手连接信息获取失败，请检查网络、登录状态或直播间") from error
+
+
 class Tool:
     def __init__(self, liveUrl, cookie=None):
         self.liveUrl = liveUrl
@@ -371,16 +384,14 @@ class Tool:
             headers["identity-verification-token"] = self.verification_token
             headers["identity-verification-type"] = "1"
 
-        response = requests.get(websocketinfo_url, headers=headers)
-        json_data = response.json()
+        json_data = _request_websocket_info(requests, websocketinfo_url, headers)
         resp_data = json_data.get("data", {})
         if resp_data.get("result") == 400002:
             captcha_result = self.handle_captcha(resp_data)
             if captcha_result and self.verification_token:
                 headers["identity-verification-token"] = self.verification_token
                 headers["identity-verification-type"] = "1"
-                response = requests.get(websocketinfo_url, headers=headers)
-                json_data = response.json()
+                json_data = _request_websocket_info(requests, websocketinfo_url, headers)
         return json_data
 
     def _request_json(self, endpoint, **params):

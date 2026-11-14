@@ -65,6 +65,26 @@ class KuaishouRoomToolTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "地址、网络或登录状态"):
                 self.room_tool().getLiveRoomId()
 
+    def test_websocket_info_has_timeout_and_stable_payload_error(self):
+        tool = self.room_tool()
+        tool.node_exe = "node.exe"
+        tool.sign_url_js = "sign_url.js"
+        tool.verification_token = None
+        calls = []
+        response = SimpleNamespace(status_code=200, json=lambda: {"data": {"result": 1}})
+        requests = SimpleNamespace(get=lambda url, **kwargs: (calls.append((url, kwargs)) or response))
+        with patch.dict(sys.modules, {"requests": requests}), patch(
+                "recovered.kuaishou_v2.hq.subprocess.check_output", return_value="/signed?x=1"):
+            self.assertEqual(tool.processLiveId("stream-1"), {"data": {"result": 1}})
+        self.assertEqual(calls[0][1]["timeout"], 10)
+
+        bad = SimpleNamespace(status_code=200, json=lambda: {"data": []})
+        requests = SimpleNamespace(get=lambda *_args, **_kwargs: bad)
+        with patch.dict(sys.modules, {"requests": requests}), patch(
+                "recovered.kuaishou_v2.hq.subprocess.check_output", return_value="/signed?x=1"):
+            with self.assertRaisesRegex(RuntimeError, "网络、登录状态或直播间"):
+                tool.processLiveId("stream-1")
+
 
 if __name__ == "__main__":
     unittest.main()
