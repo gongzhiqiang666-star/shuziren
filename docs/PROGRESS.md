@@ -1,5 +1,7 @@
 # 四期任务进度与验证结果
 
+当前源码全量自动化回归通过：477 项执行，14 项因未显式提供真实媒体运行根/外部环境按条件跳过，0 失败，用时 177.992 秒。覆盖本轮 X05 流式 PCM 并发修复、A07 wheelhouse 门禁以及一期至四期既有单元/契约路径；日志中的 TTS、RTMP、SRS 和端口错误均为故障注入用例且断言通过。真实环境跳过项仍按对应任务补跑，不把默认跳过计为通过。
+
 A07-05 离线 wheelhouse 解析门禁完成。`media_runtime wheelhouse` 使用 pip 的 dry-run、ignore-installed 和 no-index 对三份精确锁文件及传递依赖做只读解析，禁止缺包时隐式联网或改动现有环境。13 项配置/运行目录测试通过；空 wheelhouse 实测明确拒绝 `av==14.1.0` 并保持 ready=false。完整受控 wheelhouse 仍为条件缺失，后续资源到位后先过门禁，再创建新核心媒体环境并逐引擎回归。证据见 `docs/evidence/a07-media-software-gate.md`。
 
 最新候选的 Chrome 点击验收本轮在 Computer Use 初始化阶段被本机原生管道缺失阻断，错误为 `Computer Use native pipe is unavailable`。没有向浏览器发送输入，也没有重复循环；HTTP 首页和状态接口已独立通过。准备包预览、切换话术重审、载入轮播和场次报告的真实点击链保留待原生管道恢复后补验，不阻塞后续本机任务。
