@@ -342,10 +342,13 @@ def main():
             encoder_pid=sink.process.pid,encoder_closed=sink.process.poll() is not None,avatar_closed=client.process.poll() is not None,
             observed_frame_queue_peak=receiver.peak,startup_preroll_frames=8,
             submission_late_p95_ms=float(np.percentile(presented,95)),submission_late_p99_ms=float(np.percentile(presented,99)),
-            submission_late_max_ms=max(presented),submission_above_5ms_ratio=sum(value>5 for value in presented)/len(presented),
+            submission_late_max_ms=max(presented),
+            submission_timed_frames=len(presented),
+            submission_above_5ms_frames=sum(value > 5 for value in presented),
             submission_early_max_ms=max(0,-min(offsets)),submission_abs_offset_p95_ms=float(np.percentile(np.abs(offsets),95)),
             submit_cost_p95_ms=float(np.percentile(submit_costs,95)),
             timing_acceptance=False)
+        report['submission_above_5ms_ratio'] = report['submission_above_5ms_frames'] / report['submission_timed_frames']
         report['checks'].update(all_scheduled_utterances_completed=True,idle_speech_idle_one_mux=True,source_pcm_exact=True,one_video_audio_clock=True,complete_media=True)
     except Exception as error:report.update(status='failed',error_type=type(error).__name__,error=str(error))
     finally:
