@@ -1,5 +1,7 @@
 # 四期任务进度与验证结果
 
+CNT-002 商品话术事实门禁完成。生成结果新增输入数字与货币表达对照：编造数字或无价格资料却生成价格会自动重试，两次仍不合格则失败；资料已有数字/价格正常通过。3 项专项通过，真实 DeepSeek 主观质量继续待密钥和人审，见 `docs/evidence/a07-script-grounding.md`。
+
 CNT-001 LLM 配置与可用性软件项完成。修复连接失败返回非空错误字符串却被误报“服务正常”；新增远端 HTTPS/URL 凭据门禁和错误密钥脱敏。DeepSeek 本机协议 3 项、控制台 LLM 11 项通过。本机未配置专用密钥，真实 DeepSeek 鉴权和质量登记外部待验，见 `docs/evidence/a07-llm-availability.md`。
 
 SYS-012 最新 Windows 候选完成。提交 `2230614` 两次独立构建均为 459 个受控文件，ZIP SHA-256 同为 `127030fb…043ae`；verify、全新 install 和 5258 隔离启动通过，首页 HTTP 200/33195 字节，状态使用独立数据目录且不暴露 token。最新效果地址为 `http://127.0.0.1:5258/`，见 `docs/evidence/v09-current-package.md`。
