@@ -1,9 +1,10 @@
 """Bounded, provenance-aware PCM stream protocol for an isolated TTS prototype."""
 
 from dataclasses import dataclass
+from collections import deque
 import hashlib
-import queue
 import threading
+import time
 import uuid
 
 
@@ -35,8 +36,9 @@ class PCMStream:
             raise ValueError("max_chunk_samples must be a positive integer")
         self.stream_id = stream_id or str(uuid.uuid4())
         self.max_chunk_samples = max_chunk_samples
-        self._queue = queue.Queue(maxsize=max_chunks)
-        self._lock = threading.RLock()
+        self._max_chunks = max_chunks
+        self._queue = deque()
+        self._condition = threading.Condition(threading.RLock())
         self._digest = hashlib.sha256()
         self._samples = 0
         self._sequence = 0
@@ -50,53 +52,59 @@ class PCMStream:
             raise ValueError("non-empty PCM16 bytes required")
         if len(pcm) // 2 > self.max_chunk_samples:
             raise ValueError("PCM chunk exceeds sample budget")
-        with self._lock:
+        deadline = None if timeout is None else time.monotonic() + timeout
+        with self._condition:
             if self._stopped:
                 raise StreamStopped(self._error or "stream stopped")
             if self._final:
                 raise StreamStopped("stream already finalized")
+            while len(self._queue) >= self._max_chunks:
+                if self._stopped:
+                    raise StreamStopped(self._error or "stream stopped")
+                remaining = None if deadline is None else deadline - time.monotonic()
+                if remaining is not None and remaining <= 0:
+                    raise TimeoutError("stream backpressure timeout")
+                self._condition.wait(remaining)
+            if self._stopped:
+                raise StreamStopped(self._error or "stream stopped")
             digest = self._digest.copy()
             digest.update(pcm)
             chunk = PCMChunk(self.stream_id, self._sequence, self._samples, pcm,
                              bool(final), digest.hexdigest())
-            # Do not advance stream identity until the bounded queue accepts it.
-            try:
-                self._queue.put(chunk, timeout=timeout)
-            except queue.Full as error:
-                raise TimeoutError("stream backpressure timeout") from error
+            self._queue.append(chunk)
             self._digest = digest
             self._samples += chunk.samples
             self._sequence += 1
             self._final = chunk.final
+            self._condition.notify_all()
             return chunk
 
     def take(self, timeout=None):
-        with self._lock:
-            if self._stopped and self._queue.empty():
-                raise StreamStopped(self._error or "stream stopped")
-        try:
-            return self._queue.get(timeout=timeout)
-        except queue.Empty as error:
-            with self._lock:
+        deadline = None if timeout is None else time.monotonic() + timeout
+        with self._condition:
+            while not self._queue:
                 if self._stopped:
-                    raise StreamStopped(self._error or "stream stopped") from error
-            raise TimeoutError("stream chunk timeout") from error
+                    raise StreamStopped(self._error or "stream stopped")
+                remaining = None if deadline is None else deadline - time.monotonic()
+                if remaining is not None and remaining <= 0:
+                    raise TimeoutError("stream chunk timeout")
+                self._condition.wait(remaining)
+            chunk = self._queue.popleft()
+            self._condition.notify_all()
+            return chunk
 
     def stop(self, error=None):
-        with self._lock:
+        with self._condition:
             self._stopped = True
             self._error = str(error) if error else None
-            while True:
-                try:
-                    self._queue.get_nowait()
-                except queue.Empty:
-                    break
+            self._queue.clear()
+            self._condition.notify_all()
 
     def state(self):
-        with self._lock:
+        with self._condition:
             return {
                 "stream_id": self.stream_id,
-                "queued_chunks": self._queue.qsize(),
+                "queued_chunks": len(self._queue),
                 "samples": self._samples,
                 "next_sequence": self._sequence,
                 "final": self._final,

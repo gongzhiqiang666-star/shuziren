@@ -1,5 +1,6 @@
 import hashlib
 import threading
+import time
 import unittest
 
 from scripts.streaming_speech import PCMStream, StreamStopped, iter_pcm_provider
@@ -63,6 +64,42 @@ class StreamingSpeechTests(unittest.TestCase):
         stream = PCMStream()
         with self.assertRaisesRegex(StreamStopped, "cancelled"):
             iter_pcm_provider([bytes(2)], stream, stop_event=stopped)
+        self.assertEqual(stream.state()["queued_chunks"], 0)
+
+    def test_consumer_releases_blocked_producer_without_timeout(self):
+        stream = PCMStream(max_chunks=1)
+        first = stream.put(bytes(2))
+        completed = []
+        producer = threading.Thread(
+            target=lambda: completed.append(stream.put(b"\x01\x00", final=True, timeout=1)))
+        producer.start()
+        time.sleep(0.05)
+        self.assertTrue(producer.is_alive())
+        self.assertEqual(stream.take(timeout=0.1), first)
+        producer.join(1)
+        self.assertFalse(producer.is_alive())
+        self.assertEqual((completed[0].sequence, completed[0].start_sample), (1, 1))
+
+    def test_stop_wakes_blocked_producer_and_discards_late_chunk(self):
+        stream = PCMStream(max_chunks=1)
+        stream.put(bytes(2))
+        failures = []
+
+        def produce():
+            try:
+                stream.put(b"\x01\x00", timeout=5)
+            except BaseException as error:
+                failures.append(error)
+
+        producer = threading.Thread(target=produce)
+        producer.start()
+        time.sleep(0.05)
+        self.assertTrue(producer.is_alive())
+        stream.stop("cancelled")
+        producer.join(1)
+        self.assertFalse(producer.is_alive())
+        self.assertEqual(len(failures), 1)
+        self.assertIsInstance(failures[0], StreamStopped)
         self.assertEqual(stream.state()["queued_chunks"], 0)
 
 

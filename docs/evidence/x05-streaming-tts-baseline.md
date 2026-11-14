@@ -31,6 +31,6 @@ X05-02 在独立 worker 协议中实现可取消的增量块原型。先用确�
 
 ## X05-02 协议原型进度
 
-新增 `scripts/streaming_speech.py`。确定性提供者验证连续 sequence/start_sample、累计 PCM SHA-256、唯一末块、块大小门禁、有界背压不推进身份、取消清空、晚到块拒绝和提供者异常停止。6 项新测试通过；既有成品 WAV 分块、语音队列和产品交接 18 项回归通过。
+新增 `scripts/streaming_speech.py`。确定性提供者验证连续 sequence/start_sample、累计 PCM SHA-256、唯一末块、块大小门禁、有界背压不推进身份、取消清空、晚到块拒绝和提供者异常停止。首次实现使用有界队列时，生产者在满队列等待期间持有状态锁，消费者无法取块，真实背压只能超时；现改为条件变量和受控双端队列，消费者取块可立即释放生产者，取消会唤醒等待生产者并保证晚到块不入队。8 项协议测试和 18 项 TTS 状态/交付回归通过，其中 2 项因未显式指定真实运行时按设计跳过。
 
 本机源码入口审计显示 IndexTTS 的公开 `infer_fast`/`infer`、ZipVoice 的 `generate_sentence`/`generate_list` 及 OmniVoice 的 `generate` 都返回完整结果；未发现可直接消费的真实增量 PCM 接口。底层模块中出现的“streaming”注释属于 Conformer/数据集或其他处理，不证明 TTS 音频流式输出。因此 X05-02 当前只完成协议部分，真实本地引擎仍待接入，不能标记整项通过。
