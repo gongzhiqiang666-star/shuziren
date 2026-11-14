@@ -61,6 +61,23 @@ class DanmuManagerLifecycleTests(unittest.TestCase):
         self.assertIsNone(manager._danmu_worker)
         self.assertEqual(manager.last_error, "close failed")
 
+    def test_platform_names_select_native_bridges_after_normalization(self):
+        cases = (
+            (" Kuaishou ", "recovered.digital_live_manager.KuaishouDanmuBridge"),
+            ("PDD", "recovered.digital_live_manager.PinduoduoDanmuBridge"),
+        )
+        for platform, target in cases:
+            with self.subTest(platform=platform):
+                manager = self.manager()
+                manager.config.pop("danmu_bridge_url")
+                capture = FakeCapture()
+                with patch(target, return_value=capture) as bridge, patch(
+                        "recovered.digital_live_manager.OCRDanmuBridge") as ocr:
+                    self.assertTrue(manager.start_danmu("https://example/room", platform))
+                    self.wait_stopped(manager)
+                bridge.assert_called_once_with("https://example/room")
+                ocr.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
