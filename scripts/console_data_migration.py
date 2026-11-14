@@ -12,8 +12,13 @@ import uuid
 from scripts.avatar_store import AvatarStore, digest
 from scripts.local_console_config import ConfigStore
 from scripts.media_runtime import checked_path as runtime_file, inspect_runtime
-from scripts.product_store import ProductStore, index_value
+from scripts.product_store import ProductStore, index_value, text as product_text
 from scripts.voice_store import VoiceStore
+
+
+def reparse(path):
+    return path.is_symlink() or bool(
+        getattr(path.lstat(), 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT)
 
 
 def checked_path(root, relative):
@@ -156,8 +161,16 @@ def migrate_v122_assets(root, runtime, voices, avatars, products=None, shop_id=N
 
 
 def import_v122_products(snapshot, source):
-    source = source.resolve(strict=True)
+    supplied_source = Path(source)
+    if not supplied_source.is_file() or reparse(supplied_source):
+        raise ValueError('Legacy live configuration must be a regular JSON file no larger than 16 MiB')
+    source = supplied_source.resolve(strict=True)
+    if source.stat().st_size > 16 * 1024 * 1024:
+        raise ValueError('Legacy live configuration must be a regular JSON file no larger than 16 MiB')
+    before = digest(source)
     payload = json.loads(source.read_text(encoding='utf-8-sig'))
+    if digest(source) != before:
+        raise ValueError('Legacy live configuration changed while it was being read')
     products = None
     if isinstance(payload, dict):
         face_hand = 'face_hand_live' in (payload.get('live_type'), payload.get('room_template_type'))
@@ -167,17 +180,16 @@ def import_v122_products(snapshot, source):
         raise ValueError('Legacy live configuration needs a nonempty product_scripts or products list')
     selected = index_value(payload.get('current_product_index', -1))
     multi_product = bool(payload.get('multi_product_enabled', payload.get('enable_multi_product', False)))
-    if any(not isinstance(product, dict) for product in products):
-        raise ValueError('Invalid legacy product record')
-    numbers = [product.get('product_index', position) for position, product in enumerate(products)]
-    selection_keys = list(range(len(products))) if multi_product else [index_value(number) for number in numbers]
-    if selected != -1 and selected not in selection_keys:
-        raise ValueError('Legacy current product does not exist in the supplied configuration')
-    imported = []
-    store = ProductStore(snapshot)
-    for product, number, selection_key in zip(products, numbers, selection_keys):
+    normalized = []
+    for position, product in enumerate(products):
+        if not isinstance(product, dict):
+            raise ValueError('Invalid legacy product record')
+        number = product.get('product_index', position)
+        numeric = index_value(number)
         title = product.get('itemName') or product.get('item_name') or product.get('title') or f'商品 {number}'
         content = product.get('content') or title
+        title = product_text(title, '商品名称', 200)
+        content = product_text(content, '商品信息', 50000)
         scripts = product.get('scripts') or product.get('script') or []
         if isinstance(scripts, str):
             scripts = [scripts]
@@ -187,19 +199,36 @@ def import_v122_products(snapshot, source):
         for item in scripts:
             body = item.get('content', item.get('text')) if isinstance(item, dict) else item
             role = item.get('type', 'host') if isinstance(item, dict) else 'host'
-            if not isinstance(body, str) or not isinstance(role, str):
+            if not isinstance(role, str) or not role.strip() or len(role) > 100:
+                raise ValueError('Invalid legacy script role')
+            if not isinstance(body, str):
                 raise ValueError('Invalid legacy script record')
             if body.strip():
-                texts.append(body)
+                texts.append(product_text(body, '话术', 100000))
                 roles.append(role)
         legacy = {key: product[key] for key in ('itemName', 'item_name', 'item_id', 'itemId', 'keywords')
                   if key in product}
         legacy['script_roles'] = roles
-        saved = store.save(title=title, content=content, product_index=number, extra={'v122': legacy})
-        script_ids = [store.add_script(saved, body) for body in texts]
+        # JSON-encode before writing anything so unsupported legacy values cannot
+        # leave a partially imported catalogue.
+        json.dumps(legacy, ensure_ascii=False, allow_nan=False)
+        normalized.append({'number': number, 'numeric': numeric, 'title': title, 'content': content,
+                           'texts': texts, 'legacy': legacy})
+    numerics = [item['numeric'] for item in normalized]
+    if len(set(numerics)) != len(numerics):
+        raise ValueError('Legacy product numbers must be unique')
+    selection_keys = list(range(len(normalized))) if multi_product else numerics
+    if selected != -1 and selected not in selection_keys:
+        raise ValueError('Legacy current product does not exist in the supplied configuration')
+    imported = []
+    store = ProductStore(snapshot)
+    for item, selection_key in zip(normalized, selection_keys):
+        saved = store.save(title=item['title'], content=item['content'], product_index=item['number'],
+                           extra={'v122': item['legacy']})
+        script_ids = [store.add_script(saved, body) for body in item['texts']]
         if selected != -1 and selection_key == selected:
             store.select(saved['id'])
-        imported.append({'legacy_index': number, 'product_id': saved['id'], 'script_ids': script_ids})
+        imported.append({'legacy_index': item['number'], 'product_id': saved['id'], 'script_ids': script_ids})
     return imported
 
 

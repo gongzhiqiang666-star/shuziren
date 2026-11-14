@@ -10,7 +10,7 @@ import wave
 from zipfile import ZipFile
 
 from scripts.console_package import MANIFEST, REQUIRED, digest, install, run_release, switch_release
-from scripts.console_data_migration import import_v122_products, migrate_data, migrate_v122_products
+from scripts.console_data_migration import import_v122_products, migrate_data, migrate_v122_assets, migrate_v122_products
 from scripts.avatar_store import AvatarStore
 from scripts.local_console import InstanceLock
 from scripts.local_console_config import ConfigStore
@@ -183,6 +183,58 @@ class ConsolePackageTests(unittest.TestCase):
                 import_v122_products(root / 'data', source)
             self.assertEqual(store.selected(), existing['id'])
             self.assertEqual([row['id'] for row in store.list()], [existing['id']])
+
+    def test_invalid_late_legacy_record_does_not_partially_import(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store = ProductStore(root / 'data')
+            existing = store.save(title='Existing', content='Existing', product_index=7)
+            source = root / 'legacy.json'
+            source.write_text(json.dumps({'product_scripts': [
+                {'product_index': 8, 'title': 'Would otherwise be inserted', 'script': 'valid'},
+                {'product_index': 9, 'title': 'Invalid', 'scripts': [{'text': 'bad', 'type': ''}]},
+            ]}), encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'script role'):
+                import_v122_products(root / 'data', source)
+            self.assertEqual([row['id'] for row in store.list()], [existing['id']])
+
+            source.write_text(json.dumps({'product_scripts': [
+                {'product_index': 8, 'title': 'First'},
+                {'product_index': '08', 'title': 'Duplicate numeric index'},
+            ]}), encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'must be unique'):
+                import_v122_products(root / 'data', source)
+            self.assertEqual([row['id'] for row in store.list()], [existing['id']])
+
+    def test_combined_legacy_asset_failure_does_not_publish_partial_data(self):
+        try:
+            import cv2
+            import numpy as np
+        except ImportError:
+            self.skipTest('OpenCV is required for the prepared avatar fixture')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / 'runtime'
+            runtime.mkdir()
+            prepared = root / 'prepared-avatar'
+            (prepared / 'frames').mkdir(parents=True)
+            (prepared / 'positions').mkdir()
+            self.assertTrue(cv2.imwrite(str(prepared / 'frames/000000.jpg'),
+                                        np.zeros((32, 24, 3), np.uint8)))
+            (prepared / 'positions/000000.txt').write_text(
+                'fps: 25\nwidth: 24\nheight: 32\nis_no_face: False\n'
+                'bounding_box: [2, 20, 3, 22]\n', encoding='utf-8')
+            products = root / 'invalid-products.json'
+            products.write_text(json.dumps({'product_scripts': [
+                {'product_index': 1, 'title': 'Valid first product'},
+                {'product_index': 1, 'title': 'Duplicate fails whole batch'},
+            ]}), encoding='utf-8')
+            installation = root / 'install'
+            with (patch('scripts.console_data_migration.inspect_runtime', return_value={'ready': True}),
+                  patch('scripts.console_data_migration.runtime_file', return_value=root / 'ffmpeg.exe')):
+                with self.assertRaisesRegex(ValueError, 'must be unique'):
+                    migrate_v122_assets(installation, runtime, [], [prepared], products)
+            self.assertFalse((installation / 'data').exists())
 
     def test_migration_snapshots_data_and_rejects_existing_target(self):
         with tempfile.TemporaryDirectory() as directory:
