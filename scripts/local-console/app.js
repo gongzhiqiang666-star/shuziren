@@ -1871,7 +1871,7 @@ async function loadLive() {
   $('live-rotation-status').textContent = liveSession.rotation_error || (liveSession.rotation_products?.length ?
     `${liveSession.manual ? '轮播暂停' : '轮播中'} · ${liveSession.rotation_products.length} 个商品 · 已播 ${liveSession.rotation_completed} 条` +
       (liveSession.shift_index == null ? '' : ` · 第 ${liveSession.shift_index + 1} 班`) : '');
-  if (liveSession.error) $('live-error').textContent = liveSession.error;
+  $('live-error').textContent = liveSession.error ?? '';
   renderLiveButtons();
   if (['preparing','running','stopping'].includes(liveSession.status)) {
     liveTimer = setTimeout(() => loadLive().catch(error => {$('live-error').textContent = error.message;}), 800);
