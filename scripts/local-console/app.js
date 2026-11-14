@@ -267,6 +267,11 @@ async function promotionSpendAction(save) {
       compareStatus.setAttribute('role', 'status');
       comparison.append(compare, compareStatus);
       row.append(comparison);
+      let comparisonVersion = 0;
+      comparison.addEventListener('input', () => {
+        comparisonVersion++;
+        compareStatus.textContent = '';
+      });
       comparison.addEventListener('submit', async event => {
         event.preventDefault();
         if (compare.disabled || currentProduct !== product || consoleClosed) return;
@@ -277,9 +282,13 @@ async function promotionSpendAction(save) {
         query.set('asset', record.asset);
         query.set('baseline_start', record.period_start);
         query.set('baseline_end', record.period_end);
+        const version = ++comparisonVersion;
+        const isCurrent = () => version === comparisonVersion && currentProduct === product && !consoleClosed;
         compare.disabled = true;
+        compareStatus.textContent = '正在对照投放账单';
         try {
           const {comparison: result} = await request('/api/promotion/compare?' + query);
+          if (!isCurrent()) return;
           const {baseline, trial, spend_difference_minor} = result;
           compareStatus.textContent = [
             `账单来源 ${baseline.source} · 活动 ${baseline.campaign} · 素材 ${baseline.asset}`,
@@ -292,7 +301,7 @@ async function promotionSpendAction(save) {
             '增量效果不确定（待补归因订单、退款和净结果）',
           ].join(' · ');
         } catch (error) {
-          compareStatus.textContent = error.message;
+          if (isCurrent()) compareStatus.textContent = error.message;
         } finally {
           compare.disabled = false;
         }
