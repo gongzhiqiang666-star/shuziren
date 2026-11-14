@@ -60,6 +60,7 @@ def _bounded_read_bytes(path, maximum, label):
 class Api(PluginInstallerApi):
     _INLINE_MEDIA_MAX_BYTES = 64 * 1024 * 1024
     _TOKEN_MAX_CHARS = 16 * 1024
+    _IP_PROJECT_SAVE_LOCK = RLock()
 
     @staticmethod
     def _default_runtime_dir():
@@ -443,9 +444,8 @@ class Api(PluginInstallerApi):
 
     @staticmethod
     def _write_yaml_file(file_path, data):
-        import yaml
-        path = Path(file_path); path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        from .main_config import write_user_config
+        write_user_config(file_path, data)
 
     @staticmethod
     def _read_text_file(file_path):
@@ -1546,24 +1546,25 @@ class Api(PluginInstallerApi):
 
     def _save_ip_agent_project(self, project_id, data):
         from datetime import datetime
-        project_dir = self._get_ip_agent_project_dir(project_id)
-        if not os.path.isdir(project_dir):
-            raise FileNotFoundError("IP项目不存在")
-        info_path = self._get_ip_agent_project_info_path(project_id)
-        existing = self._read_yaml_file(info_path)
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        defaults = self._default_ip_agent_project_info(
-            project_id, existing.get("name") or f"IP项目-{project_id}"
-        )
-        value = {**defaults, **existing, **(data or {})}
-        value["id"] = project_id
-        value["update_time"] = now
-        if not value.get("create_time"):
-            value["create_time"] = now
-        value.pop("subtitle_debug_json_path", None)
-        self._write_yaml_file(info_path, value)
-        result = self._load_ip_agent_project(project_id)
-        return result if isinstance(result, dict) else None
+        with self._IP_PROJECT_SAVE_LOCK:
+            project_dir = self._get_ip_agent_project_dir(project_id)
+            if not os.path.isdir(project_dir):
+                raise FileNotFoundError("IP项目不存在")
+            info_path = self._get_ip_agent_project_info_path(project_id)
+            existing = self._read_yaml_file(info_path)
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            defaults = self._default_ip_agent_project_info(
+                project_id, existing.get("name") or f"IP项目-{project_id}"
+            )
+            value = {**defaults, **existing, **(data or {})}
+            value["id"] = project_id
+            value["update_time"] = now
+            if not value.get("create_time"):
+                value["create_time"] = now
+            value.pop("subtitle_debug_json_path", None)
+            self._write_yaml_file(info_path, value)
+            result = self._load_ip_agent_project(project_id)
+            return result if isinstance(result, dict) else None
 
     def create_ip_agent_project(self, name):
         from uuid import uuid4
