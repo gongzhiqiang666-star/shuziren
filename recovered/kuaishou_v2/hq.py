@@ -9,7 +9,6 @@ import hashlib
 import random
 import re
 import time
-import traceback
 import uuid
 
 def generate_did():
@@ -125,6 +124,25 @@ _SIGN_SCRIPT = (
     Path(__file__).resolve().parents[2]
     / "yunchuang_v122/_internal/tools/danmu_capture/kuaishou_v2/js/sign_url.js"
 )
+_CAPTCHA_IMAGE_LIMIT = 4 * 1024 * 1024
+
+
+def _captcha_json(response):
+    if getattr(response, "status_code", 200) != 200:
+        raise ValueError("captcha status")
+    value = response.json()
+    if not isinstance(value, dict):
+        raise ValueError("captcha payload")
+    return value
+
+
+def _captcha_image(response):
+    if getattr(response, "status_code", 200) != 200:
+        raise ValueError("captcha image status")
+    content = getattr(response, "content", b"")
+    if not isinstance(content, bytes) or not content or len(content) > _CAPTCHA_IMAGE_LIMIT:
+        raise ValueError("captcha image size")
+    return content
 
 
 def _request_websocket_info(requests, url, headers):
@@ -251,8 +269,9 @@ class Tool:
                     "https://captcha.zt.kuaishou.com/rest/zt/captcha/sliding/config",
                     headers=captcha_headers,
                     params=params,
+                    timeout=10,
                 )
-                captcha_info = captcha_info_resp.json()
+                captcha_info = _captcha_json(captcha_info_resp)
                 if captcha_info.get("result") != 1:
                     print("获取验证码信息失败:", captcha_info)
                     return False
@@ -262,8 +281,12 @@ class Tool:
                 cut_pic_url = captcha_info["cutPicUrl"]
                 dis_y = round(int(captcha_info["disY"]) * 0.469)
                 image_params = {"captchaSn": captcha_sn}
-                bg_img = requests.get(bg_pic_url, params=image_params).content
-                cut_img = requests.get(cut_pic_url, params=image_params).content
+                bg_img = _captcha_image(requests.get(
+                    bg_pic_url, params=image_params, timeout=10
+                ))
+                cut_img = _captcha_image(requests.get(
+                    cut_pic_url, params=image_params, timeout=10
+                ))
                 slide_result = self._slide_match(cut_img, bg_img, False)
                 distance = int(round(int(slide_result["target"][0]) * 0.469))
                 trajectory = Generate_trajectory().get_slide_track(
@@ -317,7 +340,9 @@ class Tool:
                     "https://captcha.zt.kuaishou.com/rest/zt/captcha/sliding/kSecretApiVerify",
                     headers=verify_headers,
                     json={"verifyParam": verify_param},
-                ).json()
+                    timeout=10,
+                )
+                verify_result = _captcha_json(verify_result)
                 if verify_result.get("result") == 1:
                     print("验证码验证成功!")
                     if "captchaToken" in verify_result:
@@ -330,9 +355,8 @@ class Tool:
                     return False
                 print(f"准备第 {retry_count + 2} 次重试...")
                 time.sleep(1)
-            except Exception as exc:
-                print(f"处理验证码时出错: {exc}")
-                traceback.print_exc()
+            except Exception:
+                print("处理验证码时出错，请检查网络、验证码响应或平台工具环境")
                 if retry_count == 2:
                     print("已达到最大重试次数，验证失败")
                     return False

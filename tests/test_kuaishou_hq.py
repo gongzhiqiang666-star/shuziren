@@ -1,5 +1,7 @@
 import unittest
 from unittest.mock import Mock, patch
+import io
+from contextlib import redirect_stdout
 import sys
 from types import SimpleNamespace
 
@@ -84,6 +86,42 @@ class KuaishouRoomToolTests(unittest.TestCase):
                 "recovered.kuaishou_v2.hq.subprocess.check_output", return_value="/signed?x=1"):
             with self.assertRaisesRegex(RuntimeError, "网络、登录状态或直播间"):
                 tool.processLiveId("stream-1")
+
+    def test_captcha_requests_are_bounded_and_errors_are_redacted(self):
+        tool = self.room_tool()
+        tool.det = Mock()
+        tool.verification_token = None
+        calls = []
+
+        class Response:
+            status_code = 200
+            content = b"x" * (4 * 1024 * 1024 + 1)
+
+            def json(self):
+                return {
+                    "result": 1,
+                    "captchaSn": "sn",
+                    "bgPicUrl": "https://img/bg",
+                    "cutPicUrl": "https://img/cut",
+                    "disY": "20",
+                }
+
+        def get(url, **kwargs):
+            calls.append((url, kwargs))
+            return Response()
+
+        output = io.StringIO()
+        with patch.dict(sys.modules, {"requests": SimpleNamespace(get=get)}), redirect_stdout(output), patch(
+                "recovered.kuaishou_v2.hq.time.sleep", return_value=None):
+            result = tool.handle_captcha({
+                "data": {"captchaUrl": "https://captcha/?captchaSession=session-1"}
+            })
+
+        self.assertFalse(result)
+        self.assertTrue(calls)
+        self.assertTrue(all(call[1]["timeout"] == 10 for call in calls))
+        self.assertNotIn("captcha image size", output.getvalue())
+        self.assertIn("请检查网络、验证码响应或平台工具环境", output.getvalue())
 
 
 if __name__ == "__main__":
