@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import inspect
 from pathlib import Path
 from threading import Lock, RLock
 from typing import List, Optional, Sequence, Tuple
@@ -144,7 +145,11 @@ def _extract_subject(
         box_mask = _boxes_to_mask(mask.shape[:2], boxes)
         bin_mask = cv2.bitwise_and(bin_mask, box_mask)
     bin_mask = _largest_components(bin_mask, max_keep=max(1, min(3, len(boxes) or 1)))
-    return cv2.dilate(bin_mask, np.ones((3, 3), np.uint8), iterations=1)
+    support = cv2.dilate(bin_mask, np.ones((3, 3), np.uint8), iterations=1)
+    # Keep BiRefNet probabilities at the subject boundary instead of flattening
+    # every selected pixel to opaque. This is what lets PNG and KT consumers
+    # retain hair, glass and packaging edges.
+    return np.where(support > 0, np.rint(mask * 255), 0).astype(np.uint8)
 
 
 def _compose_centered_bgr(
@@ -171,6 +176,33 @@ def _compose_centered_bgr(
     region = canvas_img[gap_y : gap_y + out_h, gap_x : gap_x + out_w]
     region[:] = (crop_rgb * alpha + region * (1.0 - alpha)).astype(np.uint8)
     return cv2.cvtColor(canvas_img, cv2.COLOR_RGB2BGR)
+
+
+def _compose_centered_bgra(
+    rgb: np.ndarray,
+    mask: np.ndarray,
+    canvas: int = CANVAS_SIZE,
+    fill: float = SUBJECT_FILL,
+) -> Optional[np.ndarray]:
+    """Place a subject on a transparent canvas while preserving soft edges."""
+    import cv2
+
+    alpha = np.clip(np.asarray(mask), 0, 255).astype(np.uint8)
+    ys, xs = np.where(alpha > 0)
+    if not len(xs):
+        return None
+    x1, x2, y1, y2 = xs.min(), xs.max() + 1, ys.min(), ys.max() + 1
+    crop_rgb, crop_a = np.asarray(rgb)[y1:y2, x1:x2], alpha[y1:y2, x1:x2]
+    scale = min(canvas * fill / crop_rgb.shape[1], canvas * fill / crop_rgb.shape[0])
+    out_w = max(1, round(crop_rgb.shape[1] * scale))
+    out_h = max(1, round(crop_rgb.shape[0] * scale))
+    crop_rgb = cv2.resize(crop_rgb, (out_w, out_h), interpolation=cv2.INTER_LANCZOS4)
+    crop_a = cv2.resize(crop_a, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
+    result = np.zeros((canvas, canvas, 4), dtype=np.uint8)
+    gap_x, gap_y = (canvas - out_w) // 2, (canvas - out_h) // 2
+    result[gap_y:gap_y + out_h, gap_x:gap_x + out_w, :3] = cv2.cvtColor(crop_rgb, cv2.COLOR_RGB2BGR)
+    result[gap_y:gap_y + out_h, gap_x:gap_x + out_w, 3] = crop_a
+    return result
 
 
 class ProductCutoutEngine:
@@ -240,7 +272,7 @@ class ProductCutoutEngine:
         except Exception:
             pass
 
-    def cutout_bgr(self, bgr: np.ndarray) -> Optional[np.ndarray]:
+    def _infer_subject(self, bgr: np.ndarray):
         if not self.ready() or not isinstance(bgr, np.ndarray) or bgr.ndim != 3:
             return None
         try:
@@ -251,31 +283,51 @@ class ProductCutoutEngine:
             rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
             image = Image.fromarray(rgb)
             with self._lock, torch.no_grad():
-                biref_input = self._biref_transform(image).unsqueeze(0).to(self._device)
+                biref_dtype = next(self._biref.parameters()).dtype
+                biref_input = self._biref_transform(image).unsqueeze(0).to(
+                    device=self._device, dtype=biref_dtype
+                )
                 outputs = self._biref(biref_input)
                 preds = outputs[-1] if isinstance(outputs, (tuple, list)) else outputs
                 if isinstance(preds, (tuple, list)):
                     preds = preds[-1]
-                biref = torch.sigmoid(preds).squeeze().detach().cpu().numpy()
+                biref = torch.sigmoid(preds).squeeze().detach().float().cpu().numpy()
                 biref = cv2.resize(biref, (bgr.shape[1], bgr.shape[0]), interpolation=cv2.INTER_LINEAR)
                 inputs = self._dino_processor(images=image, text=_prompt_text(AUTO_PROMPTS), return_tensors="pt")
-                inputs = {key: value.to(self._device) for key, value in inputs.items()}
+                dino_dtype = next(self._dino.parameters()).dtype
+                inputs = {
+                    key: value.to(device=self._device, dtype=dino_dtype)
+                    if torch.is_floating_point(value) else value.to(self._device)
+                    for key, value in inputs.items()
+                }
                 dino_outputs = self._dino(**inputs)
-                result = self._dino_processor.post_process_grounded_object_detection(
+                postprocess = self._dino_processor.post_process_grounded_object_detection
+                threshold_name = (
+                    "box_threshold" if "box_threshold" in inspect.signature(postprocess).parameters else "threshold"
+                )
+                result = postprocess(
                     dino_outputs,
                     inputs["input_ids"],
-                    box_threshold=BOX_THRESHOLD,
                     text_threshold=TEXT_THRESHOLD,
                     target_sizes=[image.size[::-1]],
+                    **{threshold_name: BOX_THRESHOLD},
                 )[0]
             boxes = result["boxes"].detach().cpu().tolist()
             scores = result["scores"].detach().cpu().tolist()
             boxes = _select_subject_boxes(boxes, scores, bgr.shape[:2])
             mask = _extract_subject(biref, boxes, scores)
-            return _compose_centered_bgr(rgb, mask)
+            return rgb, mask
         except Exception as error:
             print(f"[product.cutout] infer failed: {error}")
             return None
+
+    def cutout_bgr(self, bgr: np.ndarray) -> Optional[np.ndarray]:
+        result = self._infer_subject(bgr)
+        return None if result is None else _compose_centered_bgr(*result)
+
+    def cutout_bgra(self, bgr: np.ndarray) -> Optional[np.ndarray]:
+        result = self._infer_subject(bgr)
+        return None if result is None else _compose_centered_bgra(*result)
 
 
 _engine_lock = Lock()

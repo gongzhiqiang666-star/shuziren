@@ -300,6 +300,8 @@ def _paste_on_board(frame, product, box):
     height, width = product.shape[:2]
     if height < 2 or width < 2:
         raise ValueError("Product image needs at least two pixels on each axis")
+    if product.ndim != 3 or product.shape[2] not in (3, 4):
+        raise ValueError("Product image must be BGR or BGRA")
     source = np.float32([[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]])
     destination = _order_box(box)
     if not cv2.isContourConvex(destination):
@@ -307,13 +309,14 @@ def _paste_on_board(frame, product, box):
     destination = _contain_inset_quad(destination, (width, height))
     transform = cv2.getPerspectiveTransform(source, destination)
     size = (frame.shape[1], frame.shape[0])
-    warped = cv2.warpPerspective(product, transform, size)
-    mask = cv2.warpPerspective(
-        np.full((height, width), 255, dtype=np.uint8),
-        transform, size, flags=cv2.INTER_NEAREST,
-    )
+    warped = cv2.warpPerspective(product[..., :3], transform, size)
+    source_alpha = product[..., 3] if product.shape[2] == 4 else np.full((height, width), 255, np.uint8)
+    mask = cv2.warpPerspective(source_alpha, transform, size, flags=cv2.INTER_LINEAR)
     result = frame.copy()
-    result[mask != 0] = warped[mask != 0]
+    alpha = mask.astype(np.float32)[..., None] / 255.0
+    result[:] = np.clip(
+        warped.astype(np.float32) * alpha + result.astype(np.float32) * (1.0 - alpha), 0, 255
+    ).astype(np.uint8)
     return result
 
 
@@ -414,7 +417,7 @@ def _download_image(url):
             data = response.read(16 * 1024 * 1024 + 1)
         if not data or len(data) > 16 * 1024 * 1024:
             return None
-        return cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+        return cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
     except (URLError, OSError, ValueError, cv2.error):
         return None
 
@@ -468,7 +471,9 @@ class ProductKtOverlay:
         if path.startswith(("https://", "http://", "//")):
             product = _download_image(path)
         else:
-            product = cv2.imread(path, cv2.IMREAD_COLOR) if path else None
+            product = cv2.imread(path, cv2.IMREAD_UNCHANGED) if path else None
+        if product is not None and (product.ndim != 3 or product.shape[2] not in (3, 4)):
+            product = None
         with self._lock:
             if self._product_key == product_key:
                 self._product = product
