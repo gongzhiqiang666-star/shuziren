@@ -238,6 +238,8 @@ A07-05 媒体软件门禁完成：software命令核对三份锁文件全部精�
 
 A07-05 离线 wheelhouse 解析门禁完成：新命令以 `--dry-run --ignore-installed --no-index` 同时解析三份锁文件及全部传递依赖，不安装、不升级且不联网；13 项配置/运行目录测试通过。空 wheelhouse 实测在缺少 `av==14.1.0` 时明确 `ready=false`。受控完整 wheelhouse 仍为条件缺失，旧媒体环境未修改；资源到位后先过门禁再创建新环境。
 
+A07-05 核心/工具隔离门禁完成：源码确认 JAX/JAXlib、py3langid、Streamlit 不属于正式产品入口，核心媒体解释器检测到任一项即不放行；14 项专项通过。现有旧环境四项均存在且与 NumPy/protobuf 基线冲突，因此继续作为对照环境而非发布环境。快手实际使用的 ddddocr 及 FunASR/Pandas/PyCUDA/Ultralytics 传递依赖必须在新 wheelhouse 闭合，不能删除业务依赖规避检查。
+
 ## 原功能范围与记录要求
 
 全部任务共同覆盖 SYS-001~012、CNT-001~016、MED-001~012、LIV-001~018。具体分支保持在 FUNCTION_MATRIX.md 及证据中，不用本任务表替代权威功能矩阵。新增引擎、三维或平台不抵消原功能未完成项。

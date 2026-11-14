@@ -39,8 +39,40 @@ class ConsoleConfigTests(unittest.TestCase):
         self.assertTrue(report['versions_verified'])
         self.assertFalse(report['dependency_check_ok'])
         self.assertFalse(report['ready'])
+        self.assertTrue(report['core_isolated'])
         self.assertIn('missing indirect dependency', report['dependency_check'])
         self.assertEqual(len(report['packages']), 3)
+
+    def test_software_report_rejects_conflicting_tool_packages_in_core(self):
+        requirements = self.root / 'requirements'
+        requirements.mkdir()
+        for filename, value in zip(
+                ('requirements-core.txt', 'requirements-ai-cu118.txt', 'requirements-windows.txt'),
+                ('numpy==1.24.0\n', 'torch==2.6.0+cu118\n', 'PyAudio==0.2.14\n')):
+            (requirements / filename).write_text(value, encoding='utf-8')
+        runtime = self.root / 'runtime'
+        runtime.mkdir()
+        (runtime / MANIFEST_NAME).write_text(json.dumps({**INDEPENDENT, 'python': LEGACY_PYTHON}),
+                                             encoding='utf-8')
+        python = runtime / LEGACY_PYTHON
+        python.parent.mkdir(parents=True)
+        python.write_bytes(b'python fixture')
+        measured = {'python': '3.10.16', 'packages': {
+            'numpy': '1.24.0', 'torch': '2.6.0+cu118', 'pyaudio': '0.2.14',
+            'jax': '0.5.0', 'streamlit': '1.42.0'}}
+        with patch('scripts.media_runtime.subprocess.run', side_effect=[
+                SimpleNamespace(returncode=0, stdout=json.dumps(measured), stderr=''),
+                SimpleNamespace(returncode=0, stdout='No broken requirements found.', stderr=''),
+        ]):
+            report = software_report(runtime, requirements)
+        self.assertTrue(report['versions_verified'])
+        self.assertTrue(report['dependency_check_ok'])
+        self.assertFalse(report['core_isolated'])
+        self.assertFalse(report['ready'])
+        self.assertEqual(report['forbidden_core_packages'], [
+            {'name': 'jax', 'installed': '0.5.0'},
+            {'name': 'streamlit', 'installed': '1.42.0'},
+        ])
 
     def test_requirement_lock_rejects_ranges_and_duplicates(self):
         requirements = self.root / 'requirements'

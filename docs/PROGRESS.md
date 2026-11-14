@@ -1,5 +1,7 @@
 # 四期任务进度与验证结果
 
+A07-05 核心媒体与可选工具隔离门禁完成。源码检索确认 JAX/JAXlib、py3langid、Streamlit 未进入正式产品入口，新增机器规则禁止四者混入核心媒体解释器；14 项专项通过。现有独立环境实测四项均存在，故即使 37/37 直接锁版本匹配仍保持 core_isolated=false、ready=false。ddddocr 被快手 OCR 实际引用，不列为可删除工具；其 headless OpenCV 及 FunASR/Pandas/PyCUDA/Ultralytics 缺失传递依赖必须由新 wheelhouse 闭合。证据见 `docs/evidence/a07-media-software-gate.md`。
+
 当前全量回归的 14 个环境条件跳过项已用显式真实资源全部补跑通过：RawVideoWriter 3、音频尾部 1、音色真实媒体 6、TTS worker 原跳过 2、SRS 推拉流 1、控制台真实 FFmpeg 音色入口 1。相关文件分组共执行 73 项，全部通过、无跳过。SRS 首轮把运行根传高一层而明确失败，修正为实际 `_internal` 资源根后同项通过；错误配置未计作功能失败或通过。当前结果为默认全量 477 项零失败，加 14/14 条真实环境补跑均通过。
 
 当前源码全量自动化回归通过：477 项执行，14 项因未显式提供真实媒体运行根/外部环境按条件跳过，0 失败，用时 177.992 秒。覆盖本轮 X05 流式 PCM 并发修复、A07 wheelhouse 门禁以及一期至四期既有单元/契约路径；日志中的 TTS、RTMP、SRS 和端口错误均为故障注入用例且断言通过。真实环境跳过项仍按对应任务补跑，不把默认跳过计为通过。

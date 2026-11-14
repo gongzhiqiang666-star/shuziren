@@ -38,3 +38,9 @@
 `scripts.media_runtime wheelhouse` 已实现只读预检：使用独立媒体 Python 调用 pip 的 `--dry-run --ignore-installed --no-index`，同时加载三份精确锁文件并输出解析报告。门禁不会安装、升级或卸载任何包，也不会访问包索引；只有直接和传递依赖都能从指定 wheelhouse 按当前 CPython/Windows 兼容标签完整解析时才返回 `ready=true`。
 
 新增 2 项门禁测试，加上既有配置/运行目录用例共 13/13 通过。使用空 wheelhouse 对当前 37 项锁文件实测，第一项 `av==14.1.0` 即被明确拒绝，结果 `ready=false`，证明缺包不会误放行或退回联网下载。当前仍缺受控完整 wheelhouse，因此没有创建或修改媒体环境；后续拿到离线资源后先执行此门禁，再进入全新环境安装和逐引擎回归。
+
+## 核心与工具环境隔离
+
+源码入口检索确认 `JAX/JAXlib`、`py3langid` 和 `Streamlit` 未被正式产品、测试或打包入口引用，而旧一体环境中的这四个 distribution 分别与当前 NumPy 1.24.0 或 protobuf 6.32.1 模型基线冲突。`software` 门禁现将它们列为核心媒体环境禁止项：即使直接锁版本和 `pip check` 未来均通过，只要核心解释器仍安装任一禁止项，`core_isolated=false`、`ready=false`。
+
+隔离规则测试加入后，配置/运行目录专项 14/14 通过。对现有独立媒体目录实测，37/37 直接版本仍匹配，但检测到 jax 0.5.0、jaxlib 0.5.0、py3langid 0.3.0 和 streamlit 1.42.0，故明确保持不放行。`ddddocr` 不在隔离列表：快手 OCR 入口真实引用它，因此它所需的 headless OpenCV 必须在新核心 wheelhouse 中闭合；FunASR、Pandas、PyCUDA 和 Ultralytics 的缺失传递依赖同理，不能靠删除业务包让门禁变绿。

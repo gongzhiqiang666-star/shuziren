@@ -30,6 +30,11 @@ ORIGIN_VIDEO_PROVIDER = 'bin/image_infer_v2/wenet'
 ORIGIN_VIDEO_SILENCE = '_internal/assets/pretrained_models/image_infer_v2/silence.npy'
 ORIGIN_VIDEO_FILES = (f'_internal/{ORIGIN_VIDEO_PROVIDER}/compute_ctc_att_bnf.py', ORIGIN_VIDEO_SILENCE)
 REQUIREMENT_FILES = ('requirements-core.txt', 'requirements-ai-cu118.txt', 'requirements-windows.txt')
+# These distributions are present in the old all-in-one environment but are not
+# imported by the product runtime. Their dependency constraints conflict with
+# the measured NumPy/protobuf model baseline, so they belong in separate tool
+# environments rather than the core media interpreter.
+FORBIDDEN_CORE_DISTRIBUTIONS = ('jax', 'jaxlib', 'py3langid', 'streamlit')
 
 
 def independent_runtime(root):
@@ -146,7 +151,8 @@ def software_report(root, requirements_directory=None):
         "print(json.dumps({'python':platform.python_version(),'packages':installed},sort_keys=True))"
     )
     probe = subprocess.run([str(python), '-I', '-X', 'utf8', '-c', probe_code,
-                            json.dumps(sorted(expected))], capture_output=True, text=True, timeout=60)
+                            json.dumps(sorted(set(expected) | set(FORBIDDEN_CORE_DISTRIBUTIONS)))],
+                           capture_output=True, text=True, timeout=60)
     if probe.returncode:
         raise ValueError('无法读取媒体环境软件包版本')
     measured = json.loads(probe.stdout)
@@ -155,6 +161,8 @@ def software_report(root, requirements_directory=None):
     for key, record in expected.items():
         actual = installed.get(key)
         packages.append({**record, 'installed': actual, 'verified': actual == record['version']})
+    forbidden = [{'name': name, 'installed': installed[name]}
+                 for name in FORBIDDEN_CORE_DISTRIBUTIONS if name in installed]
     check = subprocess.run([str(python), '-I', '-m', 'pip', 'check'], capture_output=True,
                            text=True, timeout=120)
     output = (check.stdout + check.stderr).strip()
@@ -163,8 +171,9 @@ def software_report(root, requirements_directory=None):
     versions_verified = all(item['verified'] for item in packages)
     return {'version': 1, 'layout': INDEPENDENT['layout'], 'python': measured.get('python'),
             'packages': packages, 'versions_verified': versions_verified,
+            'forbidden_core_packages': forbidden, 'core_isolated': not forbidden,
             'dependency_check_ok': check.returncode == 0, 'dependency_check': output,
-            'ready': versions_verified and check.returncode == 0}
+            'ready': versions_verified and not forbidden and check.returncode == 0}
 
 
 def wheelhouse_report(root, wheelhouse, requirements_directory=None):
