@@ -78,7 +78,7 @@
 | LIV-002 | 文件/摄像头/视频/RTMP 驱动 | `VideoStreamManager` 各 reader | `image_*_reader.py`、`frame_player_*`、控制台 RTMP 媒体子进程 | 静态验证通过 | 本机 SRS 至控制台轮播、回采、解码中断及发布端停推复推均通过，见 A01-05。断流期间主动停播通过。摄像头有效画面和格式分辨率矩阵待验 |
 | LIV-003 | TTS 队列、弹幕打断、淡入淡出和静音续接 | `live_manager.pyd` 调度链 | `live_manager_runtime.py`, `image_infer_audio.py`、`scripts/live_speech_ingress.py` | 静态验证通过 | V05-01b真实逐句交接局部通过；V05-02常驻WeNet/UNet驱动两句190帧、182272采样完整，形象序列连续、重组特征SHA一致；V05-03a累计采样/821帧PTS核验通过；03b形象预热与8帧有界原始帧接收/停止局部通过；实际定时音画输出、控制台/设备、实时压力、竞态、长稳及人工质量仍待验 |
 | LIV-004 | 手动口播与模拟提问 | `Api.speak/simulate_question` | `main.py`, `digital_live_manager.py`, `face_hand_live_manager.py` | 静态验证通过 | 三种直播模式、停止竞态和前端反馈 |
-| LIV-005 | 弹幕采集启动/停止 | `start_danmu_capture/stop_danmu_capture` | `danmu_bridge.py`, `ws_capture.py` | 开发中 | 抖音/淘宝/快手/Shopee/PDD 真实房间 |
+| LIV-005 | 弹幕采集启动/停止 | `start_danmu_capture/stop_danmu_capture` | `danmu_bridge.py`, `ws_capture.py`, `digital_live_manager.py` | 静态验证通过 | 启动、自然结束、迭代异常、stop 异常的状态切断与重启通过 2 项专项测试；PDD 7 项和包含快手/淘宝/Shopee 协议的完整契约通过，见 `evidence/v07-danmu-lifecycle.md`。抖音/淘宝/快手/Shopee/PDD 真实账号与直播间仍待平台验收 |
 | LIV-006 | 快手 WebSocket 协议、心跳和重连 | `KsLive/hq/ks.pyd` | `kuaishou_v2/*` | 静态验证通过 | 真实账号/直播间、协议变化、掉线重连 |
 | LIV-007 | 淘宝弹幕、账号登录和商品同步 | `get/login/probe/sync_taobao_*` | `taobao_live_control.py`, `taobao_control_capture.py` | 开发中 | 淘宝账号、验证码、商品页变化、风控和断线恢复 |
 | LIV-008 | 淘宝自动讲解、点品及控制页自愈 | 淘宝控制 Ghidra 调用链 | `taobao_live_control.py`, `face_hand_live_manager.py` | 静态验证通过 | 淘宝真实直播控制台长稳验证 |
@@ -97,8 +97,8 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 52 |
-| 开发中 | 6 |
+| 静态验证通过 | 53 |
+| 开发中 | 5 |
 | 已分析 | 0 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |

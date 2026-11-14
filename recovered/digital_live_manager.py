@@ -3,7 +3,7 @@
 from itertools import cycle
 from pathlib import Path
 from queue import Queue
-from threading import Event, Lock, Thread, current_thread
+from threading import Event, Lock, RLock, Thread, current_thread
 from time import monotonic
 
 from .danmu_bridge import DanmuBridge, KuaishouDanmuBridge, OCRDanmuBridge, PinduoduoDanmuBridge
@@ -26,6 +26,7 @@ class DigitalLiveManager:
         self._danmu_capture = None
         self._danmu_worker = None
         self._danmu_on_message = None
+        self._danmu_lock = RLock()
         self._manual_lock = Lock()
         self._manual_queue = None
         self._last_interaction = {}
@@ -154,10 +155,12 @@ class DigitalLiveManager:
     def start_danmu(self, live_url, platform_type="douyin", on_message=None):
         if not self.is_broadcasting:
             return False
-        if self._danmu_worker is not None and self._danmu_worker.is_alive():
-            return False
-        if self._danmu_capture is not None and not self.stop_danmu():
-            return False
+        with self._danmu_lock:
+            if self._danmu_worker is not None and self._danmu_worker.is_alive():
+                return False
+            stale = self._danmu_capture is not None
+        if stale:
+            self.stop_danmu()
         capture = None
         try:
             bridge_url = self.config.get("danmu_bridge_url")
@@ -191,16 +194,22 @@ class DigitalLiveManager:
 
                 capture = BarrageCapture(platform_type=platform_type, url=live_url)
             capture.start()
-            self._danmu_capture = capture
-            self._danmu_on_message = on_message
-            self._danmu_worker = Thread(target=self._danmu_loop, daemon=True)
-            self._danmu_worker.start()
+            with self._danmu_lock:
+                self._danmu_capture = capture
+                self._danmu_on_message = on_message
+                self._danmu_worker = Thread(target=self._danmu_loop, name="DigitalLiveManager.danmu", daemon=True)
+                self._danmu_worker.start()
             return True
         except Exception as error:
             self.last_error = str(error)
             if capture is not None:
-                self._danmu_capture = capture
-                self.stop_danmu()
+                try: capture.stop()
+                except Exception: pass
+            with self._danmu_lock:
+                if self._danmu_capture is capture:
+                    self._danmu_capture = None
+                    self._danmu_worker = None
+                    self._danmu_on_message = None
             return False
 
     def _danmu_loop(self):
@@ -223,25 +232,35 @@ class DigitalLiveManager:
         except Exception as error:
             if self._danmu_capture is capture:
                 self.last_error = str(error)
+        finally:
+            try: capture.stop()
+            except Exception as error:
+                if self._danmu_capture is capture:
+                    self.last_error = str(error)
+            with self._danmu_lock:
+                if self._danmu_capture is capture:
+                    self._danmu_capture = None
+                    self._danmu_on_message = None
+                    self._danmu_worker = None
 
     def stop_danmu(self):
-        capture = self._danmu_capture
+        with self._danmu_lock:
+            capture = self._danmu_capture
+            worker = self._danmu_worker
+            self._danmu_capture = None
+            self._danmu_on_message = None
+            self._danmu_worker = None
         if capture is None:
             return True
+        success = True
         try:
             capture.stop()
         except Exception as error:
             self.last_error = str(error)
-            return False
-        self._danmu_capture = None
-        self._danmu_on_message = None
-        worker = self._danmu_worker
+            success = False
         if worker is not None and worker is not current_thread() and worker.is_alive():
             worker.join(timeout=2)
-        if worker is not None and worker.is_alive():
-            return True
-        self._danmu_worker = None
-        return True
+        return success
 
     def submit_danmu(self, message):
         data = message.get("Data")
