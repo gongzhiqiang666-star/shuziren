@@ -30,7 +30,7 @@ def _mux_real_shot_video(video_path, audio_path, output_path, startupinfo=None):
         [
             "ffmpeg", "-y", "-i", video_path, "-i", audio_path,
             "-c:v", "copy", "-c:a", "aac", "-map", "0:v:0", "-map", "1:a:0",
-            output_path,
+            "-shortest", output_path,
         ],
         check=True,
         stdout=subprocess.PIPE,

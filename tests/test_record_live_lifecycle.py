@@ -7,9 +7,11 @@ from contextlib import nullcontext
 import sys
 from types import SimpleNamespace
 from unittest.mock import patch
+from unittest.mock import Mock
 
 from recovered.record_live_manager import RecordLiveManager
 from recovered.record_live_manager import _mix_real_shot_audio
+from recovered.record_live_manager import _mux_real_shot_video
 
 
 class _Resource:
@@ -151,6 +153,17 @@ class RecordLiveLifecycleTests(unittest.TestCase):
         self.assertEqual(len(mixed), len(original))
         with self.assertRaisesRegex(ValueError, "位于原音轨内"):
             _mix_real_shot_audio(original, narration, 2.0, 3.0)
+
+    def test_announcement_mux_stops_at_original_video_timeline(self):
+        completed = Mock(returncode=0)
+        with patch(
+                "recovered.record_live_manager.subprocess.run",
+                return_value=completed) as run:
+            _mux_real_shot_video("video.mp4", "mixed.wav", "output.mp4")
+
+        command = run.call_args.args[0]
+        self.assertIn("-shortest", command)
+        self.assertLess(command.index("-shortest"), command.index("output.mp4"))
 
 
 if __name__ == "__main__":
