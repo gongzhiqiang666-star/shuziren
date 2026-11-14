@@ -343,7 +343,10 @@ class ConsoleLive:
                 staged = self.video_insert_snapshot
                 self.video_insert_snapshot = None
                 if staged is not None:
-                    Path(staged).unlink(missing_ok=True)
+                    try:
+                        Path(staged).unlink(missing_ok=True)
+                    except OSError:
+                        logging.exception('清理本地视频插播文件失败')
                 self.status.update(status='failed' if error else 'stopped', error=error, ended_at=time.time())
                 self._record_session()
 
