@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from recovered.face_hand_video_group import (
     load_face_hand_video_group,
@@ -18,7 +19,10 @@ class FaceHandVideoGroupTests(unittest.TestCase):
             (root / "face" / "legacy.AVI").write_bytes(b"legacy-face")
             (root / "hand" / "hand.mp4").write_bytes(b"legacy-hand")
 
-            valid, error, counts = validate_face_hand_video_group(root)
+            with patch(
+                    "recovered.face_hand_video_group._probe_video_file",
+                    return_value=(True, "")):
+                valid, error, counts = validate_face_hand_video_group(root)
             self.assertTrue(valid, error)
             self.assertEqual(counts, {"face_count": 1, "hand_count": 1})
             group = load_face_hand_video_group(root)
@@ -50,6 +54,21 @@ class FaceHandVideoGroupTests(unittest.TestCase):
             self.assertFalse(valid)
             self.assertIn("视频组目录不存在", error)
             self.assertEqual(counts, {})
+
+    def test_nonempty_but_undecodable_clip_is_rejected(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "face").mkdir()
+            (root / "hand").mkdir()
+            (root / "face" / "broken.mp4").write_bytes(b"not-a-video")
+            (root / "hand" / "hand.mp4").write_bytes(b"also-not-a-video")
+
+            with patch(
+                    "recovered.face_hand_video_group._probe_video_file",
+                    return_value=(False, "视频素材无法解码：broken.mp4")):
+                valid, error, _ = validate_face_hand_video_group(root)
+            self.assertFalse(valid)
+            self.assertEqual(error, "face 视频素材无法解码：broken.mp4")
 
 
 if __name__ == "__main__":

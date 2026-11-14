@@ -1,10 +1,54 @@
 """Load face and hand clips from the original video group layout."""
 
 import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
 
 FACE_HAND_MANIFEST_NAME = "manifest.json"
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".m4v", ".mkv", ".webm"}
+
+
+def _resolve_ffprobe():
+    configured = os.environ.get("FFPROBE_PATH")
+    if configured and Path(configured).is_file():
+        return configured
+    ffmpeg = os.environ.get("FFMPEG_PATH")
+    if ffmpeg:
+        sibling = Path(ffmpeg).with_name(
+            "ffprobe.exe" if Path(ffmpeg).suffix.lower() == ".exe" else "ffprobe"
+        )
+        if sibling.is_file():
+            return str(sibling)
+    return shutil.which("ffprobe")
+
+
+def _probe_video_file(path):
+    ffprobe = _resolve_ffprobe()
+    if not ffprobe:
+        return False, "未找到 FFprobe，无法验证视频素材"
+    try:
+        result = subprocess.run(
+            [
+                ffprobe, "-v", "error", "-select_streams", "v:0",
+                "-show_entries", "stream=codec_type,width,height",
+                "-of", "json", str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        payload = json.loads(result.stdout or "{}") if result.returncode == 0 else {}
+        streams = payload.get("streams") if isinstance(payload, dict) else None
+        stream = streams[0] if isinstance(streams, list) and streams else None
+        if (not isinstance(stream, dict) or stream.get("codec_type") != "video"
+                or int(stream.get("width") or 0) <= 0
+                or int(stream.get("height") or 0) <= 0):
+            return False, f"视频素材无法解码：{Path(path).name}"
+        return True, ""
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return False, f"视频素材探测失败：{Path(path).name}"
 
 
 def _list_videos(directory):
@@ -65,4 +109,7 @@ def validate_face_hand_video_group(group_dir):
                     return False, f"视频组包含空的 {name} 素材：{Path(item).name}", counts
             except OSError:
                 return False, f"视频组无法读取 {name} 素材：{Path(item).name}", counts
+            decodable, probe_error = _probe_video_file(item)
+            if not decodable:
+                return False, f"{name} {probe_error}", counts
     return True, "", counts
