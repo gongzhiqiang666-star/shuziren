@@ -1859,8 +1859,10 @@ async function loadLive() {
   $('live-status').textContent = liveLabels[liveSession.status]
     + (liveSession.input_mode === 'rtmp' ? ' · RTMP 驱动' : '')
     + (cameraName ? ` · 虚拟摄像头 ${cameraName}` : '');
-  $('live-detail').textContent = liveSession.insert_error || (liveSession.insert_pending ? '正在准备插播语音' :
-    (liveSession.frames ? `已提交 ${liveSession.frames} 帧，待播 ${liveSession.pending ?? 0} 条` : ''));
+  const frameDetail = liveSession.mode === 'local_video' && liveSession.reused_frames != null
+    ? `已提交 ${liveSession.frames} 帧，播放器复用 ${liveSession.reused_frames} 帧，待播 ${liveSession.queue_length} 帧`
+    : liveSession.frames ? `已提交 ${liveSession.frames} 帧，待播 ${liveSession.pending ?? 0} 条` : '';
+  $('live-detail').textContent = liveSession.insert_error || (liveSession.insert_pending ? '正在准备插播语音' : frameDetail);
   $('live-rotation-status').textContent = liveSession.rotation_error || (liveSession.rotation_products?.length ?
     `${liveSession.manual ? '轮播暂停' : '轮播中'} · ${liveSession.rotation_products.length} 个商品 · 已播 ${liveSession.rotation_completed} 条` +
       (liveSession.shift_index == null ? '' : ` · 第 ${liveSession.shift_index + 1} 班`) : '');
