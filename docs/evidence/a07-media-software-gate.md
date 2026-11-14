@@ -32,3 +32,9 @@
 - 不应无条件混入默认媒体环境的冲突工具：JAX/JAXlib 要求 NumPy 至少 1.25，py3langid 要求 NumPy 至少 2.0，Streamlit 要求 protobuf 小于 6；当前模型基线分别固定 NumPy 1.24.0 和 protobuf 6.32.1。
 
 重开条件是准备 Windows AMD64/CPython 3.10/CUDA 11.8 的受控 wheelhouse（含 PyTorch 官方 CUDA wheel 和全部传递依赖）。随后在全新目录按“核心媒体环境＋按需工具环境”拆分安装，分别 `pip check`，再逐引擎真实回归。不能为了让旧环境变绿而改变已经实测的 NumPy/protobuf/CUDA 组合。
+
+## 离线 wheelhouse 解析门禁
+
+`scripts.media_runtime wheelhouse` 已实现只读预检：使用独立媒体 Python 调用 pip 的 `--dry-run --ignore-installed --no-index`，同时加载三份精确锁文件并输出解析报告。门禁不会安装、升级或卸载任何包，也不会访问包索引；只有直接和传递依赖都能从指定 wheelhouse 按当前 CPython/Windows 兼容标签完整解析时才返回 `ready=true`。
+
+新增 2 项门禁测试，加上既有配置/运行目录用例共 13/13 通过。使用空 wheelhouse 对当前 37 项锁文件实测，第一项 `av==14.1.0` 即被明确拒绝，结果 `ready=false`，证明缺包不会误放行或退回联网下载。当前仍缺受控完整 wheelhouse，因此没有创建或修改媒体环境；后续拿到离线资源后先执行此门禁，再进入全新环境安装和逐引擎回归。

@@ -10,7 +10,7 @@ from scripts.v122_package_policy import REQUIRED_RUNTIME_FILES
 from scripts.media_runtime import (
     INDEPENDENT, LEGACY_PYTHON, MANIFEST_NAME, MEDIA_FILES, MODEL_FILES, PROVIDER_FILES,
     ORIGIN_VIDEO_FILES, inspect_runtime, pinned_requirements, runtime_fingerprints, runtime_python,
-    software_report, verify_fingerprints,
+    software_report, verify_fingerprints, wheelhouse_report,
 )
 
 
@@ -55,6 +55,61 @@ class ConsoleConfigTests(unittest.TestCase):
         (requirements / names[1]).write_text('NumPy==1.24.0\n', encoding='utf-8')
         with self.assertRaisesRegex(ValueError, '重复'):
             pinned_requirements(requirements)
+
+    def test_wheelhouse_gate_is_offline_and_does_not_install(self):
+        requirements = self.root / 'requirements'
+        requirements.mkdir()
+        for filename, value in zip(
+                ('requirements-core.txt', 'requirements-ai-cu118.txt', 'requirements-windows.txt'),
+                ('numpy==1.24.0\n', 'torch==2.6.0+cu118\n', 'PyAudio==0.2.14\n')):
+            (requirements / filename).write_text(value, encoding='utf-8')
+        runtime = self.root / 'runtime'
+        runtime.mkdir()
+        (runtime / MANIFEST_NAME).write_text(json.dumps({**INDEPENDENT, 'python': LEGACY_PYTHON}),
+                                             encoding='utf-8')
+        python = runtime / LEGACY_PYTHON
+        python.parent.mkdir(parents=True)
+        python.write_bytes(b'python fixture')
+        wheelhouse = self.root / 'wheelhouse'
+        wheelhouse.mkdir()
+
+        def resolved(command, **kwargs):
+            report = Path(command[command.index('--report') + 1])
+            report.write_text(json.dumps({'install': [{}, {}, {}]}), encoding='utf-8')
+            return SimpleNamespace(returncode=0, stdout='resolved', stderr='', args=command)
+
+        with patch('scripts.media_runtime.subprocess.run', side_effect=resolved) as run:
+            report = wheelhouse_report(runtime, wheelhouse, requirements)
+        command = run.call_args.args[0]
+        self.assertTrue(report['ready'])
+        self.assertEqual(report['resolved_distributions'], 3)
+        self.assertIn('--dry-run', command)
+        self.assertIn('--no-index', command)
+        self.assertIn('--ignore-installed', command)
+        self.assertNotIn('--upgrade', command)
+        self.assertEqual(command.count('-r'), 3)
+
+    def test_wheelhouse_gate_reports_missing_offline_dependency(self):
+        requirements = self.root / 'requirements'
+        requirements.mkdir()
+        for filename in ('requirements-core.txt', 'requirements-ai-cu118.txt', 'requirements-windows.txt'):
+            (requirements / filename).write_text('' if filename != 'requirements-core.txt' else 'numpy==1.24.0\n',
+                                                 encoding='utf-8')
+        runtime = self.root / 'runtime'
+        runtime.mkdir()
+        (runtime / MANIFEST_NAME).write_text(json.dumps({**INDEPENDENT, 'python': LEGACY_PYTHON}),
+                                             encoding='utf-8')
+        python = runtime / LEGACY_PYTHON
+        python.parent.mkdir(parents=True)
+        python.write_bytes(b'python fixture')
+        wheelhouse = self.root / 'wheelhouse'
+        wheelhouse.mkdir()
+        failed = SimpleNamespace(returncode=1, stdout='', stderr='No matching distribution', args=[])
+        with patch('scripts.media_runtime.subprocess.run', return_value=failed):
+            report = wheelhouse_report(runtime, wheelhouse, requirements)
+        self.assertFalse(report['ready'])
+        self.assertIsNone(report['resolved_distributions'])
+        self.assertIn('No matching distribution', report['diagnostic'])
 
     def test_media_inventory_survives_relocation_and_detects_changes(self):
         runtime = self.root / 'media'

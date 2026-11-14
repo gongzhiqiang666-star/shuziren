@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 
 
 MANIFEST_NAME = 'shuziren-runtime.json'
@@ -166,17 +167,63 @@ def software_report(root, requirements_directory=None):
             'ready': versions_verified and check.returncode == 0}
 
 
+def wheelhouse_report(root, wheelhouse, requirements_directory=None):
+    """Resolve the locked runtime entirely offline without changing the runtime."""
+    python = runtime_python(root)
+    if not python.is_file():
+        raise ValueError('独立媒体运行目录缺少 Python')
+    wheelhouse = Path(wheelhouse).resolve()
+    if not wheelhouse.is_dir():
+        raise ValueError('受控 wheelhouse 目录不存在')
+    requirements = Path(requirements_directory or Path(__file__).resolve().parents[1] / 'recovered')
+    pinned_requirements(requirements)
+    command = [str(python), '-I', '-m', 'pip', 'install', '--dry-run', '--ignore-installed',
+               '--no-index', '--find-links', str(wheelhouse), '--disable-pip-version-check']
+    for filename in REQUIREMENT_FILES:
+        command.extend(('-r', str(requirements / filename)))
+    with tempfile.TemporaryDirectory() as directory:
+        report_path = Path(directory) / 'pip-resolution.json'
+        result = subprocess.run([*command, '--report', str(report_path)], capture_output=True,
+                                text=True, timeout=600)
+        resolved = None
+        if result.returncode == 0:
+            try:
+                value = json.loads(report_path.read_text(encoding='utf-8'))
+                resolved = len(value.get('install', []))
+            except (OSError, ValueError, TypeError):
+                result = subprocess.CompletedProcess(result.args, 2, result.stdout,
+                                                     result.stderr + '\ninvalid pip report')
+    diagnostic = (result.stdout + result.stderr).strip()
+    if len(diagnostic) > 64 * 1024:
+        diagnostic = diagnostic[:64 * 1024] + '\n[truncated]'
+    return {'version': 1, 'layout': INDEPENDENT['layout'], 'offline': True,
+            'wheelhouse': str(wheelhouse), 'requirements': list(REQUIREMENT_FILES),
+            'resolved_distributions': resolved, 'diagnostic': diagnostic,
+            'ready': result.returncode == 0}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=('initialize', 'check', 'fingerprint', 'verify', 'software'))
+    parser.add_argument('command', choices=('initialize', 'check', 'fingerprint', 'verify', 'software', 'wheelhouse'))
     parser.add_argument('--root', required=True, type=Path)
     parser.add_argument('--inventory', type=Path)
     parser.add_argument('--output', type=Path, help='Write software report as JSON')
+    parser.add_argument('--wheelhouse', type=Path, help='Offline wheel directory for wheelhouse resolution')
+    parser.add_argument('--requirements-directory', type=Path, help='Directory containing the three locked requirement files')
     parser.add_argument('--include-origin-video', action='store_true', help='Include direct video requirements in check or fingerprint')
     args = parser.parse_args()
     if args.include_origin_video and args.command not in ('check', 'fingerprint'):
         parser.error('--include-origin-video requires check or fingerprint')
     root = args.root.resolve()
+    if args.command == 'wheelhouse':
+        if args.wheelhouse is None:
+            parser.error('--wheelhouse is required')
+        result = wheelhouse_report(root, args.wheelhouse, args.requirements_directory)
+        if args.output is not None:
+            with args.output.open('x', encoding='utf-8') as stream:
+                json.dump(result, stream, ensure_ascii=False, indent=2)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result['ready'] else 1
     if args.command == 'software':
         result = software_report(root)
         if args.output is not None:

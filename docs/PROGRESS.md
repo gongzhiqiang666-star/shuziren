@@ -1,5 +1,9 @@
 # 四期任务进度与验证结果
 
+A07-05 离线 wheelhouse 解析门禁完成。`media_runtime wheelhouse` 使用 pip 的 dry-run、ignore-installed 和 no-index 对三份精确锁文件及传递依赖做只读解析，禁止缺包时隐式联网或改动现有环境。13 项配置/运行目录测试通过；空 wheelhouse 实测明确拒绝 `av==14.1.0` 并保持 ready=false。完整受控 wheelhouse 仍为条件缺失，后续资源到位后先过门禁，再创建新核心媒体环境并逐引擎回归。证据见 `docs/evidence/a07-media-software-gate.md`。
+
+最新候选的 Chrome 点击验收本轮在 Computer Use 初始化阶段被本机原生管道缺失阻断，错误为 `Computer Use native pipe is unavailable`。没有向浏览器发送输入，也没有重复循环；HTTP 首页和状态接口已独立通过。准备包预览、切换话术重审、载入轮播和场次报告的真实点击链保留待原生管道恢复后补验，不阻塞后续本机任务。
+
 X05-02 流式 PCM 背压并发子任务完成。原型原先在满队列等待时持有状态锁，消费者无法取块，取消也不能及时唤醒生产者；现改为条件变量和有界双端队列，消费可释放生产者，取消会唤醒等待线程、清空缓冲并拒绝晚到块。8 项协议测试及 18 项 TTS 状态/交付回归通过，其中 2 项按真实运行时条件跳过。真实增量本地 TTS 引擎仍未接入，X05-02 保持开发中，默认完整 WAV 路径不变。证据见 `docs/evidence/x05-streaming-tts-baseline.md`。
 
 A07-05 独立媒体环境重建条件复核完成。本机 pip 缓存没有可用于离线重建 37 个直接包及缺失依赖的完整 wheel；旧 CUDA 环境未修改。11 条依赖问题已拆成主链缺失依赖和 JAX/py3langid/Streamlit 与当前 NumPy/protobuf 基线冲突两类。后续准备 CPython 3.10/CUDA 11.8 受控 wheelhouse，拆分核心媒体和按需工具环境后逐引擎实测；当前记录条件缺失并继续其他任务。证据见 `docs/evidence/a07-media-software-gate.md`。
