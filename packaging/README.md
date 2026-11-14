@@ -30,9 +30,12 @@ python -m scripts.plugin_installer_manifest verify --plugin-root "<发布目录>
 ```powershell
 python -m scripts.stage_media_runtime --reference "<授权参考目录>" --destination "<新媒体目录>"
 python -m scripts.media_runtime check --root "<新媒体目录>"
+python -m scripts.media_runtime software --root "<新媒体目录>" --output "<软件报告.json>"
 ```
 
 此流程复制选定的 Python 和第三方运行环境、提供方源码及模型。将新媒体目录填入控制台配置，使用其中的解释器和依赖。该流程依赖本机已配置的参考资源。输出的 `staging-result.json` 记录解释器重定位和关键入口检查，真实 GPU 推理另行验证。媒体目录保存在仓库外。
+
+`software` 会核对三份媒体 requirements 中的全部精确版本并执行该环境的 `pip check`。直接版本完全匹配但间接依赖检查失败时仍返回非零，不能标记为发布就绪；不要在已验证的旧环境中直接升级修复，应另建目录后逐引擎回归。
 
 使用本地视频直驱时，构建媒体目录须附加 `--include-origin-video`。它会带上直驱所需的 WeNet 提供方和静音特征。已有媒体目录缺少组件时，开播入口会列出缺失文件，可从授权参考目录另建媒体目录并更新控制台设置。
 

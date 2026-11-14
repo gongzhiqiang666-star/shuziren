@@ -3,6 +3,8 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
+import subprocess
 
 
 MANIFEST_NAME = 'shuziren-runtime.json'
@@ -26,6 +28,7 @@ PROVIDER_FILES = ('_internal/bin/voice_infer_v3/indextts/infer.py',
 ORIGIN_VIDEO_PROVIDER = 'bin/image_infer_v2/wenet'
 ORIGIN_VIDEO_SILENCE = '_internal/assets/pretrained_models/image_infer_v2/silence.npy'
 ORIGIN_VIDEO_FILES = (f'_internal/{ORIGIN_VIDEO_PROVIDER}/compute_ctc_att_bnf.py', ORIGIN_VIDEO_SILENCE)
+REQUIREMENT_FILES = ('requirements-core.txt', 'requirements-ai-cu118.txt', 'requirements-windows.txt')
 
 
 def independent_runtime(root):
@@ -108,16 +111,79 @@ def verify_fingerprints(root, expected):
     return {'verified': not mismatches, 'files': len(actual), 'mismatches': mismatches}
 
 
+def pinned_requirements(directory=None):
+    directory = Path(directory or Path(__file__).resolve().parents[1] / 'recovered')
+    expected = {}
+    for filename in REQUIREMENT_FILES:
+        path = directory / filename
+        if not path.is_file():
+            raise ValueError(f'缺少媒体依赖锁定文件: {filename}')
+        for line in path.read_text(encoding='utf-8').splitlines():
+            value = line.strip()
+            if not value or value.startswith('#'):
+                continue
+            name, separator, version = value.partition('==')
+            if not separator or not name.strip() or not version.strip():
+                raise ValueError(f'媒体依赖必须精确锁定版本: {filename}: {value}')
+            key = re.sub(r'[-_.]+', '-', name.strip()).lower()
+            if key in expected:
+                raise ValueError(f'媒体依赖重复: {name.strip()}')
+            expected[key] = {'name': name.strip(), 'version': version.strip(), 'source': filename}
+    return expected
+
+
+def software_report(root, requirements_directory=None):
+    python = runtime_python(root)
+    if not python.is_file():
+        raise ValueError('独立媒体运行目录缺少 Python')
+    expected = pinned_requirements(requirements_directory)
+    probe_code = (
+        "import importlib.metadata as m,json,platform,re,sys;"
+        "canon=lambda v:re.sub(r'[-_.]+','-',v).lower();"
+        "names=json.loads(sys.argv[1]);available={canon(d.metadata.get('Name') or ''):d.version for d in m.distributions()};"
+        "installed={n:available[n] for n in names if n in available};"
+        "print(json.dumps({'python':platform.python_version(),'packages':installed},sort_keys=True))"
+    )
+    probe = subprocess.run([str(python), '-I', '-X', 'utf8', '-c', probe_code,
+                            json.dumps(sorted(expected))], capture_output=True, text=True, timeout=60)
+    if probe.returncode:
+        raise ValueError('无法读取媒体环境软件包版本')
+    measured = json.loads(probe.stdout)
+    installed = measured.get('packages', {})
+    packages = []
+    for key, record in expected.items():
+        actual = installed.get(key)
+        packages.append({**record, 'installed': actual, 'verified': actual == record['version']})
+    check = subprocess.run([str(python), '-I', '-m', 'pip', 'check'], capture_output=True,
+                           text=True, timeout=120)
+    output = (check.stdout + check.stderr).strip()
+    if len(output) > 64 * 1024:
+        output = output[:64 * 1024] + '\n[truncated]'
+    versions_verified = all(item['verified'] for item in packages)
+    return {'version': 1, 'layout': INDEPENDENT['layout'], 'python': measured.get('python'),
+            'packages': packages, 'versions_verified': versions_verified,
+            'dependency_check_ok': check.returncode == 0, 'dependency_check': output,
+            'ready': versions_verified and check.returncode == 0}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=('initialize', 'check', 'fingerprint', 'verify'))
+    parser.add_argument('command', choices=('initialize', 'check', 'fingerprint', 'verify', 'software'))
     parser.add_argument('--root', required=True, type=Path)
     parser.add_argument('--inventory', type=Path)
+    parser.add_argument('--output', type=Path, help='Write software report as JSON')
     parser.add_argument('--include-origin-video', action='store_true', help='Include direct video requirements in check or fingerprint')
     args = parser.parse_args()
     if args.include_origin_video and args.command not in ('check', 'fingerprint'):
         parser.error('--include-origin-video requires check or fingerprint')
     root = args.root.resolve()
+    if args.command == 'software':
+        result = software_report(root)
+        if args.output is not None:
+            with args.output.open('x', encoding='utf-8') as stream:
+                json.dump(result, stream, ensure_ascii=False, indent=2)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result['ready'] else 1
     if args.command in ('fingerprint', 'verify'):
         if args.inventory is None:
             parser.error('--inventory is required')

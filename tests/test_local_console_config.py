@@ -3,16 +3,59 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 from scripts.local_console_config import ConfigError, ConfigStore, preflight, validate
 from scripts.v122_package_policy import REQUIRED_RUNTIME_FILES
 from scripts.media_runtime import (
     INDEPENDENT, LEGACY_PYTHON, MANIFEST_NAME, MEDIA_FILES, MODEL_FILES, PROVIDER_FILES,
-    ORIGIN_VIDEO_FILES, inspect_runtime, runtime_fingerprints, runtime_python, verify_fingerprints,
+    ORIGIN_VIDEO_FILES, inspect_runtime, pinned_requirements, runtime_fingerprints, runtime_python,
+    software_report, verify_fingerprints,
 )
 
 
 class ConsoleConfigTests(unittest.TestCase):
+    def test_software_report_separates_pins_from_dependency_health(self):
+        requirements = self.root / 'requirements'
+        requirements.mkdir()
+        for filename, value in zip(
+                ('requirements-core.txt', 'requirements-ai-cu118.txt', 'requirements-windows.txt'),
+                ('numpy==1.24.0\n', 'torch==2.6.0+cu118\n', 'PyAudio==0.2.14\n')):
+            (requirements / filename).write_text(value, encoding='utf-8')
+        runtime = self.root / 'runtime'
+        runtime.mkdir()
+        (runtime / MANIFEST_NAME).write_text(json.dumps({**INDEPENDENT, 'python': LEGACY_PYTHON}),
+                                             encoding='utf-8')
+        python = runtime / LEGACY_PYTHON
+        python.parent.mkdir(parents=True)
+        python.write_bytes(b'python fixture')
+        measured = {'python': '3.10.16', 'packages': {
+            'numpy': '1.24.0', 'torch': '2.6.0+cu118', 'pyaudio': '0.2.14'}}
+        with patch('scripts.media_runtime.subprocess.run', side_effect=[
+                SimpleNamespace(returncode=0, stdout=json.dumps(measured), stderr=''),
+                SimpleNamespace(returncode=1, stdout='missing indirect dependency', stderr=''),
+        ]):
+            report = software_report(runtime, requirements)
+        self.assertTrue(report['versions_verified'])
+        self.assertFalse(report['dependency_check_ok'])
+        self.assertFalse(report['ready'])
+        self.assertIn('missing indirect dependency', report['dependency_check'])
+        self.assertEqual(len(report['packages']), 3)
+
+    def test_requirement_lock_rejects_ranges_and_duplicates(self):
+        requirements = self.root / 'requirements'
+        requirements.mkdir()
+        names = ('requirements-core.txt', 'requirements-ai-cu118.txt', 'requirements-windows.txt')
+        for name in names:
+            (requirements / name).write_text('# empty\n', encoding='utf-8')
+        (requirements / names[0]).write_text('numpy>=1.24\n', encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, '精确锁定'):
+            pinned_requirements(requirements)
+        (requirements / names[0]).write_text('numpy==1.24.0\n', encoding='utf-8')
+        (requirements / names[1]).write_text('NumPy==1.24.0\n', encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, '重复'):
+            pinned_requirements(requirements)
+
     def test_media_inventory_survives_relocation_and_detects_changes(self):
         runtime = self.root / 'media'
         runtime.mkdir()
