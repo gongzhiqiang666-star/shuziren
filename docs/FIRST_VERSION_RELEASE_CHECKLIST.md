@@ -4,7 +4,7 @@
 
 | 检查项 | 当前状态 | 证据或下一步 |
 | --- | --- | --- |
-| 源码包确定性构建 | 通过 | 候选01两次ZIP摘要一致；当前 `784b8a7` 候选 454 文件完成构建/校验/隔离安装，见 `evidence/v09-current-package.md` |
+| 源码包确定性构建 | 通过 | 候选01两次ZIP摘要一致；当前 `3413e2c` 候选02为458文件，完成构建/校验/隔离安装及直接入口启动，见 `evidence/v09-current-package.md` |
 | 清单、路径、逐文件哈希 | 通过 | `console_package verify` |
 | 全新目录部署和HTTP健康检查 | 通过 | 普通路径及中文/空格路径各一次 |
 | 升级、回滚、数据备份与恢复 | 通过 | `evidence/a07-release-lifecycle-real.md` |
