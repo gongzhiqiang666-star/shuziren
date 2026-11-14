@@ -250,6 +250,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
             if sticker_manager is not None:
                 _, jobs = sticker_manager._live_sticker_job_state()
                 for event in tuple(jobs.values()): event.set()
+                _, cloud_jobs = sticker_manager._cloud_dh_job_state()
+                for event in tuple(cloud_jobs.values()): event.set()
     def preparation():
         nonlocal avatar_manager
         with lock:
@@ -548,6 +550,25 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if set(query) != {'project_id'} or len(ids) != 1 or not 1 <= len(ids[0]) <= 64:
                         raise ProductError('贴片项目编号无效')
                     return self.respond(200, sticker_result(stickers().get_live_sticker_project(ids[0])))
+                if path == '/api/cloud-dh':
+                    query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                    if not query:
+                        return self.respond(200, sticker_result(stickers().get_all_cloud_dh_projects()))
+                    ids = query.get('project_id', [])
+                    if set(query) != {'project_id'} or len(ids) != 1 or not 1 <= len(ids[0]) <= 64:
+                        raise ProductError('云数字人项目编号无效')
+                    return self.respond(200, sticker_result(stickers().get_cloud_dh_project(ids[0])))
+                if path == '/api/cloud-dh/media':
+                    query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                    if set(query) != {'project_id', 'kind'} or any(len(value) != 1 for value in query.values()):
+                        raise ProductError('云数字人媒体请求无效')
+                    project_id, kind = query['project_id'][0], query['kind'][0]
+                    if not 1 <= len(project_id) <= 64 or kind not in ('avatar', 'audio', 'video'):
+                        raise ProductError('云数字人媒体请求无效')
+                    stickers()._load_cloud_dh_project(project_id)
+                    asset = Path(stickers()._get_cloud_dh_output_paths(project_id)[kind])
+                    from scripts.media_http import serve_file
+                    return serve_file(self, asset, {'avatar':'image/png','audio':'audio/wav','video':'video/mp4'}[kind])
                 if path == '/api/avatar-preparation/state':
                     task=(avatar_manager.state() if avatar_manager is not None else
                           preparation().state() if preflight(store.load())['runtime_root'] else None)
@@ -928,6 +949,40 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             raise ProductError('贴片取消字段无效')
                         return self.respond(200, sticker_result(
                             stickers().cancel_live_sticker_generation(value['project_id'])))
+                    if path == '/api/cloud-dh/create':
+                        if set(value) != {'name'} or not isinstance(value['name'], str) or len(value['name']) > 100:
+                            raise ProductError('云数字人项目名称无效')
+                        return self.respond(201, sticker_result(stickers().create_cloud_dh_project(value['name'])))
+                    if path == '/api/cloud-dh/update':
+                        if (set(value) != {'project_id', 'data'} or not isinstance(value['project_id'], str)
+                                or not isinstance(value['data'], dict)
+                                or set(value['data']) - {'name', 'avatar_prompt'}):
+                            raise ProductError('云数字人项目保存字段无效')
+                        return self.respond(200, sticker_result(stickers().update_cloud_dh_project(
+                            value['project_id'], value['data'])))
+                    if path in ('/api/cloud-dh/import-avatar', '/api/cloud-dh/import-audio'):
+                        if set(value) != {'project_id', 'source'} or not all(isinstance(item, str) and item for item in value.values()):
+                            raise ProductError('云数字人素材导入字段无效')
+                        kind = 'avatar' if path.endswith('avatar') else 'audio'
+                        try: result = stickers()._import_cloud_dh_file(value['project_id'], kind, value['source'])
+                        except Exception as error: raise ProductError(str(error)) from None
+                        return self.respond(200, sticker_result(result))
+                    if path == '/api/cloud-dh/generate-avatar':
+                        if (not {'project_id','runninghub_api_key'} <= set(value)
+                                or set(value) - {'project_id','runninghub_api_key','description'}
+                                or not all(isinstance(value[key], str) and value[key] for key in ('project_id','runninghub_api_key'))):
+                            raise ProductError('云数字人形象生成字段无效')
+                        return self.respond(200, sticker_result(stickers().generate_cloud_dh_avatar(value)))
+                    if path == '/api/cloud-dh/generate-video':
+                        if set(value) != {'project_id','runninghub_api_key'} or not all(
+                                isinstance(value[key], str) and value[key] for key in value):
+                            raise ProductError('云数字人视频生成字段无效')
+                        return self.respond(200, sticker_result(stickers().generate_cloud_dh_video(value)))
+                    if path == '/api/cloud-dh/cancel':
+                        if set(value) != {'project_id'} or not isinstance(value['project_id'], str):
+                            raise ProductError('云数字人取消字段无效')
+                        return self.respond(200, sticker_result(
+                            stickers().cancel_cloud_dh_generation(value['project_id'])))
                     if path == '/api/avatar-preparation/start':
                         if set(value)!={'source','name','resolution'}:
                             raise AvatarError('视频制作字段无效')

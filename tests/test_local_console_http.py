@@ -1600,6 +1600,48 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual([item['id'] for item in projects], [project_id])
         self.assertEqual(self.call('/api/stickers/cancel', {'project_id': project_id})[1]['status'], 'idle')
 
+    def test_cloud_dh_project_import_generate_reopen_and_media(self):
+        status, value = self.call('/api/cloud-dh/create', {'name':'云形象项目'})
+        self.assertEqual(status, 201, value)
+        project_id = value['project']['id']
+        self.assertEqual(self.call('/api/cloud-dh/update', {
+            'project_id':project_id, 'data':{'name':'云形象项目','avatar_prompt':'青色服装'}})[0], 200)
+        self.assertEqual(self.call('/api/cloud-dh/update', {
+            'project_id':project_id, 'data':{'outputs':{'video':'foreign'}}})[0], 400)
+
+        from PIL import Image
+        avatar = Path(self.directory.name)/'cloud-avatar.png'
+        Image.new('RGB', (96, 160), 'blue').save(avatar, 'PNG')
+        audio = Path(self.directory.name)/'cloud-audio.wav'
+        with wave.open(str(audio), 'wb') as stream:
+            stream.setparams((1,2,24000,0,'NONE','not compressed'))
+            stream.writeframes(b'\x00\x00' * 24000)
+        self.assertEqual(self.call('/api/cloud-dh/import-avatar', {
+            'project_id':project_id,'source':str(avatar)})[0], 200)
+        self.assertEqual(self.call('/api/cloud-dh/import-audio', {
+            'project_id':project_id,'source':str(audio)})[0], 200)
+
+        from recovered import runninghub_talk
+        def provider(**kwargs):
+            Path(kwargs['dest']).write_bytes(b'\0\0\0\x18ftypmp42-cloud-video')
+            return {'task_id':'http-cloud','status':'success','video_path':str(kwargs['dest'])}
+        with patch.object(runninghub_talk, '_generate_talk_video_cancellable', side_effect=provider):
+            status, generated = self.call('/api/cloud-dh/generate-video', {
+                'project_id':project_id,'runninghub_api_key':'request-only-key'})
+        self.assertEqual(status, 200, generated)
+        reopened = self.call('/api/cloud-dh?project_id=' + project_id)[1]['project']
+        self.assertEqual(reopened['generation_task']['status'], 'succeeded')
+        self.assertEqual(reopened['generation_task']['operation'], 'generate_video')
+        projects = self.call('/api/cloud-dh')[1]['projects']
+        self.assertEqual((projects[0]['id'], projects[0]['video_ready']), (project_id, True))
+        with urlopen(self.base + '/api/cloud-dh/media?' + urlencode({
+                'project_id':project_id,'kind':'video'}), timeout=3) as response:
+            self.assertEqual(response.headers['Content-Type'], 'video/mp4')
+            self.assertIn(b'ftyp', response.read(16))
+        self.assertEqual(self.call('/api/cloud-dh/media?' + urlencode({
+            'project_id':project_id,'kind':'foreign'}))[0], 400)
+        self.assertEqual(self.call('/api/cloud-dh/cancel', {'project_id':project_id})[1]['status'], 'idle')
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
