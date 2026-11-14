@@ -1,6 +1,7 @@
 """Recovered plugin checks from the main extension."""
 
 import json
+import hashlib
 import os
 import re
 import subprocess
@@ -158,12 +159,45 @@ class PluginInstallerService:
         file_path = os.path.abspath(file_path)
         if not os.path.isfile(file_path):
             raise FileNotFoundError(file_path)
+        self._verify_bundled_installer(file_path)
         command = f"$ErrorActionPreference = 'Stop'; $p = Start-Process -FilePath '{_escape_ps(file_path)}'"
         if args:
             arguments = _escape_ps(subprocess.list2cmdline(args))
             command += f" -ArgumentList '{arguments}'"
         command += " -Verb RunAs -Wait -PassThru; exit $p.ExitCode"
         subprocess.run(["powershell.exe", "-NoProfile", "-Command", command], check=True)
+
+    @staticmethod
+    def _sha256(file_path):
+        digest = hashlib.sha256()
+        with open(file_path, "rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _verify_bundled_installer(self, file_path):
+        plugin_root = Path(self.plugin_dir).resolve()
+        candidate = Path(file_path).resolve()
+        try:
+            relative = candidate.relative_to(plugin_root).as_posix()
+        except ValueError as error:
+            raise ValueError("安装程序不在受信任的插件目录内") from error
+        manifest_path = plugin_root / "installer-manifest.json"
+        if not manifest_path.is_file():
+            raise FileNotFoundError("缺少插件安装包完整性清单 installer-manifest.json")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        record = (manifest.get("files") or {}).get(relative) if isinstance(manifest, dict) else None
+        if not isinstance(record, dict):
+            raise ValueError(f"插件安装包未登记: {relative}")
+        expected = str(record.get("sha256") or "").strip().lower()
+        size = record.get("size")
+        if len(expected) != 64 or any(character not in "0123456789abcdef" for character in expected):
+            raise ValueError(f"插件安装包哈希记录无效: {relative}")
+        if type(size) is not int or size < 1 or candidate.stat().st_size != size:
+            raise ValueError(f"插件安装包大小校验失败: {relative}")
+        if self._sha256(candidate) != expected:
+            raise ValueError(f"插件安装包 SHA-256 校验失败: {relative}")
+        return {"path": str(candidate), "relative_path": relative, "sha256": expected, "size": size}
 
     def _install_webview(self):
         installer = os.path.join(self.plugin_dir, "MicrosoftEdgeWebview2Setup.exe")

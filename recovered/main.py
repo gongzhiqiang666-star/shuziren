@@ -581,24 +581,52 @@ class Api(PluginInstallerApi):
         path = self._oba_state_path(); path.parent.mkdir(parents=True, exist_ok=True); path.write_text(str(exe_path), encoding="utf-8")
 
     def _find_oba_live_installed_exe(self):
+        approved_roots = [Path(os.environ.get("LOCALAPPDATA", "")) / "Programs/oba-live-tool",
+                          Path(os.environ.get("PROGRAMFILES", "")) / "oba-live-tool",
+                          Path(self.runtime_dir) / "oba-live-tool"]
         candidates = []
-        try: candidates.append(Path(self._oba_state_path().read_text(encoding="utf-8").strip()))
-        except OSError: pass
-        candidates += [Path(os.environ.get("LOCALAPPDATA", "")) / "Programs/oba-live-tool/oba-live-tool.exe",
-                       Path(os.environ.get("PROGRAMFILES", "")) / "oba-live-tool/oba-live-tool.exe",
-                       Path(self.runtime_dir) / "oba-live-tool/oba-live-tool.exe"]
-        return str(next((path for path in candidates if str(path) and path.is_file()), ""))
+        try:
+            candidates.append(Path(self._oba_state_path().read_text(encoding="utf-8").strip()))
+        except OSError:
+            pass
+        candidates += [root / "oba-live-tool.exe" for root in approved_roots]
+        for path in candidates:
+            try:
+                resolved = path.expanduser().resolve()
+                if resolved.is_file() and any(resolved.is_relative_to(root.expanduser().resolve()) for root in approved_roots):
+                    return str(resolved)
+            except (OSError, ValueError):
+                continue
+        return ""
 
     def _ensure_oba_live_installer(self):
         import requests
+        from .update_integrity import _require_trusted_url, file_sha256
+
         target = Path(self.runtime_dir) / "oba-live-tool-setup.exe"
-        if target.is_file() and target.stat().st_size: return str(target)
+        expected = str(self.config.get("oba_live_installer_sha256") or "").strip().lower()
+        if len(expected) != 64 or any(character not in "0123456789abcdef" for character in expected):
+            raise ValueError("未配置有效的 OBA 安装包 SHA-256")
+        if target.is_file() and target.stat().st_size and file_sha256(target) == expected:
+            return str(target)
         url = str(self.config.get("oba_live_installer_url") or "").strip()
-        if not url: raise ValueError("未配置 OBA 场控助手安装地址")
-        response = requests.get(url, stream=True, timeout=60); response.raise_for_status()
-        with target.open("wb") as output:
-            for chunk in response.iter_content(1024 * 1024):
-                if chunk: output.write(chunk)
+        if not url:
+            raise ValueError("未配置 OBA 场控助手安装地址")
+        _require_trusted_url(url, "OBA 安装包地址")
+        temporary = target.with_suffix(target.suffix + ".download")
+        temporary.unlink(missing_ok=True)
+        try:
+            with requests.get(url, stream=True, timeout=60) as response:
+                response.raise_for_status()
+                with temporary.open("wb") as output:
+                    for chunk in response.iter_content(1024 * 1024):
+                        if chunk:
+                            output.write(chunk)
+            if not temporary.stat().st_size or file_sha256(temporary) != expected:
+                raise ValueError("OBA 安装包 SHA-256 校验失败")
+            os.replace(temporary, target)
+        finally:
+            temporary.unlink(missing_ok=True)
         return str(target)
 
     def launch_oba_live_tool(self):
