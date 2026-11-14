@@ -45,3 +45,9 @@ Windows 实测选择 VB-Audio CABLE Input 全局编号 4，使用产品播放器
 - 四段文本逐段一致，输出时长与时间戳差值一致。
 
 `tests/test_audio_clip_api.py` 2 项通过：优先选择实际存在的 assets 模型、连续任务目录不相同；识别失败清理自身半成品而不删除另一任务文件。恢复基线通过。实测输出保留在本机媒体运行目录，模型、媒体和生成片段不提交 Git。
+
+## A06-02 切片 manifest
+
+每个成功任务在独立目录生成 `manifest.json`，记录 schema、源文件名与 SHA-256、16 kHz 规范化音频 SHA-256、ASR 模型根标识、最小/最大分段参数，以及每段的文件名、文本、起止毫秒、时长和 WAV/TXT SHA-256。manifest 先写 pending，flush/fsync 后原子替换；manifest 失败会使整个任务失败并由 API 清理该任务目录。
+
+自动回归累计 3 项，新增两段构造识别结果的 manifest 字段、摘要和 pending 清理验证。真实 FunASR 再跑 22.49 秒 WAV，API 返回 manifest，源摘要为 `3f163b0f…d8007`，规范化音频摘要为 `cd8741c9…2797f`，4 段的 8 个媒体/文本摘要均为 64 位。真实产物只保留本机，不提交媒体。

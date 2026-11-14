@@ -5,11 +5,52 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import hashlib
+import json
+import os
 from pathlib import Path
 
 
 def _normalize_text(text):
     return re.sub(r"\s+", "", str(text or "")).strip()
+
+
+def _file_sha256(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _write_manifest(destination, source, audio_path, asr_weight_path,
+                    min_seconds, max_seconds, outputs):
+    destination = Path(destination)
+    manifest = {
+        "schema_version": 1,
+        "source_name": Path(source).name,
+        "source_sha256": _file_sha256(source),
+        "normalized_audio_sha256": _file_sha256(audio_path),
+        "asr_model_root": Path(asr_weight_path).name,
+        "min_seconds": min_seconds,
+        "max_seconds": max_seconds,
+        "segments": [],
+    }
+    for item in outputs:
+        audio, text = Path(item["audio_path"]), Path(item["text_output_path"])
+        manifest["segments"].append({
+            "audio_file": audio.name, "text_file": text.name, "text": item["text"],
+            "start": item["start"], "end": item["end"],
+            "actual_duration": item["actual_duration"],
+            "audio_sha256": _file_sha256(audio), "text_sha256": _file_sha256(text),
+        })
+    target, pending = destination / "manifest.json", destination / ".manifest.json.pending"
+    with pending.open("w", encoding="utf-8") as stream:
+        json.dump(manifest, stream, ensure_ascii=False, indent=2)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(pending, target)
+    return target
 
 
 def _funasr_result_to_sentence_info(result):
@@ -91,4 +132,6 @@ def process_and_split_audio(file_path, output_dir, asr_weight_path,
         outputs.append({"audio_path": str(audio_output), "text_output_path": str(text_output),
                         "text": text, "start": start_ms, "end": end_ms,
                         "actual_duration": (end_ms - start_ms) / 1000})
+    _write_manifest(destination, source, audio_path, asr_weight_path,
+                    min_seconds, max_seconds, outputs)
     return outputs

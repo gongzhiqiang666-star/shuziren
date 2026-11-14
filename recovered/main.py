@@ -1064,7 +1064,9 @@ class Api(PluginInstallerApi):
         except Exception as error:
             shutil.rmtree(output_dir, ignore_errors=True)
             return {"status": "error", "message": str(error)}
-        return {"status": "success", "files": files, "output_dir": str(output_dir)}
+        manifest_path = output_dir / "manifest.json"
+        return {"status": "success", "files": files, "output_dir": str(output_dir),
+                "manifest_path": str(manifest_path) if manifest_path.is_file() else ""}
 
     def _get_asr_weight_path(self):
         candidates = (
