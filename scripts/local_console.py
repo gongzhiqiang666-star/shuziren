@@ -316,6 +316,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             'reply_review': {**verdicts, 'unreviewed': len(queued_replies) - sum(verdicts.values()),
                                              'timed': len(review_times), 'seconds': sum(review_times) if review_times else None},
                             'products': report['products'],
+                            'video_counters': report['video_counters'],
                             'lineup_baseline': report['lineup_baseline'],
                             'preparation_applications': data.live_preparation_applications(session['session_id']),
                             'observed_product_order': (

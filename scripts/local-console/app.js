@@ -2229,7 +2229,11 @@ $('live-compare-form').addEventListener('submit', event => {
       const plans = result.preparation_applications.map(plan =>
         `${label} · 已审核轮播计划 ${plan.revision} · ${plan.items.map(item =>
           `${item.title}（版本 ${item.product_version}）`).join(' → ')}`);
-      return [summary, reviewLine,
+      const counters = result.video_counters;
+      const diagnostics = counters ? [
+        `${label} · 直驱播放器复用 ${counters.reused_frames} 帧 · 停止时队列剩余 ${counters.queue_length} 帧`,
+      ] : [];
+      return [summary, ...diagnostics, reviewLine,
         `${label} · 已记录的重复问题 ${result.repeated_question_groups} 组（首次之后 ${result.repeat_question_occurrences} 次）· 未入队提问 ${result.unqueued_questions} 条`,
         `${label} · 人工排品基线 ${lineup ?? '未关联'}`,
         ...plans, `${label} · 实际口播顺序 ${observed.join(' → ') || '未记录'}`, ...products];
