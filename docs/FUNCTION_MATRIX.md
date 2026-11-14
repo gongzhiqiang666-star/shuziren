@@ -66,7 +66,7 @@
 | MED-007 | IndexTTS 本地语音推理 | `voice_infer_v3.pyd` | `voice_infer_v3.py` | 静态验证通过 | V03 真实 CUDA 新文本、缓存/取消/恢复、双参考 A/B/A 和 ASR/声纹核验已通过；637 字长文本分段、PCM 合并、原子发布和失败清理通过 4 项测试及 Windows RTX/CUDA 真实生成，见 `evidence/v03-indextts-long-text.md`。人工听感、高并发峰值、长稳及麦克风页面实录仍待最终验收 |
 | MED-008 | 马来语/越南语本地语音 | 对应 `voice_infer_*_local.pyd` | `local_voice.py`, `voice_infer_v2.py`, `voice_infer_malai_local.py`, `voice_infer_vietnam_local.py` | 静态验证通过 | 产品主链的 `malai_local`/`vietnam_local` 统一路由常驻 OmniVoice，并固定 `ms-MY`/`vi-VN`；原 F5 服务客户端保留为兼容适配器。RTX 3060 两语言真实合成、缓存隔离及各约 70 秒轮播/插播/接管/双轨回采通过；2 项路由测试及完整契约通过，见 `evidence/a01-multilingual-local-voice.md`。人工发音听感、口音语料、CPU 性能和原 F5 服务差分仍待验 |
 | MED-009 | Minimax/CosyVoice 在线音色克隆与生成 | `start_voice_clone_*`、在线语音模块 | `online_voice_generate.py`, `cosyvoice.py` | 静态验证通过 | 真实账号、区域端点、上传、鉴权和计费错误 |
-| MED-010 | 离线形象克隆 | `start_clone_local/clone_video_local` | `clone_manager.py`, `image_clone_*`、`scripts/avatar_store.py`、`scripts/avatar_tasks.py`、`scripts/render_tasks.py`、`scripts/raw_video_writer.py` | 开发中 | V04真实720p制作、原生关键点差分、形象管理及页面生成/完整播放/取消/失效通过对应范围；直接NVENC候选两后端各50条完整媒体、精度及旧编码数值筛查通过，TRT热态32.818fps/P95 33.027ms达标。主ASR分歧保留、人工质量/多分辨率/KT板、实际持续输出仍待验收；V04-04f产品方案选择/绑定/真实编码取消与页面恢复已通过对应范围 |
+| MED-010 | 离线形象克隆 | `start_clone_local/clone_video_local` | `clone_manager.py`, `image_clone_*`、`scripts/avatar_store.py`、`scripts/avatar_tasks.py`、`scripts/render_tasks.py`、`scripts/raw_video_writer.py` | 静态验证通过 | V04 真实 720p 制作、原生关键点差分、形象管理及页面生成/播放/取消/失效已通过；新增 480p 和 1080p 各50帧真实 FFmpeg+SCRFD/PFLD 预处理，帧/位置/媒体元数据一致，见 `evidence/v04-video-preparation.md`。直接 NVENC 两后端各 50 条完整媒体及精度筛查通过，TRT 热态 32.818fps/P95 33.027ms达标；20秒真实持续输出已有证据。主 ASR 分歧、人工动态质量、2K/4K、横屏/多人/遮挡和 KT 板仍待最终验收 |
 | MED-011 | 人脸检测、关键点、口型特征与遮挡处理 | SCRFD/S3FD/PFLD/WeNet/Hubert 链 | `image_*`, `s3fd_*`, `pfld_mobileone.py`, `hubert_extractor.py` | 静态验证通过 | 真实权重、GPU、遮挡/侧脸/多人和性能 |
 | MED-012 | 商品图抠图及 KT 板覆盖 | `product_cutout/product_kt_overlay.pyd` | `product_cutout.py`, `product_kt_overlay.py` | 静态验证通过 | 真实模型、透明边缘、尺寸/旋转和直播叠加 |
 
@@ -97,8 +97,8 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 54 |
-| 开发中 | 4 |
+| 静态验证通过 | 55 |
+| 开发中 | 3 |
 | 已分析 | 0 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |
