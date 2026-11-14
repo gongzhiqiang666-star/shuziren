@@ -457,6 +457,13 @@ class ProductStore:
                     if (product is None or product['version'] != item['product_version']
                             or self.selected_script(item['product_id'], connection=db) != item['script_id']):
                         raise Conflict('商品或话术已变化，请重新预览准备包')
+                if 'after_sales_tasks' in preparation:
+                    current_tasks = self.after_sales_tasks(
+                        [item['product_id'] for item in preparation['items']],
+                        current_only=True, connection=db,
+                    )
+                    if current_tasks != preparation['after_sales_tasks']:
+                        raise Conflict('售后整改已变化，请重新预览准备包')
             db.execute("""
                 INSERT INTO live_preparation_applications (session_id, revision, snapshot)
                 VALUES (?, ?, ?) ON CONFLICT(session_id, snapshot) DO NOTHING
@@ -1167,11 +1174,11 @@ class ProductStore:
             if not result.rowcount:
                 raise Conflict('未找到对应售后任务')
 
-    def after_sales_tasks(self, product_ids, *, current_only=False):
+    def after_sales_tasks(self, product_ids, *, current_only=False, connection=None):
         if not product_ids:
             return []
         placeholders = ', '.join('?' for _ in product_ids)
-        with self.connect() as db:
+        with self.connect() if connection is None else nullcontext(connection) as db:
             rows = db.execute(f"""
                 SELECT task.*, report.counts AS current_counts, products.version AS current_version
                 FROM product_after_sales_tasks task LEFT JOIN product_after_sales report

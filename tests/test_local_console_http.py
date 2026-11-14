@@ -16,7 +16,7 @@ from urllib.request import Request, urlopen
 
 from scripts.local_console import InstanceLock, create_server
 from scripts.local_console_config import ConfigStore, shop_data_directory
-from scripts.product_store import ProductStore
+from scripts.product_store import Conflict, ProductStore
 
 
 class ConsoleHTTPTests(unittest.TestCase):
@@ -360,6 +360,8 @@ class ConsoleHTTPTests(unittest.TestCase):
                       f'"{task["source"]}",{task["period_start"]},{task["period_end"]},5\r\n')
         status, corrected = self.call(route + '/import', {**upload, 'csv': correction})
         self.assertEqual((status, corrected['imported']), (200, 1))
+        with self.assertRaisesRegex(Conflict, '售后整改已变化'):
+            store.record_preparation_application('after-sales-scene', snapshot, verify_items=True)
         self.assertEqual(self.call(route + '/task', {**task, 'expected_count': 4})[0], 409)
         self.assertEqual(self.call(preparation + '/rotation', revision)[0], 409)
         self.assertEqual(self.call(package_route)[1]['after_sales_tasks'], [])
