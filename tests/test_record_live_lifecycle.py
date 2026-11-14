@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from recovered.record_live_manager import RecordLiveManager
+from recovered.record_live_manager import _mix_real_shot_audio
 
 
 class _Resource:
@@ -118,6 +119,38 @@ class RecordLiveLifecycleTests(unittest.TestCase):
             self.assertEqual(len(outputs), 1)
             self.assertFalse(outputs[0].exists())
             self.assertEqual(manager.announcement_session["temp_files"], [])
+
+    def test_announcement_interval_is_validated_before_worker_start(self):
+        with TemporaryDirectory() as temporary:
+            source = Path(temporary) / "source.mp4"
+            source.write_bytes(b"source")
+            manager = RecordLiveManager({})
+            manager.video_player = object()
+            manager.is_broadcasting = True
+
+            result = manager.prepare_announcement({
+                "real_shot": {
+                    "video_path": str(source),
+                    "audio_replace_start": 2,
+                    "audio_replace_end": 1,
+                }
+            })
+
+            self.assertEqual(result["status"], "error")
+            self.assertIn("结束时间必须大于开始时间", result["message"])
+            self.assertFalse(manager.announcement_session["is_active"])
+            self.assertIsNone(manager.announcement_session["worker_thread"])
+
+    def test_audio_replacement_is_clamped_to_original_timeline(self):
+        from pydub import AudioSegment
+
+        original = AudioSegment.silent(duration=1000, frame_rate=44100)
+        narration = AudioSegment.silent(duration=500, frame_rate=44100)
+        mixed = _mix_real_shot_audio(original, narration, 0.8, 2.0)
+
+        self.assertEqual(len(mixed), len(original))
+        with self.assertRaisesRegex(ValueError, "位于原音轨内"):
+            _mix_real_shot_audio(original, narration, 2.0, 3.0)
 
 
 if __name__ == "__main__":

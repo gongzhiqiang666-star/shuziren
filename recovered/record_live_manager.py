@@ -42,8 +42,11 @@ def _mux_real_shot_video(video_path, audio_path, output_path, startupinfo=None):
 def _mix_real_shot_audio(original, narration, start_time, end_time):
     from pydub import AudioSegment
 
-    start_ms = max(0, int(start_time * 1000))
-    end_ms = max(start_ms, int(end_time * 1000))
+    original_duration = len(original)
+    start_ms = min(original_duration, max(0, int(float(start_time) * 1000)))
+    end_ms = min(original_duration, max(0, int(float(end_time) * 1000)))
+    if end_ms <= start_ms:
+        raise ValueError("报时音频替换区间必须位于原音轨内且结束时间大于开始时间")
     silence_duration = end_ms - start_ms
     part1 = original[:start_ms]
     part_middle_silence = AudioSegment.silent(
@@ -212,6 +215,13 @@ class RecordLiveManager:
             end_time = real_shot.get("audio_replace_end", 0)
             if not video_path or not os.path.exists(video_path):
                 return {"status": "error", "message": "实拍视频路径无效"}
+            try:
+                start_time = float(start_time)
+                end_time = float(end_time)
+            except (TypeError, ValueError):
+                return {"status": "error", "message": "报时音频替换区间格式无效"}
+            if start_time < 0 or end_time <= start_time:
+                return {"status": "error", "message": "报时音频替换结束时间必须大于开始时间"}
 
             self.announcement_session["is_active"] = True
             self.announcement_session["temp_files"] = []
