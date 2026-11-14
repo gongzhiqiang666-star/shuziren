@@ -51,15 +51,35 @@ class KuaishouLiveClient:
     async def _connect(self):
         from websockets import connect
 
-        async with connect(
-            self.ws_url,
-            extra_headers=self._get_headers(),
-            ssl=self.ssl_context,
-            ping_interval=None,
-            close_timeout=10,
-        ) as socket:
-            self.reconnect_attempts = 0
-            await self._on_open(socket)
+        while True:
+            try:
+                async with connect(
+                    self.ws_url,
+                    extra_headers=self._get_headers(),
+                    ssl=self.ssl_context,
+                    ping_interval=None,
+                    close_timeout=10,
+                ) as socket:
+                    self.reconnect_attempts = 0
+                    await self._on_open(socket)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                print(f"[连接][{self.room_id}] 连接中断，准备重试")
+
+            if self.reconnect_attempts >= MAX_RECONNECT_ATTEMPTS:
+                print(
+                    f"[重连] 达到最大重连尝试次数 "
+                    f"({MAX_RECONNECT_ATTEMPTS})，放弃连接"
+                )
+                return None
+            delay = self._calculate_reconnect_delay()
+            self.reconnect_attempts += 1
+            print(
+                f"[重连] 第{self.reconnect_attempts}次尝试，"
+                f"等待 {delay:.2f} 秒..."
+            )
+            await asyncio.sleep(delay)
 
     async def _send_heartbeat(self, ws):
         from websockets.exceptions import ConnectionClosed

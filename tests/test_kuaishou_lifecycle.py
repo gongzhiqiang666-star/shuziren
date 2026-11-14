@@ -1,5 +1,10 @@
 import asyncio
+from contextlib import redirect_stdout
+import io
+import sys
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from recovered.kuaishou_v2.KsLive import KuaishouLiveClient
 
@@ -79,6 +84,48 @@ class KuaishouLifecycleTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(client._on_open(_Socket()), timeout=1)
 
         self.assertTrue(message_cancelled.is_set())
+
+    async def test_connect_retries_failure_and_normal_disconnect(self):
+        client = self.client()
+        outcomes = iter(("failure", "success", "cancel"))
+        connect_calls = []
+        waits = []
+
+        class Connection:
+            async def __aenter__(self):
+                outcome = next(outcomes)
+                if outcome == "failure":
+                    raise OSError("private upstream error")
+                if outcome == "cancel":
+                    raise asyncio.CancelledError
+                return _Socket()
+
+            async def __aexit__(self, *_args):
+                return False
+
+        def connect(*args, **kwargs):
+            connect_calls.append((args, kwargs))
+            return Connection()
+
+        async def on_open(_socket):
+            return None
+
+        async def sleep(delay):
+            waits.append(delay)
+
+        client._on_open = on_open
+        client._calculate_reconnect_delay = lambda: 0.25
+        output = io.StringIO()
+        fake_websockets = SimpleNamespace(connect=connect)
+        with patch.dict(sys.modules, {"websockets": fake_websockets}), patch(
+                "recovered.kuaishou_v2.KsLive.asyncio.sleep", new=sleep), redirect_stdout(output):
+            with self.assertRaises(asyncio.CancelledError):
+                await client._connect()
+
+        self.assertEqual(len(connect_calls), 3)
+        self.assertEqual(waits, [0.25, 0.25])
+        self.assertNotIn("private upstream error", output.getvalue())
+        self.assertEqual(connect_calls[0][1]["close_timeout"], 10)
 
 
 if __name__ == "__main__":
