@@ -145,6 +145,9 @@ class ProductStore:
                     session_id TEXT PRIMARY KEY, requested_at REAL NOT NULL,
                     started_at REAL, ended_at REAL, status TEXT NOT NULL,
                     frames INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS live_video_counters (
+                    session_id TEXT PRIMARY KEY REFERENCES live_sessions(session_id),
+                    reused_frames INTEGER NOT NULL, queue_length INTEGER NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_control_events (
                     session_id TEXT NOT NULL, revision INTEGER NOT NULL, manual INTEGER NOT NULL,
                     occurred_at REAL NOT NULL, PRIMARY KEY(session_id, revision));
@@ -565,9 +568,9 @@ class ProductStore:
         return {**summary, 'closing_stock': rows[-1]['stock']}
 
     def record_live_session(self, session_id, requested_at, *, started_at=None, ended_at=None,
-                            status='preparing', frames=0, failure_reason=None):
+                            status='preparing', frames=0, failure_reason=None, video_counters=None):
         with self.connect() as db:
-            db.execute("""
+            result = db.execute("""
                 INSERT INTO live_sessions
                     (session_id, requested_at, started_at, ended_at, status, frames, failure_reason)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -576,6 +579,9 @@ class ProductStore:
                     status = excluded.status, frames = excluded.frames, failure_reason = excluded.failure_reason
                 WHERE live_sessions.ended_at IS NULL
             """, (session_id, requested_at, started_at, ended_at, status, frames, failure_reason))
+            if result.rowcount and ended_at is not None and video_counters is not None:
+                db.execute('INSERT INTO live_video_counters VALUES (?, ?, ?)',
+                           (session_id, video_counters['reused_frames'], video_counters['queue_length']))
 
     def record_live_control(self, session_id, revision, manual, occurred_at):
         with self.connect() as db:
@@ -609,6 +615,9 @@ class ProductStore:
             if session is None:
                 raise ProductError('场次记录不存在')
             trial = db.execute('SELECT snapshot FROM live_lineup_trials WHERE session_id=?', (session_id,)).fetchone()
+            video_counters = db.execute(
+                'SELECT reused_frames, queue_length FROM live_video_counters WHERE session_id=?', (session_id,)
+            ).fetchone()
             products = db.execute("""
                 SELECT product_id, product_version, script_id, COUNT(*) AS completed_segments,
                        MIN(completed_at) AS first_completed_at, MAX(completed_at) AS last_completed_at
@@ -652,6 +661,7 @@ class ProductStore:
             content_summary = self.live_content_summary(session_id, connection=db)
         return {
             'session': dict(session),
+            'video_counters': dict(video_counters) if video_counters else None,
             'lineup_baseline': json.loads(trial['snapshot']) if trial else None,
             'products': [dict(row) for row in products],
             'controls': [{**dict(row), 'manual': bool(row['manual'])} for row in controls],

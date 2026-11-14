@@ -1918,7 +1918,7 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
     const query = new URLSearchParams({session_id:sessionId});
     const [{session, products, controls, rotation_faults, observed_product_switches, queued_replies, lineup_baseline,
       advice_acknowledgments, advice_actions, missing, preparation_applications, content_summary,
-      content_publications}, review, improvements] =
+      content_publications, video_counters}, review, improvements] =
       await Promise.all([request('/api/live/report?' + query), request('/api/live/review?' + query),
         request('/api/live/improvements?' + query)]);
     if (($('live-event-scene').value || liveSession.id) !== sessionId) return;
@@ -1936,6 +1936,9 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       ...rotation_faults.map(item => `${formatTime(item.occurred_at)} · 轮播故障 ${item.event_id} · ${item.reason}`),
       ...observed_product_switches.map(item => `${item.completed_at} · 口播商品变化 ${item.previous_product_id} → ${item.product_id} · 任务 ${item.task_id}`),
     ];
+    if (video_counters) {
+      lines.push(`播放器复用 ${video_counters.reused_frames} 帧 · 停止时队列剩余 ${video_counters.queue_length} 帧`);
+    }
     if (content_summary?.drafts) {
       const {drafts, tracked_drafts, revised_drafts, recorded_publications} = content_summary;
       lines.push(`短视频草稿 ${drafts} 条 · 已登记发布回执 ${recorded_publications} 条`);

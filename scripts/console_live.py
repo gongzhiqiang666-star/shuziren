@@ -362,11 +362,16 @@ class ConsoleLive:
 
     def _record_session(self):
         state = self.status
+        keys = ('reused_frames', 'queue_length')
+        diagnostics = {'video_counters': {key: state[key] for key in keys}} if (
+            state.get('mode') == 'local_video' and state['status'] == 'stopped'
+            and all(key in state for key in keys)) else {}
         try:
             self.tts.products.record_live_session(
                 state['id'], state['requested_at'], started_at=state.get('started_at'),
                 ended_at=state.get('ended_at'), status=state['status'], frames=state['frames'],
                 failure_reason=state.get('error') if state['status'] == 'failed' else None,
+                **diagnostics,
             )
         except sqlite3.Error:
             logging.exception('记录场次生命周期失败')

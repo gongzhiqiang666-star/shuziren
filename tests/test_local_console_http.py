@@ -899,8 +899,13 @@ class ConsoleHTTPTests(unittest.TestCase):
             self.assertEqual(self.call('/api/live/report?session_id=current')[1]['session']['frames'], 26)
             self.assertEqual(self.call('/api/live/report?session_id=previous')[1]['session']['frames'], 200)
             self.assertEqual(store.live_session_record('current')['frames'], 1)
-            store.record_live_session('current', 100, started_at=101, ended_at=104, status='stopped', frames=75)
-            self.assertEqual(self.call('/api/live/report?session_id=current')[1]['session']['frames'], 75)
+        counters = {'reused_frames': 0, 'queue_length': 7}
+        store.record_live_session('current', 100, started_at=101, ended_at=104, status='stopped', frames=75,
+                                  video_counters=counters)
+        report = self.call('/api/live/report?session_id=current')[1]
+        self.assertEqual(report['session']['frames'], 75)
+        self.assertEqual(report['video_counters'], counters)
+        self.assertIsNone(self.call('/api/live/report?session_id=previous')[1]['video_counters'])
 
     def test_live_report_isolates_sessions_and_keeps_missing_metrics_explicit(self):
         store = ProductStore(self.directory.name)
