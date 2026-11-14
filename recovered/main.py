@@ -79,6 +79,8 @@ class Api(PluginInstallerApi):
         self._live_lifecycle_lock = RLock()
         self._live_sticker_generation_lock = RLock()
         self._live_sticker_cancel_events = {}
+        self._cloud_dh_generation_lock = RLock()
+        self._cloud_dh_cancel_events = {}
         self._shutdown_complete = False
         self._live_action_assistant_process = None
         self._audio_editor_process = None
@@ -2454,9 +2456,14 @@ class Api(PluginInstallerApi):
         except Exception as error: return {"status": "error", "message": f"生成数字人形象失败: {error}"}
 
     def generate_cloud_dh_video(self, data):
-        from .runninghub_talk import generate_talk_video
+        from .runninghub_talk import _generate_talk_video_cancellable
+        cancel_event = None; project_id = None
         try:
             project_id = data["project_id"]; info = self._load_cloud_dh_project(project_id)
+            lock, jobs = self._cloud_dh_job_state()
+            with lock:
+                if project_id in jobs: raise RuntimeError("该云数字人项目正在生成")
+                cancel_event = Event(); jobs[project_id] = cancel_event
             outputs = self._get_cloud_dh_output_paths(project_id)
             if not Path(outputs["avatar"]).is_file(): raise FileNotFoundError("请先生成或选择数字人形象")
             if not Path(outputs["audio"]).is_file(): raise FileNotFoundError("请先选择口播音频")
@@ -2464,9 +2471,12 @@ class Api(PluginInstallerApi):
             staged = target.with_name(".数字人口播.pending.mp4")
             staged.unlink(missing_ok=True)
             try:
-                result = generate_talk_video(api_key=self._resolve_cloud_dh_api_key(data), image_path=outputs["avatar"],
-                                             audio_path=outputs["audio"], dest=staged,
-                                             poll_interval=int(data.get("poll_interval", 10)), poll_timeout=int(data.get("poll_timeout", 2400)))
+                result = _generate_talk_video_cancellable(
+                    api_key=self._resolve_cloud_dh_api_key(data), image_path=outputs["avatar"],
+                    audio_path=outputs["audio"], dest=staged,
+                    poll_interval=int(data.get("poll_interval", 10)),
+                    poll_timeout=int(data.get("poll_timeout", 2400)), cancel_check=cancel_event.is_set)
+                if cancel_event.is_set(): raise InterruptedError("云数字人生成已取消")
                 archive = self._archive_cloud_dh_outputs(project_id, info) if target.is_file() else ""
                 os.replace(staged, target)
             finally:
@@ -2476,7 +2486,29 @@ class Api(PluginInstallerApi):
             if archive: info["last_archive"] = archive
             info = self._save_cloud_dh_project(project_id, info)
             return {"status": "success", "result": result, "project": self._attach_cloud_dh_previews(info)}
-        except Exception as error: return {"status": "error", "message": f"生成数字人口播失败: {error}"}
+        except Exception as error:
+            status = "cancelled" if isinstance(error, InterruptedError) else "error"
+            return {"status": status, "message": f"生成数字人口播失败: {error}"}
+        finally:
+            if cancel_event is not None:
+                lock, jobs = self._cloud_dh_job_state()
+                with lock:
+                    if jobs.get(project_id) is cancel_event: jobs.pop(project_id, None)
+
+    def _cloud_dh_job_state(self):
+        if not hasattr(self, "_cloud_dh_generation_lock"):
+            self._cloud_dh_generation_lock = RLock(); self._cloud_dh_cancel_events = {}
+        return self._cloud_dh_generation_lock, self._cloud_dh_cancel_events
+
+    def cancel_cloud_dh_generation(self, project_id):
+        if not isinstance(project_id, str) or not project_id.strip():
+            return {"status": "error", "message": "云数字人项目 ID 无效"}
+        lock, jobs = self._cloud_dh_job_state()
+        with lock:
+            event = jobs.get(project_id)
+            if event is None: return {"status": "idle", "message": "当前没有云数字人生成任务"}
+            event.set()
+        return {"status": "cancel_requested", "project_id": project_id}
 
     def probe_voice_clone_audio(self, audio_path, clone_mode="local"):
         try:

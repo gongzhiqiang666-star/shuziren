@@ -1,6 +1,8 @@
 import tempfile
 import unittest
 import wave
+import threading
+import time
 from pathlib import Path
 from unittest.mock import patch
 from PIL import Image
@@ -21,6 +23,40 @@ class DownloadResponse:
 
 
 class RunningHubTalkTests(unittest.TestCase):
+    def test_talk_cancel_before_upload_has_no_remote_side_effect(self):
+        with patch.object(runninghub_talk, 'upload_file') as upload:
+            with self.assertRaises(InterruptedError):
+                runninghub_talk._generate_talk_video_cancellable(
+                    api_key='key', image_path='image', audio_path='audio', dest='video',
+                    cancel_check=lambda: True)
+        upload.assert_not_called()
+
+    def test_cloud_video_can_be_cancelled_without_replacing_previous_result(self):
+        with tempfile.TemporaryDirectory() as root:
+            api = Api.__new__(Api); api.runtime_dir = Path(root); api.config = {'runninghub_api_key':'key'}
+            project = api.create_cloud_dh_project('cancel video')['project']
+            outputs = api._get_cloud_dh_output_paths(project['id'])
+            Image.new('RGB', (96, 160), 'blue').save(outputs['avatar'], 'PNG')
+            Path(outputs['audio']).write_bytes(b'audio')
+            Path(outputs['video']).write_bytes(b'old-video')
+            entered = threading.Event(); result = []
+            def provider(**kwargs):
+                entered.set()
+                while not kwargs['cancel_check'](): time.sleep(.01)
+                raise InterruptedError('云数字人生成已取消')
+            with patch.object(runninghub_talk, '_generate_talk_video_cancellable', side_effect=provider):
+                worker = threading.Thread(target=lambda: result.append(
+                    api.generate_cloud_dh_video({'project_id':project['id']})))
+                worker.start(); self.assertTrue(entered.wait(2))
+                duplicate = api.generate_cloud_dh_video({'project_id':project['id']})
+                self.assertIn('正在生成', duplicate['message'])
+                self.assertEqual(api.cancel_cloud_dh_generation(project['id'])['status'], 'cancel_requested')
+                worker.join(2); self.assertFalse(worker.is_alive())
+            self.assertEqual(result[0]['status'], 'cancelled')
+            self.assertEqual(Path(outputs['video']).read_bytes(), b'old-video')
+            self.assertFalse(list(Path(outputs['video']).parent.glob('*.pending.mp4')))
+            self.assertEqual(api.cancel_cloud_dh_generation(project['id'])['status'], 'idle')
+
     def test_cloud_media_import_validates_then_versions_inputs(self):
         with tempfile.TemporaryDirectory() as root:
             api = Api.__new__(Api); api.runtime_dir = Path(root); api.config = {}
@@ -134,7 +170,7 @@ class RunningHubTalkTests(unittest.TestCase):
 
             def fail(**_kwargs):
                 raise RuntimeError("network failed")
-            with patch.object(runninghub_talk, "generate_talk_video", side_effect=fail):
+            with patch.object(runninghub_talk, "_generate_talk_video_cancellable", side_effect=fail):
                 result = api.generate_cloud_dh_video({"project_id": project["id"]})
             self.assertEqual(result["status"], "error")
             self.assertEqual(Path(outputs["video"]).read_bytes(), b"old-video")
@@ -144,7 +180,7 @@ class RunningHubTalkTests(unittest.TestCase):
             def succeed(**kwargs):
                 Path(kwargs["dest"]).write_bytes(b"\0\0\0\x18ftypmp42-new")
                 return {"task_id": "task-1", "status": "success", "video_path": str(kwargs["dest"])}
-            with patch.object(runninghub_talk, "generate_talk_video", side_effect=succeed):
+            with patch.object(runninghub_talk, "_generate_talk_video_cancellable", side_effect=succeed):
                 result = api.generate_cloud_dh_video({"project_id": project["id"]})
             self.assertEqual(result["status"], "success")
             self.assertIn(b"ftyp", Path(outputs["video"]).read_bytes())

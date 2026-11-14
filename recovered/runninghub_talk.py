@@ -157,12 +157,14 @@ def download_file(url: str, dest, timeout: int = 300) -> Path:
         temporary.unlink(missing_ok=True)
 
 
-def generate_talk_video(*, api_key: str, image_path, audio_path, dest,
-                        audio_duration: float | None = None, poll_interval: int = 10,
-                        poll_timeout: int = 2400):
+def _generate_talk_video_cancellable(*, api_key: str, image_path, audio_path, dest,
+                                     audio_duration: float | None = None, poll_interval: int = 10,
+                                     poll_timeout: int = 2400, cancel_check=None):
     if not 0 <= poll_interval <= 300 or not 1 <= poll_timeout <= 86400:
         raise ValueError("轮询间隔或超时无效")
+    if cancel_check and cancel_check(): raise InterruptedError("云数字人生成已取消")
     image_remote = upload_file(api_key=api_key, file_path=image_path)
+    if cancel_check and cancel_check(): raise InterruptedError("云数字人生成已取消")
     audio_remote = upload_file(api_key=api_key, file_path=audio_path)
     duration = float(audio_duration) if audio_duration is not None else get_audio_duration(str(audio_path))
     task_id = create_talk_task(api_key=api_key, image_remote=image_remote,
@@ -170,11 +172,21 @@ def generate_talk_video(*, api_key: str, image_path, audio_path, dest,
     deadline = time.monotonic() + poll_timeout
     last = None
     while time.monotonic() < deadline:
+        if cancel_check and cancel_check(): raise InterruptedError("云数字人生成已取消")
         last = query_talk_task(api_key=api_key, task_id=task_id)
         if last["status"] == "success":
+            if cancel_check and cancel_check(): raise InterruptedError("云数字人生成已取消")
             path = download_file(last["video_url"], dest)
             return {**last, "video_path": str(path)}
         if last["status"] == "failed":
             raise RuntimeError(f"RunningHub InfiniteTalk 失败: {last['fail_reason']}")
         time.sleep(poll_interval)
     raise TimeoutError(f"RunningHub InfiniteTalk taskId={task_id} 超时，最后状态={last}")
+
+
+def generate_talk_video(*, api_key: str, image_path, audio_path, dest,
+                        audio_duration: float | None = None, poll_interval: int = 10,
+                        poll_timeout: int = 2400):
+    return _generate_talk_video_cancellable(
+        api_key=api_key, image_path=image_path, audio_path=audio_path, dest=dest,
+        audio_duration=audio_duration, poll_interval=poll_interval, poll_timeout=poll_timeout)
