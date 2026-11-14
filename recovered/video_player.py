@@ -279,6 +279,13 @@ class Player:
                     audio_sample_rate=getattr(self._audio_output, "sample_rate", AUDIO_SAMPLE_RATE),
                 )
                 self._main_worker.start()
+                self._main_worker.wait_until_ready(timeout_seconds=0.75)
+                if self._main_worker.last_error:
+                    raise RuntimeError(
+                        f"视频源解码失败: {self._main_worker.last_error}"
+                    )
+                if self._main_worker.finished and not self._main_worker.has_media_packets():
+                    raise RuntimeError("视频源没有可播放画面")
                 thread = Thread(target=self._run_playback, args=(audio,), daemon=True)
                 thread.start()
                 self._play_thread = thread
@@ -522,6 +529,7 @@ class _SourceWorker:
         self.discard_event = Event()
         self.thread = None
         self.finished = False
+        self.last_error = ""
         self._frame_processor_failed = False
         self.keep_warm_when_paused = self.is_stream_source
 
@@ -573,6 +581,10 @@ class _SourceWorker:
                 return
             sleep(0.01)
 
+    def has_media_packets(self):
+        with self.queue.mutex:
+            return any(item is not _EOF for item in self.queue.queue)
+
     def _apply_frame_processor(self, item):
         if self.frame_processor is None or self._frame_processor_failed:
             return item
@@ -599,6 +611,8 @@ class _SourceWorker:
                 if self.stop_event.is_set():
                     break
                 self._enqueue_packet(self._apply_frame_processor(packet))
+        except Exception as error:
+            self.last_error = str(error) or error.__class__.__name__
         finally:
             self.finished = True
             if not self.stop_event.is_set():
@@ -684,6 +698,8 @@ def _iter_packets(source, loop, stop_event, pause_event, audio_sample_rate=AUDIO
                 yield from packets
         except Exception:
             if not loop or stop_event.is_set():
+                raise
+            if not _is_stream_source(source):
                 raise
             sleep(0.5)
         if not loop:

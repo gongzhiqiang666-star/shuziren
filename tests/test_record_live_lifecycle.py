@@ -1,4 +1,8 @@
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+import io
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from recovered.record_live_manager import RecordLiveManager
 
@@ -53,6 +57,20 @@ class RecordLiveLifecycleTests(unittest.TestCase):
         self.assertTrue(manager.stop_live())
         self.assertFalse(manager.announcement_session["is_active"])
         self.assertIsNone(manager.announcement_session["worker_thread"])
+
+    def test_corrupt_local_video_fails_before_broadcast_success(self):
+        with TemporaryDirectory() as temporary:
+            source = Path(temporary) / "broken.mp4"
+            source.write_bytes(b"not-a-video")
+            manager = RecordLiveManager({})
+
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                result = manager.start_live(str(source), output_mode="vcam")
+
+            self.assertFalse(result)
+            self.assertIn("视频源解码失败", manager.last_error)
+            self.assertFalse(manager.is_broadcasting)
+            self.assertIsNone(manager.video_player)
 
 
 if __name__ == "__main__":
