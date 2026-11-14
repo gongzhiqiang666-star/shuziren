@@ -337,6 +337,8 @@ class FaceHandVideoStreamManager:
         with self._clip_lock:
             for queue in self._audio_queues.values():
                 queue.clear()
+            self._tts_samples = np.empty(0, dtype=np.float32)
+            self._tts_path = None
 
     def _load_tts(self, path):
         return self._decode_audio(path)

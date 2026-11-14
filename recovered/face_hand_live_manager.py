@@ -375,6 +375,7 @@ class FaceHandLiveManager:
         while True:
             try: queue.get_nowait(); self._adjust_pending_audio("normal",-1)
             except Empty: break
+        self._audio_product_map.clear()
         if self._player: self._player.clear_audio_queues()
 
     def _enqueue_tts(self,text,*,queue="normal",product_index=None):
