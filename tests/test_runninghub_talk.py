@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 from unittest.mock import patch
 from PIL import Image
@@ -20,6 +21,36 @@ class DownloadResponse:
 
 
 class RunningHubTalkTests(unittest.TestCase):
+    def test_cloud_media_import_validates_then_versions_inputs(self):
+        with tempfile.TemporaryDirectory() as root:
+            api = Api.__new__(Api); api.runtime_dir = Path(root); api.config = {}
+            project = api.create_cloud_dh_project('media import')['project']
+            outputs = api._get_cloud_dh_output_paths(project['id'])
+            Image.new('RGB', (80, 120), 'red').save(outputs['avatar'], 'PNG')
+            Path(outputs['video']).write_bytes(b'old-video')
+            invalid = Path(root)/'invalid.png'; invalid.write_bytes(b'not-an-image')
+            with self.assertRaises(Exception): api._import_cloud_dh_file(project['id'], 'avatar', invalid)
+            self.assertTrue(Path(outputs['video']).is_file())
+            valid = Path(root)/'valid.png'; Image.new('RGB', (96, 160), 'blue').save(valid, 'PNG')
+            imported = api._import_cloud_dh_file(project['id'], 'avatar', valid)
+            self.assertEqual(imported['status'], 'success')
+            self.assertFalse(Path(outputs['video']).exists())
+
+            Path(outputs['video']).write_bytes(b'avatar-video')
+            invalid_audio = Path(root)/'invalid.wav'; invalid_audio.write_bytes(b'not-audio')
+            with self.assertRaises(Exception): api._import_cloud_dh_file(project['id'], 'audio', invalid_audio)
+            self.assertTrue(Path(outputs['video']).is_file())
+            audio = Path(root)/'valid.wav'
+            with wave.open(str(audio), 'wb') as stream:
+                stream.setparams((1, 2, 24000, 0, 'NONE', 'not compressed'))
+                stream.writeframes(b'\x00\x00' * 24000)
+            imported = api._import_cloud_dh_file(project['id'], 'audio', audio)
+            self.assertEqual(imported['status'], 'success')
+            self.assertFalse(Path(outputs['video']).exists())
+            self.assertGreater(Path(outputs['audio']).stat().st_size, 44)
+            history = Path(api._get_cloud_dh_history_dir(project['id']))
+            self.assertGreaterEqual(len(list(history.rglob('数字人口播.mp4'))), 2)
+
     def test_cloud_avatar_is_validated_before_replacing_versioned_project(self):
         with tempfile.TemporaryDirectory() as root:
             api = Api.__new__(Api); api.runtime_dir = Path(root); api.config = {"runninghub_api_key": "key"}

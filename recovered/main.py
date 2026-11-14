@@ -2381,9 +2381,35 @@ class Api(PluginInstallerApi):
         selected = webview.windows[0].create_file_dialog(webview.OPEN_DIALOG, file_types=extensions)
         if not selected: return {"status": "cancelled"}
         source = Path(selected[0] if isinstance(selected, (list, tuple)) else selected)
+        return self._import_cloud_dh_file(project_id, kind, source)
+
+    def _import_cloud_dh_file(self, project_id, kind, source):
+        if kind not in ("avatar", "audio"): raise ValueError("云数字人素材类型无效")
+        info = self._load_cloud_dh_project(project_id)
+        source = Path(source).expanduser().resolve()
+        if not source.is_file() or source.stat().st_size == 0: raise FileNotFoundError("素材文件不存在或为空")
         outputs = self._get_cloud_dh_output_paths(project_id); target = Path(outputs[kind])
-        target.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(source, target)
-        info = self._save_cloud_dh_project(project_id, self._load_cloud_dh_project(project_id))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        staged = target.with_name(f".{target.name}.importing"); staged.unlink(missing_ok=True)
+        try:
+            shutil.copy2(source, staged)
+            if kind == "avatar":
+                from PIL import Image
+                with Image.open(staged) as image:
+                    image.verify()
+                    if image.width < 64 or image.height < 64: raise ValueError("数字人形象尺寸过小")
+            else:
+                duration = float(get_audio_duration(str(staged)))
+                if not 0 < duration <= 3600: raise ValueError("口播音频时长无效")
+            archive = self._archive_cloud_dh_outputs(project_id, info) if any(
+                Path(path).is_file() for path in outputs.values()) else ""
+            os.replace(staged, target)
+            Path(outputs["video"]).unlink(missing_ok=True)
+        finally:
+            staged.unlink(missing_ok=True)
+        info.pop("last_task", None)
+        if archive: info["last_archive"] = archive
+        info = self._save_cloud_dh_project(project_id, info)
         return {"status": "success", "path": str(target), "project": self._attach_cloud_dh_previews(info)}
 
     def pick_cloud_dh_audio(self, data):
