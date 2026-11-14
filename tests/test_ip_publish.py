@@ -1,4 +1,6 @@
 import tempfile
+import threading
+import types
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -9,6 +11,19 @@ from recovered.main import Api
 
 
 class IpPublishTests(unittest.TestCase):
+    @staticmethod
+    def _uploader_modules(function):
+        tools_module = types.ModuleType("tools")
+        tools_module.__path__ = []
+        package = types.ModuleType("tools.social_auto_upload")
+        package.__path__ = []
+        module = types.ModuleType("tools.social_auto_upload.test")
+        module.publish_video_to_platforms = function
+        tools_module.social_auto_upload = package
+        package.test = module
+        return {"tools": tools_module, "tools.social_auto_upload": package,
+                "tools.social_auto_upload.test": module}, module
+
     def _api(self, root, info):
         api = Api.__new__(Api)
         api.runtime_dir = Path(root)
@@ -79,6 +94,80 @@ class IpPublishTests(unittest.TestCase):
                 result = api.publish_ip_agent_video("id", {"platforms": ["douyin"]})
             self.assertTrue(result["already_published"])
             self.assertEqual(result["publish_result"], previous)
+
+    def test_uploader_failure_is_persisted_and_can_be_retried(self):
+        with tempfile.TemporaryDirectory() as root:
+            video = Path(root) / "video.mp4"
+            video.write_bytes(b"video")
+            state = {"name": "项目", "final_video_path": str(video)}
+            api = self._api(root, state)
+            api._load_ip_agent_project = lambda project_id: dict(state)
+            api._save_ip_agent_project = lambda project_id, value: state.update(value) or dict(state)
+
+            async def fail_upload(**kwargs):
+                raise RuntimeError("登录已失效")
+
+            modules, module = self._uploader_modules(fail_upload)
+            with mock.patch.dict("sys.modules", modules), \
+                    mock.patch("recovered.douyin_benchmark.resolve_ffprobe", return_value="ffprobe"), \
+                    mock.patch("recovered.douyin_benchmark.probe_video"):
+                result = api.publish_ip_agent_video("id", {"platforms": ["douyin"]})
+            self.assertEqual(result["status"], "error")
+            self.assertIn("publish_task", state, result)
+            self.assertEqual(state["publish_task"]["status"], "failed")
+            self.assertIn("登录已失效", state["publish_task"]["error"])
+            self.assertEqual(len(state["publish_attempts"]), 1)
+
+            async def succeed_upload(**kwargs):
+                return {"success": True, "results": {"douyin": {"success": True}}}
+
+            module.publish_video_to_platforms = succeed_upload
+            with mock.patch.dict("sys.modules", {"tools.social_auto_upload.test": module}), \
+                    mock.patch("recovered.douyin_benchmark.resolve_ffprobe", return_value="ffprobe"), \
+                    mock.patch("recovered.douyin_benchmark.probe_video"):
+                retried = api.publish_ip_agent_video("id", {"platforms": ["douyin"]})
+            self.assertEqual(retried["status"], "success")
+            self.assertEqual(state["publish_task"]["status"], "success")
+            self.assertEqual([item["status"] for item in state["publish_attempts"]], ["failed", "success"])
+
+    def test_concurrent_publish_for_same_project_is_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            video = Path(root) / "video.mp4"
+            video.write_bytes(b"video")
+            state = {"name": "项目", "final_video_path": str(video)}
+            api = self._api(root, state)
+            api._load_ip_agent_project = lambda project_id: dict(state)
+            api._save_ip_agent_project = lambda project_id, value: state.update(value) or dict(state)
+            entered = threading.Event()
+            release = threading.Event()
+
+            async def wait_upload(**kwargs):
+                entered.set()
+                release.wait(5)
+                return {"success": True, "results": {"douyin": {"success": True}}}
+
+            modules, module = self._uploader_modules(wait_upload)
+            results = []
+            patches = [mock.patch.dict("sys.modules", modules),
+                       mock.patch("recovered.douyin_benchmark.resolve_ffprobe", return_value="ffprobe"),
+                       mock.patch("recovered.douyin_benchmark.probe_video")]
+            for item in patches:
+                item.start()
+            try:
+                worker = threading.Thread(target=lambda: results.append(
+                    api.publish_ip_agent_video("id", {"platforms": ["douyin"]})))
+                worker.start()
+                self.assertTrue(entered.wait(2), results)
+                duplicate = api.publish_ip_agent_video("id", {"platforms": ["douyin"]})
+                self.assertEqual(duplicate.get("code"), "publish_in_progress")
+                release.set()
+                worker.join(5)
+                self.assertFalse(worker.is_alive())
+                self.assertEqual(results[0]["status"], "success")
+            finally:
+                release.set()
+                for item in reversed(patches):
+                    item.stop()
 
 
 if __name__ == "__main__":

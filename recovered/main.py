@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import yaml
+from datetime import datetime
 from pathlib import Path
 from threading import Event, RLock
 from tempfile import TemporaryDirectory
@@ -1879,6 +1880,24 @@ class Api(PluginInstallerApi):
             return {"status": "success", "steps": state["steps"], "project": project}
 
     def publish_ip_agent_video(self, project_id, data):
+        if data.get("dry_run"):
+            return self._publish_ip_agent_video(project_id, data)
+        if not hasattr(self, "_ip_publish_lock"):
+            self._ip_publish_lock = RLock()
+            self._ip_publish_active = set()
+        project_key = str(project_id)
+        with self._ip_publish_lock:
+            if project_key in self._ip_publish_active:
+                return {"status": "error", "message": "该项目已有发布任务正在运行，请勿重复提交",
+                        "code": "publish_in_progress"}
+            self._ip_publish_active.add(project_key)
+        try:
+            return self._publish_ip_agent_video(project_id, data)
+        finally:
+            with self._ip_publish_lock:
+                self._ip_publish_active.discard(project_key)
+
+    def _publish_ip_agent_video(self, project_id, data):
         import asyncio
         from .douyin_benchmark import probe_video, resolve_ffprobe
         from .ip_publish import build_publish_plan
@@ -1905,6 +1924,14 @@ class Api(PluginInstallerApi):
                     and isinstance(previous, dict) and previous.get("success")):
                 return {"status": "success", "already_published": True,
                         "publish_result": previous, "publish_plan": public_plan}
+            started_at = datetime.now().isoformat(timespec="seconds")
+            attempt = {"request_id": plan["request_id"], "status": "running", "started_at": started_at,
+                       "updated_at": started_at, "plan": public_plan}
+            attempts = list(info.get("publish_attempts") or [])
+            attempts.append(attempt)
+            info.update({"publish_last_request_id": plan["request_id"], "publish_last_plan": public_plan,
+                         "publish_task": attempt, "publish_attempts": attempts[-100:]})
+            self._save_ip_agent_project(project_id, info)
             try:
                 from tools.social_auto_upload.test import publish_video_to_platforms
             except ImportError:
@@ -1930,18 +1957,49 @@ class Api(PluginInstallerApi):
                 thread = threading.Thread(target=runner); thread.start(); thread.join()
                 if "error" in holder: raise holder["error"]
                 result = holder["result"]
-            if not isinstance(result, dict) or not isinstance(result.get("success"), bool):
-                raise ValueError("发布模块返回结构无效")
+            try:
+                if not isinstance(result, dict) or not isinstance(result.get("success"), bool):
+                    raise ValueError("发布模块返回结构无效")
+            except Exception:
+                raise
+            completed_at = datetime.now().isoformat(timespec="seconds")
+            attempt.update({"status": "success" if result.get("success") else "failed",
+                            "updated_at": completed_at, "completed_at": completed_at, "result": result})
             info.update({"publish_platforms": plan["platforms"], "publish_accounts": plan["account_names"],
                          "publish_title": plan["title"], "publish_tags": plan["tags"],
                          "publish_date": public_plan["publish_date"], "publish_last_request_id": plan["request_id"],
                          "publish_last_plan": public_plan,
-                         "publish_last_result": result, "status": "published" if result.get("success") else "publish_failed"})
+                         "publish_last_result": result, "publish_task": attempt,
+                         "publish_attempts": attempts[-100:],
+                         "status": "published" if result.get("success") else "publish_failed"})
             self._save_ip_agent_project(project_id, info)
             return {"status": "success" if result.get("success") else "error", "publish_result": result,
                     "publish_plan": public_plan,
                     "message": "发布任务完成" if result.get("success") else "部分或全部平台发布失败"}
-        except Exception as error: return {"status": "error", "message": f"发布视频失败: {error}"}
+        except Exception as error:
+            if "attempt" in locals():
+                failed_at = datetime.now().isoformat(timespec="seconds")
+                attempt.update({"status": "failed", "updated_at": failed_at,
+                                "completed_at": failed_at, "error": str(error)})
+                try:
+                    failed_info = self._load_ip_agent_project(project_id)
+                    history = list(failed_info.get("publish_attempts") or [])
+                    replaced = False
+                    for index in range(len(history) - 1, -1, -1):
+                        if (history[index].get("request_id") == attempt["request_id"]
+                                and history[index].get("started_at") == attempt["started_at"]):
+                            history[index] = attempt
+                            replaced = True
+                            break
+                    if not replaced:
+                        history.append(attempt)
+                    failed_info.update({"publish_task": attempt, "publish_attempts": history[-100:],
+                                        "publish_last_request_id": attempt["request_id"],
+                                        "publish_last_plan": attempt["plan"], "status": "publish_failed"})
+                    self._save_ip_agent_project(project_id, failed_info)
+                except Exception:
+                    pass
+            return {"status": "error", "message": f"发布视频失败: {error}"}
 
     def _get_live_sticker_base_dir(self):
         return os.path.join(str(self.runtime_dir), "assets", "live_sticker_projects")
