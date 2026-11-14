@@ -1163,7 +1163,11 @@ $('preparation-apply').addEventListener('click', async event => {
     if ($('preparation-package').value !== savedPreparationReview) {
       throw new Error('请先保存当前审阅稿，再载入轮播');
     }
-    const {revision, items} = await request(preparationRoute + '/rotation', {revision:preparationRevision});
+    const requestedRevision = preparationRevision;
+    const {revision, items} = await request(preparationRoute + '/rotation', {revision:requestedRevision});
+    if (revision !== preparationRevision || $('preparation-package').value !== savedPreparationReview) {
+      throw new Error('准备包预览或审阅稿已变化，请重新载入轮播');
+    }
     const missing = items.filter(item => !item.script_id);
     if (missing.length) throw new Error('请先选用话术：' + missing.map(item => item.title).join('、'));
     preparedRotation = {revision, items:items.map(({product_id, product_version, script_id}) =>
@@ -1906,8 +1910,10 @@ $('live-video-path').addEventListener('input', renderLiveButtons);
 $('live-products').addEventListener('change', () => { preparedRotation = null; rotationSelectionEdited = true; renderShiftFields(); renderLiveButtons(); });
 $('live-shifts-enabled').addEventListener('change', renderShiftFields);
 $('live-rotation-start').addEventListener('click', () => liveAction(() => {
-  if (preparedRotation && preparationRevision === preparedRotation.revision
-      && $('preparation-package').value !== savedPreparationReview) {
+  if (preparedRotation && preparationRevision !== preparedRotation.revision) {
+    throw new Error('准备包预览已变化，请重新载入轮播');
+  }
+  if (preparedRotation && $('preparation-package').value !== savedPreparationReview) {
     throw new Error('请先保存当前审阅稿，再启动轮播');
   }
   const product_ids = preparedRotation ? preparedRotation.items.map(item => item.product_id)
