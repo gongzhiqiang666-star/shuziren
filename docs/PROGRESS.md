@@ -811,3 +811,5 @@ V09 / G10-01 候选 6e82a2a 完成 439 项文件清单校验和隔离部署。�
 V09-03 在 C 盘全新临时目录从授权本机参考环境运行 stage_media_runtime --include-origin-video，退出码 0，Python 3.10.16 的 prefix 指向新目录，24 项检查全部通过。D 盘剩余空间低于已有直驱媒体目录大小，故使用 C 盘。本轮覆盖构建与解释器重定位，新目录的实际 GPU 推理及干净整机仍待验。
 
 V09-03 / A01-05 全新构建媒体目录的 CUDA 直驱实测通过。正式控制台 HTTP 开播后输出 26 帧，跳转 2000 ms 后增至 51，正常停播记录 56 帧。证据 logs/validation/v09-fresh-media-gpu-01/result.json。此次使用现有 Windows 主机和 WASAPI 虚拟音频，无接收端回采。
+
+V09-03 / A01-05 新媒体目录的直驱音频回采首轮完成 6 秒录制和跳转，但对照素材经 FFprobe 确认为仅视频轨，回采六段峰值均为 2，不能用于验证原声。证据 logs/validation/v09-fresh-media-audio-01/receiver.wav。下轮使用确认含非静音音轨的样片复验。
