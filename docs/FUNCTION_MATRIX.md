@@ -25,7 +25,7 @@
 | SYS-004 | 系统配置、用户配置合并与私密配置迁移 | `main.pyd` 配置调用链 | `main_config.py` | Windows 验证通过 | 隔离 `%LOCALAPPDATA%` 完成旧私密字段迁移、交付配置清理和运行值恢复；损坏配置、迁移失败、原子替换失败均不覆盖或丢失上一份有效数据，6 项专项及恢复五关通过，见 `evidence/a07-user-config-migration.md`。物理断电、企业目录重定向和杀毒占用留待最终整机兼容验收 |
 | SYS-005 | pywebview 主窗口及前后端 JS API | `main.main/_main/run_webview` | `main_webview.py`, `main.py`, `main_shutdown.py` | Windows 验证通过 | 本机 pywebview 真实创建“AI数字人直播”窗口，句柄非零且响应正常；系统关窗后 5 秒内退出并恰调用一次 shutdown。开发/生产 URL、JS API 绑定、窗口参数、信号和多资源故障隔离自动验证通过。Computer Use 原生管道仍缺失，页面内点击、任务管理器及异常窗口待补验，见 `evidence/v01-webview-lifecycle.md` |
 | SYS-006 | 登录 Token、管理员/OEM 信息与背景资源 | Token `0x1800644b0/0x180064620`, `0x180064dd0/0x180065090`, `0x180065880/0x1800659f0`; 管理员/OEM/背景/版本原生主体 | `main.py` | Windows 验证通过 | Token 精确保存/清除、恰好 16 KiB 边界、超限及失败无副作用 3 项通过；授权 Windows 包真实管理员 ID 和 177,479 字节 PNG 背景读取成功，缺 OEM 安全返回空对象；资源路径与上限 3 项通过，见 `evidence/a07-token-persistence.md`。原 `.pyd` 文案、旧 OEM 样本和前端远端登录流待外部条件 |
-| SYS-007 | 本地资源枚举、预览与删除 | main wrapper/body `get_local_resources` `0x1800b9320/0x1800b9490`、`delete_model` `0x1800b7980/0x1800b7c40`、`delete_voice` `0x1800b8650/0x1800b8910`；CloneManager 枚举/信息写入/预览主体见 `rea-output/main-local-resources-notes.md` | `main.py`, `clone_manager.py` | 静态验证通过 | Windows 原 `.pyd` 响应差分、旧生产资源样本、文件占用/权限错误和删除后前端刷新 |
+| SYS-007 | 本地资源枚举、预览与删除 | main wrapper/body `get_local_resources` `0x1800b9320/0x1800b9490`、`delete_model` `0x1800b7980/0x1800b7c40`、`delete_voice` `0x1800b8650/0x1800b8910`；CloneManager 枚举/信息写入/预览主体见 `rea-output/main-local-resources-notes.md` | `main.py`, `clone_manager.py` | Windows 验证通过 | 隔离中文目录的真实 JPEG/WAV 完成枚举、预览、删除及后端刷新；Windows 独占句柄下删除明确失败并保留资源，释放后重试成功；路径逃逸被拒，3 项专项及恢复五关通过，见 `evidence/a07-local-resources.md`。页面点击、原 `.pyd` 文案和旧生产资源变体待外部条件 |
 | SYS-008 | 文件/目录选择及打开目录 | `open_file_dialog/open_directory` wrapper/body `0x1800393c0/0x180039610`、`0x18003cb70/0x18003ce30`，见 `rea-output/main-file-dialog-notes.md` | `main.py` | 静态验证通过 | Windows 原 `.pyd` 响应差分、真实对话框、中文/长路径、Shell 关联程序及权限错误 |
 | SYS-009 | 缓存清理 | `Api.clear_cache` | `main.py`, `cache_cleanup.py`, `audio_cache.py` | 静态验证通过 | 直播中拒绝；仅清理系统临时目录下8类已知缓存，统计文件与字节并报告部分失败；Windows 文件占用实测保留失败文件、释放后重试成功。页面点击和生产缓存规模仍待验 |
 | SYS-010 | 应用更新状态、下载/启动更新器 | `get_update_status/start_app_update` | `main.py`, `update_integrity.py`, `update_text.py` | 静态验证通过 | 已强制远端 HTTPS（本机回环除外）及每包 SHA-256，拒绝路径穿越/绝对路径/符号链接；逐文件临时写入、哈希后原子替换，单版本失败恢复已覆盖和新增文件，6 项专项测试通过。原厂 HTTP 更新端点因安全缺陷不再接受；自有 HTTPS 服务联调、真实更新器窗口、占用文件及整包回滚仍待 Windows 验证，见 `evidence/v09-legacy-updater-hardening.md` |
@@ -97,10 +97,10 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 54 |
+| 静态验证通过 | 53 |
 | 开发中 | 0 |
 | 已分析 | 0 |
-| Windows 验证通过 | 4 |
+| Windows 验证通过 | 5 |
 | 端到端验证通过 | 0 |
 | 合计 | 58 |
 
