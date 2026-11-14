@@ -59,14 +59,17 @@ def checked_path(root, relative):
     return path
 
 
-def inspect_runtime(root):
+def inspect_runtime(root, *, include_origin_video=False):
     root = Path(root).resolve()
     manifest = independent_runtime(root)
     if not manifest:
         raise ValueError('缺少独立媒体运行目录清单')
     checks = []
     media = (manifest.get('python', INDEPENDENT_PYTHON), *MEDIA_FILES[1:])
-    for group, files in (('environment', media), ('models', MODEL_FILES), ('providers', PROVIDER_FILES)):
+    groups = [('environment', media), ('models', MODEL_FILES), ('providers', PROVIDER_FILES)]
+    if include_origin_video:
+        groups.append(('origin_video', ORIGIN_VIDEO_FILES))
+    for group, files in groups:
         for name in files:
             try:
                 present = checked_path(root, name).is_file()
@@ -76,9 +79,9 @@ def inspect_runtime(root):
     return {'layout': INDEPENDENT['layout'], 'checks': checks, 'ready': all(item['present'] for item in checks)}
 
 
-def runtime_fingerprints(root):
+def runtime_fingerprints(root, *, include_origin_video=False):
     root = Path(root).resolve()
-    report = inspect_runtime(root)
+    report = inspect_runtime(root, include_origin_video=include_origin_video)
     if not report['ready']:
         raise ValueError('独立媒体目录缺少必需文件')
     files = {}
@@ -97,7 +100,8 @@ def verify_fingerprints(root, expected):
             type(expected['version']) is not int or expected['version'] != 1
             or expected['layout'] != INDEPENDENT['layout'] or not isinstance(expected['files'], dict)):
         raise ValueError('媒体指纹清单格式无效')
-    actual = runtime_fingerprints(root)['files']
+    include_origin_video = any(name in expected['files'] for name in ORIGIN_VIDEO_FILES)
+    actual = runtime_fingerprints(root, include_origin_video=include_origin_video)['files']
     if actual.keys() != expected['files'].keys():
         raise ValueError('媒体指纹清单与当前布局文件清单不一致')
     mismatches = [name for name, digest in actual.items() if digest != expected['files'][name]]
@@ -109,13 +113,16 @@ def main():
     parser.add_argument('command', choices=('initialize', 'check', 'fingerprint', 'verify'))
     parser.add_argument('--root', required=True, type=Path)
     parser.add_argument('--inventory', type=Path)
+    parser.add_argument('--include-origin-video', action='store_true', help='Include direct video requirements in check or fingerprint')
     args = parser.parse_args()
+    if args.include_origin_video and args.command not in ('check', 'fingerprint'):
+        parser.error('--include-origin-video requires check or fingerprint')
     root = args.root.resolve()
     if args.command in ('fingerprint', 'verify'):
         if args.inventory is None:
             parser.error('--inventory is required')
         if args.command == 'fingerprint':
-            inventory = runtime_fingerprints(root)
+            inventory = runtime_fingerprints(root, include_origin_video=args.include_origin_video)
             with args.inventory.open('x', encoding='utf-8') as stream:
                 json.dump(inventory, stream, indent=2)
             return 0
@@ -127,7 +134,7 @@ def main():
         root.mkdir(parents=True, exist_ok=True)
         with (root / MANIFEST_NAME).open('x', encoding='utf-8') as manifest:
             json.dump(INDEPENDENT, manifest, indent=2)
-    result = inspect_runtime(root)
+    result = inspect_runtime(root, include_origin_video=args.include_origin_video)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if args.command == 'initialize' or result['ready'] else 1
 
