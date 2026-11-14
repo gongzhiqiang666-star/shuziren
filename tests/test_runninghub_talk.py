@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from PIL import Image
 
 from recovered import runninghub_talk
 from recovered.main import Api
@@ -19,6 +20,42 @@ class DownloadResponse:
 
 
 class RunningHubTalkTests(unittest.TestCase):
+    def test_cloud_avatar_is_validated_before_replacing_versioned_project(self):
+        with tempfile.TemporaryDirectory() as root:
+            api = Api.__new__(Api); api.runtime_dir = Path(root); api.config = {"runninghub_api_key": "key"}
+            project = api.create_cloud_dh_project("avatar transaction")["project"]
+            outputs = api._get_cloud_dh_output_paths(project["id"])
+            Image.new('RGB', (80, 120), 'red').save(outputs['avatar'], 'PNG')
+            Path(outputs['audio']).write_bytes(b'old-audio')
+            Path(outputs['video']).write_bytes(b'old-video')
+            old_avatar = Path(outputs['avatar']).read_bytes()
+
+            def invalid(**kwargs): Path(kwargs['dest']).write_bytes(b'broken-image')
+            with patch('recovered.runninghub_image.generate_and_download', side_effect=invalid):
+                failed = api.generate_cloud_dh_avatar({'project_id': project['id']})
+            self.assertEqual(failed['status'], 'error')
+            self.assertEqual(Path(outputs['avatar']).read_bytes(), old_avatar)
+            self.assertEqual(Path(outputs['video']).read_bytes(), b'old-video')
+            self.assertFalse(list(Path(outputs['avatar']).parent.glob('*.pending.png')))
+
+            def valid(**kwargs): Image.new('RGB', (96, 160), 'blue').save(kwargs['dest'], 'PNG')
+            with patch('recovered.runninghub_image.generate_and_download', side_effect=valid):
+                completed = api.generate_cloud_dh_avatar({'project_id': project['id']})
+            self.assertEqual(completed['status'], 'success')
+            self.assertFalse(Path(outputs['video']).exists())
+            with Image.open(outputs['avatar']) as image: self.assertEqual(image.size, (96, 160))
+            history = Path(api._get_cloud_dh_history_dir(project['id']))
+            self.assertEqual(next(history.rglob('数字人形象.png')).read_bytes(), old_avatar)
+            self.assertEqual(next(history.rglob('数字人口播.mp4')).read_bytes(), b'old-video')
+            blue_avatar = Path(outputs['avatar']).read_bytes()
+            Path(outputs['video']).write_bytes(b'newer-video')
+            def second(**kwargs): Image.new('RGB', (96, 160), 'green').save(kwargs['dest'], 'PNG')
+            with patch('recovered.runninghub_image.generate_and_download', side_effect=second):
+                self.assertEqual(api.generate_cloud_dh_avatar({'project_id': project['id']})['status'], 'success')
+            archived_avatars = list(history.rglob('数字人形象.png'))
+            self.assertEqual(len(archived_avatars), 2)
+            self.assertEqual({item.read_bytes() for item in archived_avatars}, {old_avatar, blue_avatar})
+
     def test_completed_without_url_is_not_success(self):
         response = unittest.mock.Mock()
         response.raise_for_status.return_value = None

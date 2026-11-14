@@ -2319,7 +2319,11 @@ class Api(PluginInstallerApi):
         from datetime import datetime
         existing = [Path(path) for path in self._get_cloud_dh_output_paths(project_id).values() if Path(path).is_file()]
         if existing:
-            target = Path(self._get_cloud_dh_history_dir(project_id)) / datetime.now().strftime("%Y%m%d_%H%M%S")
+            root = Path(self._get_cloud_dh_history_dir(project_id))
+            stem = datetime.now().strftime("%Y%m%d_%H%M%S"); target = root / stem
+            suffix = 1
+            while target.exists():
+                target = root / f"{stem}_{suffix:02d}"; suffix += 1
             target.mkdir(parents=True, exist_ok=True)
             for path in existing: shutil.copy2(path, target / path.name)
             return str(target)
@@ -2398,11 +2402,28 @@ class Api(PluginInstallerApi):
         try:
             project_id = data["project_id"]; info = self._load_cloud_dh_project(project_id)
             prompt = build_avatar_prompt(data.get("description") or data.get("avatar_prompt") or info.get("avatar_prompt", ""))
-            output = self._get_cloud_dh_output_paths(project_id)["avatar"]
-            generate_and_download(api_key=self._resolve_cloud_dh_api_key(data), prompt=prompt, dest=output,
-                                  aspect_ratio="9:16", resolution=data.get("resolution", "2k"), quality=data.get("quality", "low"),
-                                  poll_interval=int(data.get("poll_interval", 5)), poll_timeout=int(data.get("poll_timeout", 900)))
-            info["avatar_prompt"] = prompt; info = self._save_cloud_dh_project(project_id, info)
+            outputs = self._get_cloud_dh_output_paths(project_id); output = Path(outputs["avatar"])
+            staged = output.with_name(".数字人形象.pending.png"); staged.unlink(missing_ok=True)
+            try:
+                generate_and_download(api_key=self._resolve_cloud_dh_api_key(data), prompt=prompt, dest=staged,
+                                      aspect_ratio="9:16", resolution=data.get("resolution", "2k"), quality=data.get("quality", "low"),
+                                      poll_interval=int(data.get("poll_interval", 5)), poll_timeout=int(data.get("poll_timeout", 900)))
+                from PIL import Image
+                with Image.open(staged) as image:
+                    image.verify()
+                    if image.width < 64 or image.height < 64: raise ValueError("数字人形象尺寸过小")
+                archive = self._archive_cloud_dh_outputs(project_id, info) if any(
+                    Path(path).is_file() for path in outputs.values()) else ""
+                os.replace(staged, output)
+                # A video generated from the previous avatar must not appear as
+                # the result for the newly selected avatar.
+                Path(outputs["video"]).unlink(missing_ok=True)
+            finally:
+                staged.unlink(missing_ok=True)
+            info["avatar_prompt"] = prompt
+            info.pop("last_task", None)
+            if archive: info["last_archive"] = archive
+            info = self._save_cloud_dh_project(project_id, info)
             return {"status": "success", "project": self._attach_cloud_dh_previews(info)}
         except Exception as error: return {"status": "error", "message": f"生成数字人形象失败: {error}"}
 
