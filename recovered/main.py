@@ -2290,9 +2290,11 @@ class Api(PluginInstallerApi):
 
     def _build_cloud_dh_project_summary(self, project_id, info):
         outputs = self._get_cloud_dh_output_paths(project_id)
+        task = info.get("generation_task") if isinstance(info.get("generation_task"), dict) else {}
         return {"id": project_id, "name": info.get("name", project_id), "updated_at": info.get("updated_at", ""),
                 "avatar_ready": Path(outputs["avatar"]).is_file(), "audio_ready": Path(outputs["audio"]).is_file(),
-                "video_ready": Path(outputs["video"]).is_file()}
+                "video_ready": Path(outputs["video"]).is_file(),
+                "generation_status": task.get("status"), "generation_operation": task.get("operation")}
 
     def _load_cloud_dh_project(self, project_id):
         import yaml
@@ -2307,9 +2309,33 @@ class Api(PluginInstallerApi):
         directory = Path(self._get_cloud_dh_project_dir(project_id)); directory.mkdir(parents=True, exist_ok=True)
         value = dict(data); value["id"] = project_id; value["outputs"] = self._get_cloud_dh_output_paths(project_id)
         value["updated_at"] = datetime.now().isoformat(timespec="seconds")
-        Path(self._get_cloud_dh_project_info_path(project_id)).write_text(
-            yaml.safe_dump(value, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        target = Path(self._get_cloud_dh_project_info_path(project_id))
+        temporary = target.with_name(".project_info.yaml.pending")
+        try:
+            with temporary.open("w", encoding="utf-8", newline="\n") as stream:
+                stream.write(yaml.safe_dump(value, allow_unicode=True, sort_keys=False))
+                stream.flush(); os.fsync(stream.fileno())
+            os.replace(temporary, target)
+        finally:
+            temporary.unlink(missing_ok=True)
         return value
+
+    def _recover_cloud_dh_project(self, project_id, info):
+        task = info.get("generation_task")
+        if not isinstance(task, dict) or task.get("status") != "running": return info
+        lock, jobs = self._cloud_dh_job_state()
+        with lock:
+            if project_id in jobs: return info
+        directory = Path(self._get_cloud_dh_project_dir(project_id))
+        for pattern in (".*.pending.*", ".*.importing"):
+            for path in directory.glob(pattern):
+                if path.is_file(): path.unlink(missing_ok=True)
+        from datetime import datetime
+        value = dict(info); value["generation_task"] = {
+            **task, "status": "interrupted", "ended_at": datetime.now().isoformat(timespec="seconds"),
+            "error": "上次任务在进程退出时中断",
+        }
+        return self._save_cloud_dh_project(project_id, value)
 
     def _resolve_cloud_dh_api_key(self, override=None):
         value = override.get("runninghub_api_key") if isinstance(override, dict) else override
@@ -2356,13 +2382,16 @@ class Api(PluginInstallerApi):
             if base.is_dir():
                 for directory in base.iterdir():
                     if directory.is_dir() and (directory / "project_info.yaml").is_file():
-                        projects.append(self._build_cloud_dh_project_summary(directory.name, self._load_cloud_dh_project(directory.name)))
+                        info = self._recover_cloud_dh_project(directory.name, self._load_cloud_dh_project(directory.name))
+                        projects.append(self._build_cloud_dh_project_summary(directory.name, info))
             projects.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
             return {"status": "success", "projects": projects}
         except Exception as error: return {"status": "error", "message": f"获取云数字人项目失败: {error}"}
 
     def get_cloud_dh_project(self, project_id):
-        try: return {"status": "success", "project": self._attach_cloud_dh_previews(self._load_cloud_dh_project(project_id))}
+        try:
+            info = self._recover_cloud_dh_project(project_id, self._load_cloud_dh_project(project_id))
+            return {"status": "success", "project": self._attach_cloud_dh_previews(info)}
         except Exception as error: return {"status": "error", "message": str(error)}
 
     def update_cloud_dh_project(self, project_id, data):
@@ -2387,7 +2416,8 @@ class Api(PluginInstallerApi):
 
     def _import_cloud_dh_file(self, project_id, kind, source):
         if kind not in ("avatar", "audio"): raise ValueError("云数字人素材类型无效")
-        event = self._begin_cloud_dh_job(project_id)
+        event = self._begin_cloud_dh_job(project_id, "import_" + kind)
+        outcome = "succeeded"; failure = ""
         try:
             info = self._load_cloud_dh_project(project_id)
             source = Path(source).expanduser().resolve()
@@ -2416,8 +2446,11 @@ class Api(PluginInstallerApi):
             if archive: info["last_archive"] = archive
             info = self._save_cloud_dh_project(project_id, info)
             return {"status": "success", "path": str(target), "project": self._attach_cloud_dh_previews(info)}
+        except Exception as error:
+            outcome = "cancelled" if isinstance(error, InterruptedError) else "failed"; failure = str(error)
+            raise
         finally:
-            self._end_cloud_dh_job(project_id, event)
+            self._end_cloud_dh_job(project_id, event, outcome, failure)
 
     def pick_cloud_dh_audio(self, data):
         project_id=(data or {}).get("project_id")
@@ -2432,10 +2465,11 @@ class Api(PluginInstallerApi):
     def generate_cloud_dh_avatar(self, data):
         from .cloud_dh_prompts import build_avatar_prompt
         from .runninghub_image import _generate_and_download_cancellable
-        event = None; project_id = None
+        event = None; project_id = None; outcome = "succeeded"; failure = ""
         try:
-            project_id = data["project_id"]; info = self._load_cloud_dh_project(project_id)
-            event = self._begin_cloud_dh_job(project_id)
+            project_id = data["project_id"]
+            event = self._begin_cloud_dh_job(project_id, "generate_avatar")
+            info = self._load_cloud_dh_project(project_id)
             prompt = build_avatar_prompt(data.get("description") or data.get("avatar_prompt") or info.get("avatar_prompt", ""))
             outputs = self._get_cloud_dh_output_paths(project_id); output = Path(outputs["avatar"])
             staged = output.with_name(".数字人形象.pending.png"); staged.unlink(missing_ok=True)
@@ -2465,19 +2499,18 @@ class Api(PluginInstallerApi):
             return {"status": "success", "project": self._attach_cloud_dh_previews(info)}
         except Exception as error:
             status = "cancelled" if isinstance(error, InterruptedError) else "error"
+            outcome = "cancelled" if status == "cancelled" else "failed"; failure = str(error)
             return {"status": status, "message": f"生成数字人形象失败: {error}"}
         finally:
-            if event is not None: self._end_cloud_dh_job(project_id, event)
+            if event is not None: self._end_cloud_dh_job(project_id, event, outcome, failure)
 
     def generate_cloud_dh_video(self, data):
         from .runninghub_talk import _generate_talk_video_cancellable
-        cancel_event = None; project_id = None
+        cancel_event = None; project_id = None; outcome = "succeeded"; failure = ""
         try:
-            project_id = data["project_id"]; info = self._load_cloud_dh_project(project_id)
-            lock, jobs = self._cloud_dh_job_state()
-            with lock:
-                if project_id in jobs: raise RuntimeError("该云数字人项目正在生成")
-                cancel_event = Event(); jobs[project_id] = cancel_event
+            project_id = data["project_id"]
+            cancel_event = self._begin_cloud_dh_job(project_id, "generate_video")
+            info = self._load_cloud_dh_project(project_id)
             outputs = self._get_cloud_dh_output_paths(project_id)
             if not Path(outputs["avatar"]).is_file(): raise FileNotFoundError("请先生成或选择数字人形象")
             if not Path(outputs["audio"]).is_file(): raise FileNotFoundError("请先选择口播音频")
@@ -2502,28 +2535,47 @@ class Api(PluginInstallerApi):
             return {"status": "success", "result": result, "project": self._attach_cloud_dh_previews(info)}
         except Exception as error:
             status = "cancelled" if isinstance(error, InterruptedError) else "error"
+            outcome = "cancelled" if status == "cancelled" else "failed"; failure = str(error)
             return {"status": status, "message": f"生成数字人口播失败: {error}"}
         finally:
             if cancel_event is not None:
-                lock, jobs = self._cloud_dh_job_state()
-                with lock:
-                    if jobs.get(project_id) is cancel_event: jobs.pop(project_id, None)
+                self._end_cloud_dh_job(project_id, cancel_event, outcome, failure)
 
     def _cloud_dh_job_state(self):
         if not hasattr(self, "_cloud_dh_generation_lock"):
             self._cloud_dh_generation_lock = RLock(); self._cloud_dh_cancel_events = {}
         return self._cloud_dh_generation_lock, self._cloud_dh_cancel_events
 
-    def _begin_cloud_dh_job(self, project_id):
+    def _begin_cloud_dh_job(self, project_id, operation="generate_video"):
         lock, jobs = self._cloud_dh_job_state()
         with lock:
             if project_id in jobs: raise RuntimeError("该云数字人项目正在生成或更新素材")
-            event = Event(); jobs[project_id] = event; return event
+            event = Event(); jobs[project_id] = event
+        try:
+            from datetime import datetime
+            info = self._load_cloud_dh_project(project_id)
+            info["generation_task"] = {"status":"running", "operation":operation,
+                                       "started_at":datetime.now().isoformat(timespec="seconds"),
+                                       "ended_at":None, "error":""}
+            self._save_cloud_dh_project(project_id, info)
+            return event
+        except Exception:
+            with lock:
+                if jobs.get(project_id) is event: jobs.pop(project_id, None)
+            raise
 
-    def _end_cloud_dh_job(self, project_id, event):
+    def _end_cloud_dh_job(self, project_id, event, status="succeeded", error=""):
         lock, jobs = self._cloud_dh_job_state()
         with lock:
             if jobs.get(project_id) is event: jobs.pop(project_id, None)
+        try:
+            from datetime import datetime
+            info = self._load_cloud_dh_project(project_id); task = info.get("generation_task") or {}
+            info["generation_task"] = {**task, "status":status,
+                                       "ended_at":datetime.now().isoformat(timespec="seconds"),
+                                       "error":str(error or "")}
+            self._save_cloud_dh_project(project_id, info)
+        except Exception: pass
 
     def cancel_cloud_dh_generation(self, project_id):
         if not isinstance(project_id, str) or not project_id.strip():

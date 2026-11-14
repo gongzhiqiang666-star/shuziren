@@ -23,6 +23,33 @@ class DownloadResponse:
 
 
 class RunningHubTalkTests(unittest.TestCase):
+    def test_cloud_project_restart_marks_running_task_interrupted_and_keeps_assets(self):
+        with tempfile.TemporaryDirectory() as root:
+            api = Api.__new__(Api); api.runtime_dir = Path(root); api.config = {}
+            project = api.create_cloud_dh_project('restart recovery')['project']
+            outputs = api._get_cloud_dh_output_paths(project['id'])
+            for kind, content in (('avatar', b'avatar'), ('audio', b'audio'), ('video', b'video')):
+                Path(outputs[kind]).write_bytes(content)
+            info = api._load_cloud_dh_project(project['id'])
+            info['generation_task'] = {'status':'running', 'operation':'generate_video',
+                                       'started_at':'2026-11-14T10:00:00', 'ended_at':None, 'error':''}
+            api._save_cloud_dh_project(project['id'], info)
+            directory = Path(api._get_cloud_dh_project_dir(project['id']))
+            (directory/'.数字人口播.pending.mp4').write_bytes(b'partial')
+            (directory/'.口播音频.wav.importing').write_bytes(b'partial')
+
+            restarted = Api.__new__(Api); restarted.runtime_dir = Path(root); restarted.config = {}
+            recovered = restarted.get_cloud_dh_project(project['id'])['project']
+            self.assertEqual(recovered['generation_task']['status'], 'interrupted')
+            self.assertIn('进程退出', recovered['generation_task']['error'])
+            self.assertEqual({kind:Path(path).read_bytes() for kind, path in outputs.items()},
+                             {'avatar':b'avatar', 'audio':b'audio', 'video':b'video'})
+            self.assertFalse((directory/'.数字人口播.pending.mp4').exists())
+            self.assertFalse((directory/'.口播音频.wav.importing').exists())
+            summary = restarted.get_all_cloud_dh_projects()['projects'][0]
+            self.assertEqual((summary['generation_status'], summary['generation_operation']),
+                             ('interrupted', 'generate_video'))
+
     def test_talk_cancel_before_upload_has_no_remote_side_effect(self):
         with patch.object(runninghub_talk, 'upload_file') as upload:
             with self.assertRaises(InterruptedError):
@@ -63,6 +90,8 @@ class RunningHubTalkTests(unittest.TestCase):
             self.assertEqual(Path(outputs['video']).read_bytes(), b'old-video')
             self.assertFalse(list(Path(outputs['video']).parent.glob('*.pending.mp4')))
             self.assertEqual(api.cancel_cloud_dh_generation(project['id'])['status'], 'idle')
+            task = api.get_cloud_dh_project(project['id'])['project']['generation_task']
+            self.assertEqual((task['status'], task['operation']), ('cancelled', 'generate_video'))
 
     def test_cloud_media_import_validates_then_versions_inputs(self):
         with tempfile.TemporaryDirectory() as root:
@@ -93,6 +122,8 @@ class RunningHubTalkTests(unittest.TestCase):
             self.assertGreater(Path(outputs['audio']).stat().st_size, 44)
             history = Path(api._get_cloud_dh_history_dir(project['id']))
             self.assertGreaterEqual(len(list(history.rglob('数字人口播.mp4'))), 2)
+            task = api.get_cloud_dh_project(project['id'])['project']['generation_task']
+            self.assertEqual((task['status'], task['operation']), ('succeeded', 'import_audio'))
 
     def test_cloud_avatar_is_validated_before_replacing_versioned_project(self):
         with tempfile.TemporaryDirectory() as root:
@@ -129,6 +160,8 @@ class RunningHubTalkTests(unittest.TestCase):
             archived_avatars = list(history.rglob('数字人形象.png'))
             self.assertEqual(len(archived_avatars), 2)
             self.assertEqual({item.read_bytes() for item in archived_avatars}, {old_avatar, blue_avatar})
+            task = api.get_cloud_dh_project(project['id'])['project']['generation_task']
+            self.assertEqual((task['status'], task['operation']), ('succeeded', 'generate_avatar'))
 
     def test_completed_without_url_is_not_success(self):
         response = unittest.mock.Mock()
