@@ -117,7 +117,10 @@ function showProduct(product) {
   $('product-facts').value = productFactsText(product);
   $('product-version').textContent = product ? '当前商品：' + product.title + ' · 版本 ' + product.version : '正在新增商品';
   $('script-text').value = ''; $('scripts-list').replaceChildren();
-  $('business-metrics').hidden = !product;
+  const metrics = $('business-metrics');
+  const wasHidden = metrics.hidden;
+  metrics.hidden = !product;
+  if (wasHidden && product && location.hash === '#business-metrics') metrics.scrollIntoView();
   $('business-metrics-form').reset();
   $('business-import-form').reset();
   $('settlement-review-form').reset();
