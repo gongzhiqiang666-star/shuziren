@@ -12,8 +12,18 @@ from pathlib import Path
 import secrets
 import socket
 import sqlite3
+import sys
 import threading
 from urllib.parse import urlsplit, parse_qs
+
+# Support the documented direct-file form from an isolated installation.  In
+# that form Python otherwise puts only ``scripts/`` on sys.path and absolute
+# imports such as ``scripts.product_store`` may resolve to an unrelated
+# third-party package or fail completely.
+if __package__ in (None, ''):
+    repository_root = str(Path(__file__).resolve().parent.parent)
+    if repository_root not in sys.path:
+        sys.path.insert(0, repository_root)
 
 from scripts.local_console_config import ConfigError, ConfigStore, preflight, shop_data_directory
 from scripts.product_store import ProductStore, Conflict, ProductError

@@ -318,6 +318,8 @@ A07-05 离线 wheelhouse 解析门禁完成：新命令以 `--dry-run --ignore-i
 
 A07-05 核心/工具隔离门禁完成：源码确认 JAX/JAXlib、py3langid、Streamlit 不属于正式产品入口，核心媒体解释器检测到任一项即不放行；14 项专项通过。现有旧环境四项均存在且与 NumPy/protobuf 基线冲突，因此继续作为对照环境而非发布环境。快手实际使用的 ddddocr 及 FunASR/Pandas/PyCUDA/Ultralytics 传递依赖必须在新 wheelhouse 闭合，不能删除业务依赖规避检查。
 
+A07-05 当前候选 `da440bd`：458 文件 build/verify/install 通过，ZIP 摘要 `e12ca0b…e4ee`，隔离预览在 5256 返回 HTTP 200。直接脚本入口首次在安装目录因仓库根未加入导入路径失败，标准模块入口正常；源码已补根路径隔离并以仓库外 cwd 专项及恢复五关验证，失败轮不计通过，下一候选复验修复。
+
 ## 原功能范围与记录要求
 
 全部任务共同覆盖 SYS-001~012、CNT-001~016、MED-001~012、LIV-001~018。具体分支保持在 FUNCTION_MATRIX.md 及证据中，不用本任务表替代权威功能矩阵。新增引擎、三维或平台不抵消原功能未完成项。
