@@ -161,6 +161,7 @@ async function loadPromotionPlans(product) {
         if (updated.status === 'paused' && plan.status === 'stale') plan.requires_new_plan = true;
         plan.status = updated.status;
         showStatus(plan.status);
+        if (history.open) await loadActions();
       } catch (error) {
         showStatus(plan.status);
         status.textContent = error.message;
@@ -173,10 +174,13 @@ async function loadPromotionPlans(product) {
     title.textContent = '审核与暂停记录';
     const entries = document.createElement('ul');
     history.append(title, entries);
-    history.addEventListener('toggle', async () => {
+    let actionRequest = 0;
+    async function loadActions() {
       if (!history.open || consoleClosed) return;
+      const version = ++actionRequest;
       try {
         const {actions} = await request('/api/promotion/plans/actions?' + new URLSearchParams({plan_id:plan.id}));
+        if (version !== actionRequest) return;
         entries.replaceChildren(...actions.map(action => {
           const entry = document.createElement('li');
           entry.textContent = `${new Date(action.occurred_at).toLocaleString()} · ${labels[action.action]}`;
@@ -184,9 +188,10 @@ async function loadPromotionPlans(product) {
         }));
         if (!actions.length) entries.textContent = '暂无操作记录';
       } catch (error) {
-        entries.textContent = error.message;
+        if (version === actionRequest) entries.textContent = error.message;
       }
-    });
+    }
+    history.addEventListener('toggle', loadActions);
     row.append(' ', status, ' ', approve, ' ', pause, history);
     return row;
   }));
