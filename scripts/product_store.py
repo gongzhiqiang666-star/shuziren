@@ -300,8 +300,8 @@ class ProductStore:
         finally:
             db.close()
 
-    def live_preparation(self):
-        with self.connect() as db:
+    def live_preparation(self, *, connection=None):
+        with self.connect() if connection is None else nullcontext(connection) as db:
             row = db.execute('SELECT draft FROM live_preparation WHERE singleton=1').fetchone()
         draft = json.loads(row['draft']) if row else {'product_ids': [], **dict.fromkeys(self.PREPARATION_FIELDS, '')}
         missing = [label for key, label in self.PREPARATION_FIELDS.items() if not draft[key]]
@@ -439,6 +439,7 @@ class ProductStore:
                           'script_id': script_id})
         rotation = {'revision': revision, 'items': items}
         if include_improvements:
+            rotation['draft'] = package['draft']
             rotation['review_digest'] = hashlib.sha256(package['review'].encode('utf-8')).hexdigest()
             rotation['improvements'] = package['improvements']
             rotation['after_sales_tasks'] = package['after_sales_tasks']
@@ -448,6 +449,8 @@ class ProductStore:
         with self.connect() as db:
             if verify_items:
                 db.execute('BEGIN IMMEDIATE')
+                if 'draft' in preparation and preparation['draft'] != self.live_preparation(connection=db)['draft']:
+                    raise Conflict('场次准备草稿已变化，请重新预览准备包')
                 if 'review_digest' in preparation:
                     review = db.execute('SELECT review FROM live_preparation_review WHERE revision=?',
                                         (preparation['revision'],)).fetchone()

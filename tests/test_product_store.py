@@ -63,6 +63,9 @@ class ProductStoreTests(unittest.TestCase):
         second = self.store.live_preparation_rotation(revision, include_improvements=True)
         self.assertNotEqual(first['review_digest'], second['review_digest'])
         self.store.record_preparation_application('scene', second, verify_items=True)
+        self.store.save_live_preparation(product_ids=[product['id']], promotion='新活动')
+        with self.assertRaisesRegex(Conflict, '场次准备草稿已变化'):
+            self.store.record_preparation_application('scene', second, verify_items=True)
         self.assertEqual(self.store.live_preparation_applications('scene'), [first, second])
 
     def test_preparation_application_rechecks_selected_script_before_recording(self):
