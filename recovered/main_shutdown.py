@@ -14,15 +14,21 @@ api_for_exit = None
 def force_exit(signum, frame):
     """Clean up the registered SRS process and exit from a signal handler."""
     if api_for_exit:
-        _shutdown_srs(api_for_exit.srs_process)
-        api_for_exit.srs_process = None
+        if hasattr(api_for_exit, "shutdown"):
+            api_for_exit.shutdown()
+        else:
+            _shutdown_srs(api_for_exit.srs_process)
+            api_for_exit.srs_process = None
     os._exit(0)
 
 
 def make_on_closed(api):
     """Build the no-argument window callback that captures the window's API."""
     def on_closed():
-        _shutdown_srs(api.srs_process)
+        if hasattr(api, "shutdown"):
+            api.shutdown()
+        else:
+            _shutdown_srs(api.srs_process)
         os._exit(0)
 
     return on_closed

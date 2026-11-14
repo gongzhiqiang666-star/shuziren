@@ -23,7 +23,7 @@
 | SYS-002 | GPU/显存探测及运行环境初始化 | `main._initialize_environment` | `main_environment.py`, `gpu_probe.py` | 静态验证通过 | NVIDIA/无 NVIDIA/命令失败三类 Windows 实机 |
 | SYS-003 | 关闭 Windows 执行速度节流 | `win_power_throttling.pyd` Ghidra 证据 | `win_power_throttling.py` | 静态验证通过 | Windows API 权限、远程 PID、keep-alive 生命周期 |
 | SYS-004 | 系统配置、用户配置合并与私密配置迁移 | `main.pyd` 配置调用链 | `main_config.py` | 静态验证通过 | `%LOCALAPPDATA%` 路径、旧配置迁移、异常断电原子写入 |
-| SYS-005 | pywebview 主窗口及前后端 JS API | `main.main/_main/run_webview` | `main_webview.py`, `main.py` | 已分析 | Windows WebView2、生产/开发 URL、窗口关闭资源回收 |
+| SYS-005 | pywebview 主窗口及前后端 JS API | `main.main/_main/run_webview` | `main_webview.py`, `main.py`, `main_shutdown.py` | 静态验证通过 | 开发/生产 URL、时间戳、JS API 绑定、窗口参数、信号和关窗回调自动验证通过；关窗统一回收三类直播、场控、音频编辑器和本实例 SRS，单项失败不跳过其余资源。Windows Computer Use 原生管道当前不可用，真实 WebView2 页面点击、进程级关窗和异常窗口仍待补验，见 `evidence/v01-webview-lifecycle.md` |
 | SYS-006 | 登录 Token、管理员/OEM 信息与背景资源 | Token `0x1800644b0/0x180064620`, `0x180064dd0/0x180065090`, `0x180065880/0x1800659f0`; 管理员/OEM/背景/版本原生主体 | `main.py` | 静态验证通过 | Windows 原 `.pyd`、真实旧配置/OEM 包和前端登录流差分 |
 | SYS-007 | 本地资源枚举、预览与删除 | main wrapper/body `get_local_resources` `0x1800b9320/0x1800b9490`、`delete_model` `0x1800b7980/0x1800b7c40`、`delete_voice` `0x1800b8650/0x1800b8910`；CloneManager 枚举/信息写入/预览主体见 `rea-output/main-local-resources-notes.md` | `main.py`, `clone_manager.py` | 静态验证通过 | Windows 原 `.pyd` 响应差分、旧生产资源样本、文件占用/权限错误和删除后前端刷新 |
 | SYS-008 | 文件/目录选择及打开目录 | `open_file_dialog/open_directory` wrapper/body `0x1800393c0/0x180039610`、`0x18003cb70/0x18003ce30`，见 `rea-output/main-file-dialog-notes.md` | `main.py` | 静态验证通过 | Windows 原 `.pyd` 响应差分、真实对话框、中文/长路径、Shell 关联程序及权限错误 |
@@ -97,9 +97,9 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 43 |
+| 静态验证通过 | 44 |
 | 开发中 | 8 |
-| 已分析 | 7 |
+| 已分析 | 6 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |
 | 合计 | 58 |

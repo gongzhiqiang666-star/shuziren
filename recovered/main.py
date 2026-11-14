@@ -77,7 +77,9 @@ class Api(PluginInstallerApi):
         self._face_hand_live_manager = FaceHandLiveManager({} if config is None else config)
         self._clone_manager = CloneManager(self.config)
         self._live_lifecycle_lock = RLock()
+        self._shutdown_complete = False
         self._live_action_assistant_process = None
+        self._audio_editor_process = None
         self.srs_process = _start_srs(runtime_dir)
 
     @staticmethod
@@ -515,14 +517,14 @@ class Api(PluginInstallerApi):
 
     def launch_live_action_assistant(self):
         try:
-            process = getattr(self, "_live_action_process", None)
+            process = getattr(self, "_live_action_assistant_process", None)
             if process and process.poll() is None: return {"status": "success", "message": "场控助手已在运行", "pid": process.pid}
-            self._live_action_process = subprocess.Popen([sys.executable, "-m", "recovered.auto_live_action"], cwd=str(Path(__file__).resolve().parent.parent))
-            return {"status": "success", "pid": self._live_action_process.pid}
+            self._live_action_assistant_process = subprocess.Popen([sys.executable, "-m", "recovered.auto_live_action"], cwd=str(Path(__file__).resolve().parent.parent))
+            return {"status": "success", "pid": self._live_action_assistant_process.pid}
         except Exception as error: return {"status": "error", "message": f"启动场控助手失败: {error}"}
 
     def stop_live_action_assistant(self):
-        process, self._live_action_process = getattr(self, "_live_action_process", None), None
+        process, self._live_action_assistant_process = getattr(self, "_live_action_assistant_process", None), None
         if not process or process.poll() is not None: return {"status": "success", "message": "场控助手未运行"}
         try:
             process.terminate()
@@ -530,6 +532,47 @@ class Api(PluginInstallerApi):
             except subprocess.TimeoutExpired: process.kill(); process.wait(timeout=2)
             return {"status": "success", "message": "场控助手已停止"}
         except Exception as error: return {"status": "error", "message": str(error)}
+
+    @staticmethod
+    def _stop_owned_process(process):
+        if not process or process.poll() is not None:
+            return
+        process.terminate()
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=2)
+
+    def shutdown(self):
+        """Release all resources owned by the desktop application instance."""
+        with self._live_lifecycle_lock:
+            if self._shutdown_complete:
+                return {"status": "success", "already_stopped": True, "errors": []}
+            errors = []
+            for attribute in ("_face_hand_live_manager", "_record_live_manager", "_digital_live_manager"):
+                manager = getattr(self, attribute, None)
+                if manager is None:
+                    continue
+                try:
+                    if getattr(manager, "is_broadcasting", False):
+                        manager.stop_live()
+                except Exception as error:
+                    errors.append(f"{attribute}: {error}")
+            for attribute in ("_live_action_assistant_process", "_audio_editor_process"):
+                process = getattr(self, attribute, None)
+                setattr(self, attribute, None)
+                try:
+                    self._stop_owned_process(process)
+                except Exception as error:
+                    errors.append(f"{attribute}: {error}")
+            process, self.srs_process = getattr(self, "srs_process", None), None
+            try:
+                _shutdown_srs(process)
+            except Exception as error:
+                errors.append(f"srs_process: {error}")
+            self._shutdown_complete = True
+            return {"status": "partial" if errors else "success", "errors": errors}
 
     def _oba_state_path(self):
         return Path(self._resolve_user_config_path()).with_name("oba_live_installed_path.txt")
@@ -576,12 +619,7 @@ class Api(PluginInstallerApi):
         except Exception as error: return {"status": "error", "message": str(error)}
 
     def _shutdown_after_update_launch(self):
-        for manager in (getattr(self, "_digital_live_manager", None), getattr(self, "_record_live_manager", None),
-                        getattr(self, "_face_hand_live_manager", None)):
-            if manager:
-                try: manager.stop_live()
-                except Exception: pass
-        _shutdown_srs(getattr(self, "srs_process", None)); self.srs_process = None
+        self.shutdown()
 
     def start_app_update(self):
         try:
@@ -2377,8 +2415,7 @@ def _main(runtime_dir=None):
     try:
         run_webview(api, config, runtime_dir)
     finally:
-        _shutdown_srs(api.srs_process)
-        api.srs_process = None
+        api.shutdown()
 
 
 def main():
