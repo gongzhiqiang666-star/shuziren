@@ -81,6 +81,22 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(second.call('/api/products')[1]['products'], [])
         self.assertEqual(second.call('/api/products', {**payload, 'title': '桌布'})[0], 200)
         self.assertEqual([item['title'] for item in first.call('/api/products')[1]['products']], ['茶杯'])
+        first_product, = first.call('/api/products')[1]['products']
+        second_product, = second.call('/api/products')[1]['products']
+        route = '/api/live/preparation'
+        self.assertEqual(first.call(route, {
+            'product_ids': [first_product['id']], 'promotion': '仅一店活动',
+        })[0], 200)
+        self.assertEqual(second.call(route, {
+            'product_ids': [second_product['id']], 'promotion': '仅二店活动',
+        })[0], 200)
+        first_package = first.call(route + '/package')[1]
+        second_package = second.call(route + '/package')[1]
+        self.assertEqual(first_package['draft']['promotion'], '仅一店活动')
+        self.assertEqual(second_package['draft']['promotion'], '仅二店活动')
+        self.assertEqual(second.call(route + '/review', {
+            'revision': first_package['revision'], 'review': '跨店提交',
+        })[0], 409)
         sourcing = '/api/sourcing/candidates'
         status, candidate = first.call(sourcing, {
             'name': '茶杯样品', 'supplier': '本店供应商', 'source': '本店报价',
