@@ -116,7 +116,9 @@ def main():
     finally:
         manager.stop_playing()
         manager.tape.close()
-    print(json.dumps({"event": "stopped", "frames": manager.player.get_playback_stats_snapshot()["output_frames"]}), flush=True)
+    stats = manager.player.get_playback_stats_snapshot()
+    print(json.dumps({"event": "stopped", "frames": stats["output_frames"],
+                      "reused_frames": stats["reused_frames"], "queue_length": stats["queue_length"]}), flush=True)
 
 
 if __name__ == "__main__":

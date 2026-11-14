@@ -244,7 +244,7 @@ class ConsoleLive:
         error = None
         process = None
         reader = None
-        final_frames = None
+        final_event = None
         try:
             directory = self.directory / 'live' / session_id
             directory.mkdir(parents=True)
@@ -297,7 +297,7 @@ class ConsoleLive:
                                 self._record_session()
                         deadline = float('inf')
                     elif event.get('event') == 'stopped':
-                        final_frames = event['frames']
+                        final_event = event
                     elif event.get('event') == 'progress':
                         with self.lock:
                             self.status['frames'] = event['frames']
@@ -332,12 +332,13 @@ class ConsoleLive:
                 while not events.empty():
                     event = events.get_nowait()
                     if event.get('event') == 'stopped':
-                        final_frames = event['frames']
+                        final_event = event
                 process.stdin.close()
                 process.stdout.close()
-                if final_frames is not None:
+                if final_event is not None:
                     with self.lock:
-                        self.status['frames'] = final_frames
+                        self.status.update({key: final_event[key] for key in ('frames', 'reused_frames', 'queue_length')
+                                            if key in final_event})
             with self.lock:
                 staged = self.video_insert_snapshot
                 self.video_insert_snapshot = None
