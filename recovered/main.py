@@ -855,13 +855,20 @@ class Api(PluginInstallerApi):
             return self._start_face_hand_live(data, live_data)
         return self._start_digital_live(live_data)
 
+    def _active_interaction_manager(self):
+        for name in ("_face_hand_live_manager", "_digital_live_manager"):
+            manager = getattr(self, name, None)
+            if manager is not None and manager.is_broadcasting:
+                return manager
+        return None
+
     def speak(self, text):
-        manager = self._digital_live_manager
-        if not manager.is_broadcasting:
-            return {"status": "error", "message": "请先开启直播"}
         if not isinstance(text, str) or not text.strip():
             return {"status": "error", "message": "请输入播报内容"}
         with self._live_lifecycle_lock:
+            manager = self._active_interaction_manager()
+            if manager is None:
+                return {"status": "error", "message": "请先开启直播"}
             if manager.request_manual_speak(text):
                 return {"status": "success"}
         return {"status": "error", "message": manager.last_error or "播报失败"}
@@ -884,8 +891,8 @@ class Api(PluginInstallerApi):
 
     def simulate_question(self, text):
         with self._live_lifecycle_lock:
-            manager = self._digital_live_manager
-            if not manager.is_broadcasting:
+            manager = self._active_interaction_manager()
+            if manager is None:
                 return {"status": "error", "message": "请先开启直播"}
             if not isinstance(text, str) or not manager.request_simulated_question(text):
                 return {"status": "error", "message": "请输入有效的问题"}

@@ -1704,7 +1704,10 @@ class ConsoleHTTPTests(unittest.TestCase):
                        'X-Console-Token': getattr(self, 'token', ''), **headers}
         req = Request(self.base + path, data=None if value is None else json.dumps(value).encode(), headers=headers)
         try:
-            response = urlopen(req, timeout=3)
+            # The full Windows media regression can temporarily contend for CPU
+            # with FFmpeg/model cleanup. Keep the HTTP contract bounded without
+            # treating a three-second scheduler delay as an application deadlock.
+            response = urlopen(req, timeout=10)
         except HTTPError as error:
             response = error
         with response:

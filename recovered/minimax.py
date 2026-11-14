@@ -21,7 +21,11 @@ def _response_payload(response):
 def _runtime(config):
     host = str(config.get("api_host") or "").strip().rstrip("/") or "api.minimax.io"
     endpoint = host if "://" in host else f"https://{host}"
-    overseas = urlsplit(endpoint).hostname in {"api.minimax.io", "api-uw.minimax.io"}
+    parsed = urlsplit(endpoint)
+    if (parsed.scheme.lower() != "https" or not parsed.hostname or parsed.username
+            or parsed.password or parsed.query or parsed.fragment):
+        raise ValueError("MiniMax API 地址必须是无凭据、无查询参数的 HTTPS 地址")
+    overseas = parsed.hostname.lower() in {"api.minimax.io", "api-uw.minimax.io"}
     group_id = str(config.get("group_id") or "").strip()
     if not overseas and not group_id:
         raise ValueError("Minimax Group ID 和 API Key 不能为空")

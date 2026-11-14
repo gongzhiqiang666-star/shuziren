@@ -57,50 +57,50 @@
 
 | ID | 用户功能 | 原入口/主要证据 | 当前重建模块 | 当前状态 | 完成前必须验证 |
 |---|---|---|---|---|---|
-| MED-001 | 音频设备枚举和播放 | `audio_devices/audio_player.pyd` | `audio_devices.py`, `audio_player.py` | 静态验证通过 | 修复 host 局部序号误作全局设备编号和单设备查询失败中止扫描；Windows 实测 2 输入、5 输出均可打开。播放器支持指定全局编号和幂等关闭，VB-Audio 连续两实例播放/释放通过且保留原构造签名。物理热插拔、独占冲突和播放中消失待验，见 `evidence/a06-audio-device-index.md` |
+| MED-001 | 音频设备枚举和播放 | `audio_devices/audio_player.pyd` | `audio_devices.py`, `audio_player.py` | Windows 验证通过 | 修复 host 局部序号误作全局设备编号和单设备查询失败中止扫描；Windows 实测 2 输入、5 输出均可打开。播放器支持指定全局编号和幂等关闭，VB-Audio 连续两实例播放/释放通过且保留原构造签名。物理热插拔、独占冲突和播放中消失待集中验收，见 `evidence/a06-audio-device-index.md` |
 | MED-002 | 音频裁剪与编辑器 | `process_audio_clip/launch_audio_editor` | `audio_clip.py`, `edit_audio.py` | 静态验证通过 | PCM WAV 门禁、受限预览及 WAV/TXT 双文件事务；修复 ASR 模型路径并隔离任务目录。22.49秒同源 WAV/MP3 真实 FunASR 均生成4段一致文本，时间戳仅末端差30ms；失败隔离回归2项通过。Windows GUI、物理热插拔和独占冲突仍待验，见 `evidence/a06-audio-device-index.md` |
-| MED-003 | Whisper/FunASR 识别及 SRT | 原生 ASR 模块调用链 | `whisper_runtime.py`, `funasr_runtime.py`, `get_srt.py`, `audio_clip.py` | 静态验证通过 | 真实 FunASR WAV/MP3 与 manifest；Whisper 唯一临时文件和原子文本；RTX 3060 large-v3 真实 8 秒英语识别及 MP4→SRT 全链通过，修复双句号、英文空格丢失和独立标点字幕，三段时间轴连续至8000ms。CPU、长音频和更多语言准确性待验，见 `evidence/a06-audio-device-index.md` |
-| MED-004 | 本地音色克隆预处理 | `clone_voice_local` Ghidra 主体 | `voice_clone_infer_api.py`, `clone_manager.py` | 静态验证通过 | 真实 FFmpeg/ASR、模型资源、坏音频和中文路径 |
-| MED-005 | ZipVoice 本地语音推理 | `voice_infer.pyd` | `voice_infer.py`、`scripts/tts_worker.py` | 静态验证通过 | A01-02 已有 Windows CPU/CUDA 合成、双参考音缓存隔离、显存清理及独立媒体任务证据。原程序差分、并发、人工音质和直播待验 |
-| MED-006 | OmniVoice 本地语音推理 | `voice_infer_v2.pyd` | `voice_infer_v2.py`、`scripts/tts_worker.py` | 静态验证通过 | A01-02 已有 RTX 3060 合成、中英语言缓存隔离及独立媒体任务证据。原程序差分、显存量化、双参考音、人工音质和直播待验 |
-| MED-007 | IndexTTS 本地语音推理 | `voice_infer_v3.pyd` | `voice_infer_v3.py` | 静态验证通过 | V03 真实 CUDA 新文本、缓存/取消/恢复、双参考 A/B/A 和 ASR/声纹核验已通过；637 字长文本分段、PCM 合并、原子发布和失败清理通过 4 项测试及 Windows RTX/CUDA 真实生成，见 `evidence/v03-indextts-long-text.md`。人工听感、高并发峰值、长稳及麦克风页面实录仍待最终验收 |
-| MED-008 | 马来语/越南语本地语音 | 对应 `voice_infer_*_local.pyd` | `local_voice.py`, `voice_infer_v2.py`, `voice_infer_malai_local.py`, `voice_infer_vietnam_local.py` | 静态验证通过 | 产品主链的 `malai_local`/`vietnam_local` 统一路由常驻 OmniVoice，并固定 `ms-MY`/`vi-VN`；原 F5 服务客户端保留为兼容适配器。RTX 3060 两语言真实合成、缓存隔离及各约 70 秒轮播/插播/接管/双轨回采通过；2 项路由测试及完整契约通过，见 `evidence/a01-multilingual-local-voice.md`。人工发音听感、口音语料、CPU 性能和原 F5 服务差分仍待验 |
-| MED-009 | Minimax/CosyVoice 在线音色克隆与生成 | `start_voice_clone_*`、在线语音模块 | `online_voice_generate.py`, `cosyvoice.py` | 静态验证通过 | 真实账号、区域端点、上传、鉴权和计费错误 |
-| MED-010 | 离线形象克隆 | `start_clone_local/clone_video_local` | `clone_manager.py`, `image_clone_*`、`scripts/avatar_store.py`、`scripts/avatar_tasks.py`、`scripts/render_tasks.py`、`scripts/raw_video_writer.py` | 静态验证通过 | V04 真实 480p/720p/1080p 制作、原生关键点差分、生成/播放/取消/失效已有证据；形象安全删除完成。制作与导入边界新增多人、低于80%人脸覆盖、连续丢脸及位置越界门禁；真实50帧单人通过、受控多人50/50帧明确拒绝，专项19项通过，见 `evidence/v04-video-preparation.md`。人工动态质量、2K/4K、复杂侧脸/遮挡和 KT 板仍待最终验收 |
-| MED-011 | 人脸检测、关键点、口型特征与遮挡处理 | SCRFD/S3FD/PFLD/WeNet/Hubert 链 | `image_*`, `s3fd_*`, `pfld_mobileone.py`, `hubert_extractor.py` | 静态验证通过 | 真实 SCRFD/PFLD 单人和受控多人输入已验，逐帧人脸数与覆盖门禁生效；复杂遮挡/侧脸、原 `.pyd` 阈值差分及性能仍待验，见 `evidence/v04-video-preparation.md` |
-| MED-012 | 商品图抠图及 KT 板覆盖 | `product_cutout/product_kt_overlay.pyd` | `product_cutout.py`, `product_kt_overlay.py` | 静态验证通过 | RTX 真模型生成软 Alpha BGRA；KT 保留 PNG Alpha/比例，缓存原子保存和结构校验，直播启停、商品轮播切换、FramePlayer提交及关闭重开通过。商品工具33项与恢复基线通过。动态设备回采、真实商品主观边缘及长稳待首版集中验收，见 `evidence/a06-product-visual-tools.md` |
+| MED-003 | Whisper/FunASR 识别及 SRT | 原生 ASR 模块调用链 | `whisper_runtime.py`, `funasr_runtime.py`, `get_srt.py`, `audio_clip.py` | Windows 验证通过 | 真实 FunASR WAV/MP3 与 manifest；Whisper 唯一临时文件和原子文本；RTX 3060 large-v3 真实 8 秒英语识别及 MP4→SRT 全链通过，修复双句号、英文空格丢失和独立标点字幕，三段时间轴连续至8000ms。CPU、长音频和更多语言准确性待集中验收，见 `evidence/a06-audio-device-index.md` |
+| MED-004 | 本地音色克隆预处理 | `clone_voice_local` Ghidra 主体 | `voice_clone_infer_api.py`, `clone_manager.py` | Windows 验证通过 | 22.49 秒中文 WAV 经随包 FFmpeg/FunASR 真实生成 16 kHz 单声道参考音频、114 字文本和最终路径 manifest；中文路径、坏媒体保留旧版本、事务发布及 Windows 瞬态句柄锁重试通过，见 `evidence/a06-local-voice-clone.md`。各 TTS 引擎人工音质、并发和直播另按对应项验收 |
+| MED-005 | ZipVoice 本地语音推理 | `voice_infer.pyd` | `voice_infer.py`、`scripts/tts_worker.py` | Windows 验证通过 | Windows CPU/CUDA、RTX 3060 控制台 HTTP、独立媒体目录常驻复用/取消/恢复/过期拒收/关闭回收，以及 35 秒轮播、插播、接管恢复和双轨完整解码均已有真实证据；当前 worker 3项、任务状态12项、参考音隔离2项复跑通过。原程序结果差分、并发峰值、人工音质和长稳待集中验收 |
+| MED-006 | OmniVoice 本地语音推理 | `voice_infer_v2.pyd` | `voice_infer_v2.py`、`scripts/tts_worker.py` | Windows 验证通过 | RTX 3060 中文、中英缓存隔离、马来语/越南语真实合成，独立媒体常驻复用/取消/恢复/过期拒收，以及中文 35 秒、马来语/越南语各约 70 秒轮播、插播、接管恢复和双轨完整解码均已有真实证据；worker与任务状态回归通过。原程序结果差分、显存量化、双参考音人工对照、母语听审和长稳待集中验收 |
+| MED-007 | IndexTTS 本地语音推理 | `voice_infer_v3.pyd` | `voice_infer_v3.py` | Windows 验证通过 | V03 真实 CUDA 新文本、缓存/取消/恢复、双参考 A/B/A 和 ASR/声纹核验已通过；637 字长文本在 Windows RTX/CUDA 42.79 秒生成 115.37 秒 24 kHz PCM16，分段、PCM 合并、原子发布和失败清理 4 项复跑通过，见 `evidence/v03-indextts-long-text.md`。人工听感、高并发峰值、长稳及麦克风页面实录待集中验收 |
+| MED-008 | 马来语/越南语本地语音 | 对应 `voice_infer_*_local.pyd` | `local_voice.py`, `voice_infer_v2.py`, `voice_infer_malai_local.py`, `voice_infer_vietnam_local.py` | Windows 验证通过 | 产品主链的 `malai_local`/`vietnam_local` 统一路由常驻 OmniVoice，并固定 `ms-MY`/`vi-VN`；原 F5 服务客户端保留为兼容适配器。RTX 3060 两语言真实合成、缓存隔离及各约 70 秒轮播/插播/接管/双轨回采通过；2 项路由测试复跑及完整契约通过，见 `evidence/a01-multilingual-local-voice.md`。母语听审、口音与商品语料、CPU 性能和原 F5 服务差分待集中验收 |
+| MED-009 | Minimax/CosyVoice 在线音色克隆与生成 | `start_voice_clone_*`、在线语音模块 | `online_voice_generate.py`, `cosyvoice.py`, `minimax.py` | 静态验证通过 | 上传/克隆/轮询/合成/缓存适配已实现；Minimax HTTPS 与 CosyVoice HTTPS/WSS 凭据保护门禁、国际端点和模拟成功音频 3 项通过，见 `evidence/a01-online-voice-providers.md`。缺少获准的真实账号/Key，真实上传、区域端点、限流、鉴权/计费错误和音质保持外部条件 |
+| MED-010 | 离线形象克隆 | `start_clone_local/clone_video_local` | `clone_manager.py`, `image_clone_*`、`scripts/avatar_store.py`、`scripts/avatar_tasks.py`、`scripts/render_tasks.py`、`scripts/raw_video_writer.py` | Windows 验证通过 | V04 Windows 真实 480p/720p/1080p 制作、原生关键点差分、生成/播放/取消/失效已有证据；形象安全删除完成。多人、低于80%人脸覆盖、连续丢脸及位置越界门禁生效；真实50帧单人通过、受控多人50/50帧明确拒绝，本轮任务/存储/人脸契约17项复跑通过，见 `evidence/v04-video-preparation.md`。人工动态质量、2K/4K、复杂侧脸/遮挡和 KT 板待集中验收 |
+| MED-011 | 人脸检测、关键点、口型特征与遮挡处理 | SCRFD/S3FD/PFLD/WeNet/Hubert 链 | `image_*`, `s3fd_*`, `pfld_mobileone.py`, `hubert_extractor.py` | Windows 验证通过 | Windows 真实 SCRFD/PFLD 单人和受控多人输入已验，逐帧人脸数、覆盖/连续丢脸/位置门禁生效；真实 TTS→WeNet→CUDA/TRT 口型链及 50 条双后端对照已有证据，人脸契约4项复跑通过。复杂遮挡/侧脸、原 `.pyd` 阈值差分、Hubert扩展路径及性能待集中验收，见 `evidence/v04-video-preparation.md` |
+| MED-012 | 商品图抠图及 KT 板覆盖 | `product_cutout/product_kt_overlay.pyd` | `product_cutout.py`, `product_kt_overlay.py` | Windows 验证通过 | Windows RTX 3060 真模型生成 768×768 软 Alpha BGRA；KT 保留 PNG Alpha/比例，缓存原子保存和结构校验，直播启停、商品轮播切换、真实 FramePlayer 提交及关闭重开通过。本轮商品工具4项、生命周期6项复跑通过，见 `evidence/a06-product-visual-tools.md`。动态设备回采、真实商品主观边缘及长稳待集中验收 |
 
 ## P0：直播与平台控制
 
 | ID | 用户功能 | 原入口/主要证据 | 当前重建模块 | 当前状态 | 完成前必须验证 |
 |---|---|---|---|---|---|
-| LIV-001 | 数字人直播启动、停止和资源回收 | `Api.start_live`→`LiveManager` | `main.py`, `digital_live_manager.py`, `live_manager_runtime.py` | 静态验证通过 | V06 本机通过 20 次独立启停；G10-04 改稿场次完成轮播、接管恢复和停播，接收双轨完整解码。证据见 docs/PROGRESS.md 与 docs/PHASE4_GROWTH_PLAN.md。发布配置长稳、设备/模型异常及内存显存仍待完整验收 |
-| LIV-002 | 文件/摄像头/视频/RTMP 驱动 | `VideoStreamManager` 各 reader | `image_*_reader.py`、`frame_player_*`、控制台 RTMP 媒体子进程 | 静态验证通过 | 本机 SRS 至控制台轮播、回采、解码中断及发布端停推复推均通过，见 A01-05。断流期间主动停播通过。摄像头有效画面和格式分辨率矩阵待验 |
-| LIV-003 | TTS 队列、弹幕打断、淡入淡出和静音续接 | `live_manager.pyd` 调度链 | `live_manager_runtime.py`, `image_infer_audio.py`、`scripts/live_speech_ingress.py` | 静态验证通过 | V05-01b真实逐句交接局部通过；V05-02常驻WeNet/UNet驱动两句190帧、182272采样完整，形象序列连续、重组特征SHA一致；V05-03a累计采样/821帧PTS核验通过；03b形象预热与8帧有界原始帧接收/停止局部通过；实际定时音画输出、控制台/设备、实时压力、竞态、长稳及人工质量仍待验 |
-| LIV-004 | 手动口播与模拟提问 | `Api.speak/simulate_question` | `main.py`, `digital_live_manager.py`, `face_hand_live_manager.py` | 静态验证通过 | 三种直播模式、停止竞态和前端反馈 |
-| LIV-005 | 弹幕采集启动/停止 | `start_danmu_capture/stop_danmu_capture` | `danmu_bridge.py`, `ws_capture.py`, `digital_live_manager.py` | 静态验证通过 | 启动、自然结束、迭代异常、stop 异常的状态切断与重启通过 2 项专项测试；PDD 7 项和包含快手/淘宝/Shopee 协议的完整契约通过，见 `evidence/v07-danmu-lifecycle.md`。抖音/淘宝/快手/Shopee/PDD 真实账号与直播间仍待平台验收 |
-| LIV-006 | 快手 WebSocket 协议、心跳和重连 | `KsLive/hq/ks.pyd` | `kuaishou_v2/*` | 静态验证通过 | 真实账号/直播间、协议变化、掉线重连 |
-| LIV-007 | 淘宝弹幕、账号登录和商品同步 | `get/login/probe/sync_taobao_*` | `taobao_live_control.py`, `taobao_control_capture.py` | 静态验证通过 | 登录截止/取消、Playwright 线程所有权、商品 ID、快照去重、浏览器断线后带 storage state 退避重建以及登录失效不循环通过 7 项专项和完整契约，见 `evidence/v07-taobao-reconnect.md`。真实淘宝账号、验证码、商品页变化、弹卡和风控仍待平台验收 |
-| LIV-008 | 淘宝自动讲解、点品及控制页自愈 | 淘宝控制 Ghidra 调用链 | `taobao_live_control.py`, `face_hand_live_manager.py` | 静态验证通过 | 淘宝真实直播控制台长稳验证 |
-| LIV-009 | Shopee 登录态、商品轮播和控制恢复 | Shopee 控制 Ghidra 调用链 | `shopee_live_control.py`, `shopee_control_capture.py` | 静态验证通过 | 真实卖家账号、区域站点和页面升级 |
-| LIV-010 | 拼多多弹幕采集 | `assets/ws_danmu_capture/pdd` | `danmu_bridge.py`, `digital_live_manager.py`, `recovered/assets/ws_danmu_capture/pdd/*` | 静态验证通过 | 管理器现启动自有 PDD wrapper，使用动态回环端口并发送经官方 HTTPS 域名校验的直播 URL；Cookie 位于用户数据目录，事件规范化，兼容同步/异步 broadcast，帧和 gzip 解压限制 8 MiB。7 项专项测试、真实 wrapper 动态端口连接/停止及既有 protobuf 样本通过。真实拼多多账号、扫码、直播间和协议变化待平台验证，见 `evidence/v07-pdd-capture.md` |
-| LIV-011 | OCR 弹幕/自动操作/直播保护 | `auto_live_action`、OCR 模块 | `auto_live_action*.py`, `danmu_ocr/*` | 静态验证通过 | Windows DPI、多显示器、窗口遮挡和误触控制 |
-| LIV-012 | 转播/录播本地视频和抖音源 | `RecordLiveManager.start_live` | `record_live_manager.py`, `stream_ingest.py` | 静态验证通过 | 本地 25FPS、真实抖音 URL、长稳和断流恢复 |
-| LIV-013 | 实拍报时公告生成和插播 | `prepare_record_announcement` 调用链 | `record_live_manager.py`, `generate_broadcast_time_video.py` | 静态验证通过 | 真实 TTS/视频、取消竞态和临时文件所有权 |
-| LIV-014 | 人脸人手直播与商品素材调度 | `FaceHandLiveManager`；2026-11-10 Windows原生切片对照见 `evidence/v00-baseline.md` | `face_hand_live_manager.py`, `face_hand_player.py`, `face_hand_vad_split.py`, `image_rtmp_face_reader.py` | 静态验证通过 | Windows切片、manifest v2、返回结构、默认参数、随机分段及 RTMP 首帧签名已与原 `.pyd` 差分对齐；完整恢复契约 128/128 通过。真实淘宝场次、长稳及商品切换仍待端到端验证 |
-| LIV-015 | AI 互动回复和人工接管 | 互动 LLM/控制提交链 | `face_hand_live_manager.py`, `llm_reply.py` | 静态验证通过 | 真实弹幕、超时、审核、回退和接管恢复 |
-| LIV-016 | 虚拟摄像头输出 | `virtual_cam.pyd` | `virtual_cam.py`、`scripts/live_device_output.py`、`scripts/live_av_device_sink.py` | 静态验证通过 | V05-04b 时钟消融确认平滑视频时钟对连续性必需；恢复后同配置真实 20 秒/500 帧复现通过，迟到 P95 1.654ms、超 5ms 比例 0.203%，两段回采相关性均大于 0.99999987、音画偏差约 11.4ms，语音区 198 帧零缺失/重复/乱序。全窗口仍有启动首帧重复 1；驱动安装、平台客户端、其他分辨率、零启动重复及长稳待集中验收，见 `evidence/v05-received-voices.md` |
-| LIV-017 | SRS 本地流媒体服务和推流地址 | `assets/srs/srs-live.bat`、`get_stream_urls` | `main.py`, `srs_runtime.py` | 静态验证通过 | 已改为直接启动随包 `srs.exe`，验证缺文件、端口冲突、异常早退、三端口就绪及仅按本实例 PID 回收；本机真实 RTMP 推流、HTTP-FLV 拉流和 API 探活通过，见 `evidence/v00-srs-runtime.md`。打包后页面状态、长稳和异常断流仍待验 |
-| LIV-018 | 输出分辨率五档及画面适配 | `output_resolution.pyd` | `output_resolution.py`, `image_position_compat.py` | 静态验证通过 | 各档真实输出、横竖屏、旋转和播放器兼容 |
+| LIV-001 | 数字人直播启动、停止和资源回收 | `Api.start_live`→`LiveManager` | `main.py`, `digital_live_manager.py`, `live_manager_runtime.py` | Windows 验证通过 | V06 Windows 本机通过 20 次独立启停；G10-04 改稿场次完成轮播、接管恢复和停播，接收双轨完整解码。本轮跨模式切换/异常释放4项及录播清理7项复跑通过。发布配置长稳、设备/模型组合异常及内存显存趋势待集中验收 |
+| LIV-002 | 文件/摄像头/视频/RTMP 驱动 | `VideoStreamManager` 各 reader | `image_*_reader.py`、`frame_player_*`、控制台 RTMP 媒体子进程 | 静态验证通过 | 本机文件/视频及 SRS→控制台轮播、回采、解码中断和发布端停推复推均通过；本轮中继恢复2项、常驻RTMP5项、首帧/取消/探测10项通过。PnP/DirectShow确认当前无物理摄像头，真实摄像头有效画面、格式/分辨率和热插拔矩阵为外部条件，故不提升状态 |
+| LIV-003 | TTS 队列、弹幕打断、淡入淡出和静音续接 | `live_manager.pyd` 调度链 | `live_manager_runtime.py`, `image_infer_audio.py`、`scripts/live_speech_ingress.py` | Windows 验证通过 | 真实逐句交接、常驻WeNet/UNet两句190帧/182272采样、累计采样/821帧PTS及20秒两条新语音双设备回采已有 Windows 证据；淡入淡出/静音续接由恢复契约覆盖。本轮队列5项、入口10项、重组4项、流式8项通过。30分钟、实时压力、竞态扩展及人工质量待集中验收 |
+| LIV-004 | 手动口播与模拟提问 | `Api.speak/simulate_question` | `main.py`, `digital_live_manager.py`, `face_hand_live_manager.py` | Windows 验证通过 | 既有 Windows 场次已完成手动插播/接管恢复和真实双轨回采；修复入口固定路由数字人管理器及锁外停播竞态，现于生命周期锁内选择活动的数字人或人脸人手管理器。数字人、人脸人手、停播/非法/拒绝反馈3项及恢复五关通过；录播模式无互动入口并明确返回未开播 |
+| LIV-005 | 弹幕采集启动/停止 | `start_danmu_capture/stop_danmu_capture` | `danmu_bridge.py`, `ws_capture.py`, `digital_live_manager.py` | 静态验证通过 | 启动、自然结束、迭代/stop异常的状态切断与重启，本轮管理器3项、跨平台路由4项、PDD协议7项及完整恢复契约通过，见 `evidence/v07-danmu-lifecycle.md`。无获准平台账号/直播间，抖音/淘宝/快手/Shopee/PDD 登录、真实消息、重连、协议变化和风控为外部条件，故不提升状态 |
+| LIV-006 | 快手 WebSocket 协议、心跳和重连 | `KsLive/hq/ks.pyd` | `kuaishou_v2/*` | 静态验证通过 | 房间/OCR/验证码边界7项及连接重试、服务端心跳间隔、消息/心跳配对取消4项通过，错误脱敏和协程回收已加固。无获准快手账号/直播间，真实验证码、协议变化、断网重连和风控为外部条件，故不提升状态 |
+| LIV-007 | 淘宝弹幕、账号登录和商品同步 | `get/login/probe/sync_taobao_*` | `taobao_live_control.py`, `taobao_control_capture.py` | 静态验证通过 | 登录截止/取消、Playwright线程所有权、商品ID、快照去重、浏览器断线带storage state退避重建以及登录失效不循环7项复跑和完整契约通过，见 `evidence/v07-taobao-reconnect.md`。无获准淘宝账号/直播间，真实验证码、评论、商品页变化、弹卡和风控为外部条件，故不提升状态 |
+| LIV-008 | 淘宝自动讲解、点品及控制页自愈 | 淘宝控制 Ghidra 调用链 | `taobao_live_control.py`, `face_hand_live_manager.py` | 静态验证通过 | 完整恢复契约覆盖讲解循环、商品动作、控制页自愈、点品和AI场控；本轮新鲜评论调度/停播失效、事实过期拒绝、场次语言3项通过。无获准淘宝控制台，真实讲解/弹卡/点品回执、页面升级、风控和长稳为外部条件，故不提升状态 |
+| LIV-009 | Shopee 登录态、商品轮播和控制恢复 | Shopee 控制 Ghidra 调用链 | `shopee_live_control.py`, `shopee_control_capture.py` | 静态验证通过 | 恢复契约覆盖页面状态、商品动作和直播协议审计；高级模式Shopee别名进入专用控制采集器且路由回归通过。无获准卖家账号/直播间，真实登录、区域站点、商品轮播、控制恢复、页面升级和风控为外部条件，故不提升状态 |
+| LIV-010 | 拼多多弹幕采集 | `assets/ws_danmu_capture/pdd` | `danmu_bridge.py`, `digital_live_manager.py`, `recovered/assets/ws_danmu_capture/pdd/*` | 静态验证通过 | 管理器启动自有PDD wrapper，动态回环端口、官方HTTPS直播URL门禁、用户数据Cookie、事件规范化、同步/异步broadcast及8MiB帧/解压上限生效；本轮7项复跑、真实wrapper连接/停止及既有protobuf样本通过。无获准PDD账号，真实扫码、直播间、协议变化和风控为外部条件，故不提升状态，见 `evidence/v07-pdd-capture.md` |
+| LIV-011 | OCR 弹幕/自动操作/直播保护 | `auto_live_action`、OCR 模块 | `auto_live_action*.py`, `danmu_ocr/*` | 静态验证通过 | 默认必须OCR识别输入框且坐标位于用户框选区域，否则停止定位并禁止点击；原右侧猜测坐标仅对旧配置或显式兼容开关保留并告警。默认失败关闭、识别成功和兼容回退3项及恢复五关通过。Windows DPI、多显示器、窗口移动/遮挡、前台窗口和真实误触测试待验，故不提升状态 |
+| LIV-012 | 转播/录播本地视频和抖音源 | `RecordLiveManager.start_live` | `record_live_manager.py`, `stream_ingest.py` | 静态验证通过 | Windows本地视频、虚拟摄像头/声卡及双轨回采已有证据；本轮录播生命周期/失败清理7项和外部中继异常重解析/停止2项通过。无获准抖音直播间，真实抖音URL、平台断流恢复和长稳为外部条件，故不提升状态 |
+| LIV-013 | 实拍报时公告生成和插播 | `prepare_record_announcement` 调用链 | `record_live_manager.py`, `generate_broadcast_time_video.py` | Windows 验证通过 | Windows 真实2秒H.264/AAC源完成公告音轨替换与重新封装，容器/视频2.000秒、音频1.997007秒、轨尾差约3ms；区间门禁、时间轴夹紧、取消/换任务/停播迟到清理及临时文件所有权纳入录播生命周期7项并复跑通过。真实TTS多语料和视觉人工质量待集中验收，见 `evidence/a03-record-announcement-timeline.md` |
+| LIV-014 | 人脸人手直播与商品素材调度 | `FaceHandLiveManager`；2026-11-10 Windows原生切片对照见 `evidence/v00-baseline.md` | `face_hand_live_manager.py`, `face_hand_player.py`, `face_hand_vad_split.py`, `image_rtmp_face_reader.py` | 静态验证通过 | Windows切片、manifest v2、返回结构、默认参数、随机分段及RTMP首帧签名已与原`.pyd`差分对齐，恢复版真实输出4段1080×1920/25fps/48kHz；本轮切片2项、素材4项、商品映射2项、音频隔离/打断3项、20次切品1项、RTMP10项通过。无真实淘宝场次与接收留样，端到端商品切换、平台动作和长稳待验，故不提升状态 |
+| LIV-015 | AI 互动回复和人工接管 | 互动 LLM/控制提交链 | `face_hand_live_manager.py`, `llm_reply.py`, `scripts/local_console.py` | 静态验证通过 | Windows场次已完成插播、人工接管/恢复和双轨回采；本轮新鲜评论/停播失效/事实过期/场次语言3项、录播回复覆盖4项、人脸人手优先打断3项、手动/模拟路由3项通过。无真实平台弹幕和获准LLM服务，超时、内容审核、提供商回退、迟到回复拒收及接管恢复的真实端到端链待验，故不提升状态 |
+| LIV-016 | 虚拟摄像头输出 | `virtual_cam.pyd` | `virtual_cam.py`、`scripts/live_device_output.py`、`scripts/live_av_device_sink.py` | Windows 验证通过 | V05-04b Windows真实20秒/500帧复现通过，迟到P95 1.654ms、超5ms比例0.203%，两段回采相关性均大于0.99999987、音画偏差约11.4ms，语音区198帧零缺失/重复/乱序；本轮设备4项、组合时钟6项、接收审计11项通过。全窗口启动首帧重复1、驱动安装、平台客户端、其他分辨率及长稳待集中验收，见 `evidence/v05-received-voices.md` |
+| LIV-017 | SRS 本地流媒体服务和推流地址 | `assets/srs/srs-live.bat`、`get_stream_urls` | `main.py`, `srs_runtime.py` | Windows 验证通过 | 直接启动随包`srs.exe`，缺文件、端口冲突、异常早退、三端口就绪及仅按本实例PID回收7项复跑通过；本轮真实RTMP H.264/AAC推流、HTTP-FLV拉流解码、1985 API及1935/1985/8080释放集成复跑通过，见 `evidence/v00-srs-runtime.md`。打包页面状态、30分钟以上、异常断流和资源趋势待集中验收 |
+| LIV-018 | 输出分辨率五档及画面适配 | `output_resolution.pyd` | `output_resolution.py`, `image_position_compat.py` | Windows 验证通过 | Windows随包FFmpeg真实输出480×854、720×1280、1080×1920、1440×2560、2160×3840五档25fps并完整解码；真实Display Matrix 90°、横竖等比覆盖/居中裁切、输出模式和安全帧率解析已有证据，本轮模式4项、旋转/帧率2项通过。五档实体摄像头回采与资源占用、极端构图、手机旋转/镜像组合待集中验收，见 `evidence/a04-output-geometry.md` |
 
 ## 当前统计
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 46 |
+| 静态验证通过 | 29 |
 | 开发中 | 0 |
 | 已分析 | 0 |
-| Windows 验证通过 | 12 |
+| Windows 验证通过 | 29 |
 | 端到端验证通过 | 0 |
 | 合计 | 58 |
 

@@ -28,7 +28,7 @@ except ImportError:
 
 DEFAULT_CONFIG = {"send_interval": 60, "work_minutes": 10, "rest_minutes": 2,
                   "danmu_list": [], "random_send": False, "random_space": False,
-                  "enable_text_reply": True}
+                  "enable_text_reply": True, "allow_unsafe_coordinate_fallback": False}
 _TOOLS_DIR = Path(__file__).resolve().parent / "tools"
 CONFIG_PATH = _TOOLS_DIR / "auto_live_action" / "config" / "config.yaml"
 CONTROL_UI_HTML = (_TOOLS_DIR / "auto_live_action" / "control_ui.html").read_text(
@@ -176,6 +176,9 @@ class LiveControlAPI:
             "random_space", self.config.get("random_space", False)))
         self.config["enable_text_reply"] = bool(settings.get(
             "enable_text_reply", self.config.get("enable_text_reply", True)))
+        self.config["allow_unsafe_coordinate_fallback"] = bool(settings.get(
+            "allow_unsafe_coordinate_fallback",
+            self.config.get("allow_unsafe_coordinate_fallback", False)))
         if persist:
             self.save_config()
 
@@ -263,11 +266,25 @@ class LiveControlAPI:
                 if any(key in item_text_lower for key in SEND_BUTTON_KEYWORDS):
                     send_btn = target
                     print(f"OCR识别到发送按钮（'{item['text']}'），坐标: {send_btn}")
-            if send_btn is None:
-                send_btn = (int(left + rect_width * (1 - FALLBACK_BTN_RIGHT_RATIO / 2)),
-                            int(top + rect_height / 2))
-                print(f"OCR未识别到发送按钮，回退至最右侧15%区域中心: {send_btn}")
-            target = input_hint or send_btn
+            target = input_hint
+            if target is None and self.config.get("allow_unsafe_coordinate_fallback", True):
+                if send_btn is None:
+                    send_btn = (int(left + rect_width * (1 - FALLBACK_BTN_RIGHT_RATIO / 2)),
+                                int(top + rect_height / 2))
+                target = send_btn
+                print("警告: 已显式启用兼容坐标回退，自动点击可能误触")
+            if target is None:
+                self.capture_cmd_queue.put("stop")
+                self.is_positioning = False
+                self.capture_window_thread = None
+                return {"success": False, "message": "未识别到评论输入框，为避免误触已停止定位",
+                        "config": self.get_config()}
+            if not (left <= target[0] <= right and top <= target[1] <= bottom):
+                self.capture_cmd_queue.put("stop")
+                self.is_positioning = False
+                self.capture_window_thread = None
+                return {"success": False, "message": "输入框坐标超出框选区域，为避免误触已停止定位",
+                        "config": self.get_config()}
             self.positions = {"input_hint": input_hint, "send_btn": send_btn,
                               "target": target}
             self.live_action = VisualLiveAction(target)

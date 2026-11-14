@@ -10,10 +10,12 @@ class ConsoleEntrypointTests(unittest.TestCase):
         script = Path(__file__).resolve().parents[1] / "scripts" / "local_console.py"
         with tempfile.TemporaryDirectory() as working_directory:
             result = subprocess.run(
-                [sys.executable, str(script), "--help"],
+                [sys.executable, "-X", "utf8", str(script), "--help"],
                 cwd=working_directory,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=15,
             )
         self.assertEqual(result.returncode, 0, result.stderr)

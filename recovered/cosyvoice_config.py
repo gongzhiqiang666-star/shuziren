@@ -1,5 +1,7 @@
 """DashScope region settings recovered from generate_voice.pyd."""
 
+from urllib.parse import urlsplit
+
 _HTTP = "https://{host}/api/v1"
 _WEBSOCKET = "wss://{host}/api-ws/v1/inference"
 _INTERNATIONAL = {"international", "intl", "singapore", "ap-southeast-1"}
@@ -11,6 +13,12 @@ def resolve_dashscope_endpoints(api_config=None):
     host = "dashscope-intl.aliyuncs.com" if region in _INTERNATIONAL else "dashscope.aliyuncs.com"
     config["base_http_api_url"] = config.get("base_http_api_url") or _HTTP.format(host=host)
     config["base_websocket_api_url"] = config.get("base_websocket_api_url") or _WEBSOCKET.format(host=host)
+    for name, scheme in (("base_http_api_url", "https"), ("base_websocket_api_url", "wss")):
+        parsed = urlsplit(str(config[name]).strip())
+        if (parsed.scheme.lower() != scheme or not parsed.hostname or parsed.username
+                or parsed.password or parsed.query or parsed.fragment):
+            raise ValueError(f"CosyVoice {name} 必须是无凭据、无查询参数的 {scheme.upper()} 地址")
+        config[name] = parsed.geturl().rstrip("/")
     return config
 
 

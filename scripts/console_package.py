@@ -442,12 +442,17 @@ def check_startup(release, root, media=None):
                 state = json.load(response)
                 if state['config']['runtime_root'] != expected_runtime or state['config']['version'] != 1:
                     raise RuntimeError('Candidate did not load the expected isolated configuration')
+            with urlopen(address + 'api/session', timeout=5) as response:
+                session = json.load(response)
+                if not isinstance(session.get('token'), str) or not session['token']:
+                    raise RuntimeError('Candidate did not publish a console session token')
             if media is not None:
                 with urlopen(address + 'api/live/devices', timeout=5) as response:
                     if not isinstance(json.load(response).get('devices'), list):
                         raise RuntimeError('Candidate did not enumerate media devices')
             request = Request(address + 'api/shutdown', data=b'{"confirm":true}', headers={
-                'Content-Type': 'application/json', 'Origin': address.rstrip('/'), 'X-Console-Token': state['token']})
+                'Content-Type': 'application/json', 'Origin': address.rstrip('/'),
+                'X-Console-Token': session['token']})
             with urlopen(request, timeout=5):
                 pass
             if child.wait(timeout=10):
