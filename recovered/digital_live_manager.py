@@ -68,7 +68,8 @@ class DigitalLiveManager:
                 audio_files = self._load_script_audio_files(local_params.get("script_audio_dir"))
             scripts = []
             if local_params.get("script_input_mode", "text") == "text":
-                scripts = self._load_text_scripts(config)
+                scripts = self._load_text_script_items(config)
+            self._prepare_kt_overlay(config, local_params)
             runtime = create_image_runtime(self.config, self.runtime_dir, local_params)
             if runtime.start_playing() is False:
                 raise RuntimeError(getattr(runtime, "last_error", None) or "本地智播启动失败")
@@ -89,6 +90,8 @@ class DigitalLiveManager:
                 except Exception as cleanup_error:
                     self._runtime = runtime
                     self.last_error = f"{error}（清理失败：{cleanup_error}）"
+            if self._runtime is None:
+                self._close_kt_overlay()
             return False
         self._script_stop.clear()
         self._last_interaction.clear()
@@ -115,7 +118,10 @@ class DigitalLiveManager:
             while not self._script_stop.wait(0.2):
                 if runtime.get_queue_lengths().get("normal", 0) == 0:
                     item = next(clips)
-                    audio = item if params is None else self._synthesize(params, item)
+                    text, product = item if params is not None and isinstance(item, tuple) else (item, None)
+                    if product is not None:
+                        self._sync_kt_product(product)
+                    audio = text if params is None else self._synthesize(params, text)
                     if audio and not self._script_stop.is_set():
                         runtime.add_audio_to_queue(audio)
         except Exception as error:
@@ -134,6 +140,59 @@ class DigitalLiveManager:
             item.strip() for item in (config.get("scripts") or [])
             if isinstance(item, str) and item.strip()
         ]
+
+    @staticmethod
+    def _load_text_script_items(config):
+        products = config.get("product_scripts") or config.get("products") or []
+        items = [
+            (text.strip(), product)
+            for product in products if isinstance(product, dict)
+            for text in (product.get("scripts") or [])
+            if isinstance(text, str) and text.strip()
+        ]
+        return items or [(text, None) for text in DigitalLiveManager._load_text_scripts(config)]
+
+    def _prepare_kt_overlay(self, config, local_params):
+        enabled = bool(config.get("enable_product_kt_follow", config.get("enableProductKtFollow", False)))
+        from .product_kt_overlay import get_product_kt_overlay
+        overlay = get_product_kt_overlay()
+        overlay.set_enabled(False)
+        overlay.clear()
+        if not enabled:
+            return
+        from .digital_model_paths import resolve_character_dir
+        model_dir = resolve_character_dir(self.config, self.runtime_dir, local_params.get("model_id"))
+        hits = overlay.load_from_model_dir(model_dir)
+        if hits <= 0:
+            raise ValueError("当前形象没有识别到可用 KT 板，请重新制作形象")
+        products = config.get("product_scripts") or config.get("products") or []
+        first = next((item for item in products if isinstance(item, dict)), None)
+        if first is not None:
+            self._sync_kt_product(first)
+        overlay.set_enabled(True)
+
+    @staticmethod
+    def _sync_kt_product(product):
+        from .product_kt_overlay import get_product_kt_overlay
+        overlay = get_product_kt_overlay()
+        if not isinstance(product, dict):
+            overlay.clear()
+            return
+        raw_id = product.get("goods_id") or product.get("goodsId") or product.get("item_id") or product.get("itemId") or 0
+        try:
+            goods_id = int(raw_id)
+        except (TypeError, ValueError, OverflowError):
+            goods_id = 0
+        overlay.set_product_image(
+            goods_id=goods_id,
+            item_pic=product.get("item_pic") or product.get("itemPic") or "",
+            item_name=product.get("name") or product.get("title") or product.get("item_name") or "",
+        )
+
+    @staticmethod
+    def _close_kt_overlay():
+        from .product_kt_overlay import close_product_kt_overlay
+        close_product_kt_overlay()
 
     def _load_script_audio_files(self,audio_folder):
         if not audio_folder or not Path(audio_folder).is_dir():
@@ -379,6 +438,7 @@ class DigitalLiveManager:
 
     def stop_live(self):
         if self._runtime is None:
+            self._close_kt_overlay()
             return True
         if not self.stop_danmu():
             return False
@@ -396,6 +456,7 @@ class DigitalLiveManager:
             self.last_error = str(error)
             return False
         self._runtime = None
+        self._close_kt_overlay()
         self.current_session_id = None
         self.last_error = None
         return True

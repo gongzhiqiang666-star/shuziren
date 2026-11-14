@@ -1,6 +1,7 @@
 """Asset resolution for the recovered product KT board module."""
 
 from pathlib import Path
+import os
 from threading import Lock
 from dataclasses import dataclass
 from itertools import combinations
@@ -186,16 +187,28 @@ def save_kt_board_cache(model_dir,boxes,frame_size,hit):
     values=np.zeros((len(boxes),4,2),dtype=np.float32)
     for index,box in enumerate(boxes):
         if box is not None: values[index]=np.asarray(box,dtype=np.float32).reshape(4,2)
-    np.savez_compressed(path,boxes=values,valid=valid,frame_size=np.asarray(frame_size or (),dtype=np.int32),hit=np.asarray(int(hit)))
+    temporary=path.with_name(path.name+".tmp")
+    with temporary.open("wb") as stream:
+        np.savez_compressed(stream,boxes=values,valid=valid,
+                            frame_size=np.asarray(frame_size or (),dtype=np.int32),hit=np.asarray(int(hit)))
+        stream.flush();os.fsync(stream.fileno())
+    os.replace(temporary,path)
     return str(path)
 
 def load_kt_board_cache(model_dir):
     import numpy as np
     with np.load(kt_board_cache_path(model_dir),allow_pickle=False) as data:
-        values=data["boxes"]; valid=data["valid"].astype(bool)
+        values=data["boxes"];raw_valid=data["valid"]
+        if values.ndim!=3 or values.shape[1:]!=(4,2) or raw_valid.shape!=(len(values),):
+            raise ValueError("KT board cache shape is invalid")
+        valid=raw_valid.astype(bool)
         boxes=[values[i].copy() if valid[i] else None for i in range(len(valid))]
         raw=data["frame_size"].tolist(); frame_size=tuple(map(int,raw)) if len(raw)==2 else None
         hit=int(data["hit"])
+        if frame_size is not None and min(frame_size)<=0:
+            raise ValueError("KT board cache frame size is invalid")
+        if hit!=int(valid.sum()):
+            raise ValueError("KT board cache hit count is invalid")
     return boxes,frame_size,hit
 
 def compute_and_save_kt_board_cache(model_dir):
@@ -465,6 +478,8 @@ class ProductKtOverlay:
 
         product_key = (int(goods_id), str(item_pic or ""))
         with self._lock:
+            if self._product_key == product_key and self._product is not None:
+                return
             self._product_key = product_key
             self._product = None
         path = str(item_pic) if item_pic else ""

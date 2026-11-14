@@ -40,9 +40,18 @@ def preprocess_video(video_path,output_dir,img_size=256,face_model_path=None):
     if face_model_path is None:
         candidate=Path(__file__).resolve().parents[1]/"yunchuang_v122/_internal/assets/pretrained_models/face_detect"
         face_model_path=candidate
-    result=process_face_frames(output/"frames",info["total_frames"],output,info,img_size=img_size,
-                               cpu=False,model_path=face_model_path)
-    return {**info,**(result or {}),"frames_dir":str(output/"frames"),"processed_data_dir":str(output)}
+    process_face_frames(output/"frames",info["total_frames"],output,info,img_size=img_size,
+                        cpu=False,model_path=face_model_path)
+    face_frames=0;multi_face_frames=0;no_face_frames=[]
+    for index in range(info["total_frames"]):
+        metadata=yaml.safe_load((output/"positions"/f"{index:06d}.txt").read_text(encoding="utf-8")) or {}
+        if metadata.get("is_no_face",True):no_face_frames.append(index)
+        else:
+            face_frames+=1
+            if int(metadata.get("face_count",1))>1:multi_face_frames+=1
+    return {**info,"face_frames":face_frames,"no_face_frames":no_face_frames,
+            "multi_face_frames":multi_face_frames,
+            "frames_dir":str(output/"frames"),"processed_data_dir":str(output)}
 
 
 def generate_video(processed_data_dir,audio_path,output_path,wenet_conf_path,wenet_model_path,unet_v2_model,

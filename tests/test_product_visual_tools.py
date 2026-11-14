@@ -6,7 +6,9 @@ import cv2
 import numpy as np
 
 from recovered.product_cutout import _compose_centered_bgra
-from recovered.product_kt_overlay import ProductKtOverlay, _paste_on_board
+from recovered.product_kt_overlay import (
+    ProductKtOverlay, _paste_on_board, load_kt_board_cache, save_kt_board_cache,
+)
 
 
 class ProductVisualToolTests(unittest.TestCase):
@@ -49,6 +51,23 @@ class ProductVisualToolTests(unittest.TestCase):
             overlay.set_product_image(goods_id=1, item_pic=str(path))
             self.assertEqual(overlay._product.shape, (12, 16, 4))
             self.assertEqual(int(overlay._product[0, 0, 3]), 77)
+            path.unlink()
+            overlay.set_product_image(goods_id=1, item_pic=str(path))
+            self.assertIsNotNone(overlay._product)
+
+    def test_kt_cache_round_trip_and_corruption_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            box = np.float32([[1, 2], [9, 2], [9, 8], [1, 8]])
+            path = Path(save_kt_board_cache(directory, [box, None], (10, 12), 1))
+            boxes, size, hit = load_kt_board_cache(directory)
+            self.assertTrue(np.array_equal(boxes[0], box))
+            self.assertIsNone(boxes[1])
+            self.assertEqual((size, hit), ((10, 12), 1))
+            with path.open('wb') as stream:
+                np.savez_compressed(stream, boxes=np.zeros((1, 3, 2)), valid=np.ones(1),
+                                    frame_size=np.array((10, 12)), hit=np.array(1))
+            with self.assertRaisesRegex(ValueError, 'shape'):
+                load_kt_board_cache(directory)
 
 
 if __name__ == '__main__':

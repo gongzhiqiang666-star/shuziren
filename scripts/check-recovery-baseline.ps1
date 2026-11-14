@@ -33,8 +33,18 @@ try {
         $log = Join-Path $reportRoot ($check.name + '.log')
         $started = Get-Date
         $arguments = $check.arguments
-        & $python @arguments *> $log
-        $code = $LASTEXITCODE
+        # unittest and several model libraries intentionally write progress to
+        # stderr. Under PowerShell, ErrorActionPreference=Stop can turn that
+        # harmless native stderr into a terminating NativeCommandError before
+        # LASTEXITCODE is recorded.
+        $savedErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            & $python @arguments *> $log
+            $code = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $savedErrorActionPreference
+        }
         $results.Add([ordered]@{
             name=$check.name; exit_code=$code; started_at=$started.ToString('o')
             elapsed_seconds=((Get-Date)-$started).TotalSeconds; log=$log

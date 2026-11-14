@@ -68,7 +68,7 @@
 | MED-009 | Minimax/CosyVoice 在线音色克隆与生成 | `start_voice_clone_*`、在线语音模块 | `online_voice_generate.py`, `cosyvoice.py` | 静态验证通过 | 真实账号、区域端点、上传、鉴权和计费错误 |
 | MED-010 | 离线形象克隆 | `start_clone_local/clone_video_local` | `clone_manager.py`, `image_clone_*`、`scripts/avatar_store.py`、`scripts/avatar_tasks.py`、`scripts/render_tasks.py`、`scripts/raw_video_writer.py` | 静态验证通过 | V04 真实 480p/720p/1080p 制作、原生关键点差分、生成/播放/取消/失效已有证据；形象安全删除完成。制作与导入边界新增多人、低于80%人脸覆盖、连续丢脸及位置越界门禁；真实50帧单人通过、受控多人50/50帧明确拒绝，专项19项通过，见 `evidence/v04-video-preparation.md`。人工动态质量、2K/4K、复杂侧脸/遮挡和 KT 板仍待最终验收 |
 | MED-011 | 人脸检测、关键点、口型特征与遮挡处理 | SCRFD/S3FD/PFLD/WeNet/Hubert 链 | `image_*`, `s3fd_*`, `pfld_mobileone.py`, `hubert_extractor.py` | 静态验证通过 | 真实 SCRFD/PFLD 单人和受控多人输入已验，逐帧人脸数与覆盖门禁生效；复杂遮挡/侧脸、原 `.pyd` 阈值差分及性能仍待验，见 `evidence/v04-video-preparation.md` |
-| MED-012 | 商品图抠图及 KT 板覆盖 | `product_cutout/product_kt_overlay.pyd` | `product_cutout.py`, `product_kt_overlay.py` | 开发中 | RTX 真模型兼容已修复并生成含软 Alpha 的 BGRA；KT 透视合成保留 PNG Alpha 与长宽比，专项3项及恢复基线通过。真实商品主观质量、KT 生命周期、板卡视频直播回采和保存重开仍待验，见 `evidence/a06-product-visual-tools.md` |
+| MED-012 | 商品图抠图及 KT 板覆盖 | `product_cutout/product_kt_overlay.pyd` | `product_cutout.py`, `product_kt_overlay.py` | 静态验证通过 | RTX 真模型生成软 Alpha BGRA；KT 保留 PNG Alpha/比例，缓存原子保存和结构校验，直播启停、商品轮播切换、FramePlayer提交及关闭重开通过。商品工具33项与恢复基线通过。动态设备回采、真实商品主观边缘及长稳待首版集中验收，见 `evidence/a06-product-visual-tools.md` |
 
 ## P0：直播与平台控制
 
