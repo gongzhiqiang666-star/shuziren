@@ -14,7 +14,7 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from scripts.local_console import InstanceLock, create_server
+from scripts.local_console import AUTHORIZATION_AUDIT_MAX_BYTES, InstanceLock, create_server
 from scripts.local_console_config import ConfigStore, shop_data_directory
 from scripts.product_store import Conflict, ProductStore
 
@@ -232,6 +232,15 @@ class ConsoleHTTPTests(unittest.TestCase):
     def test_invalid_access_account_is_rejected_before_server_start(self):
         with self.assertRaisesRegex(ValueError, '账号编号无效'):
             create_server(self.store, port=0, access_account='../other-shop')
+
+    def test_authorization_audit_rotates_before_appending_next_decision(self):
+        path = Path(self.directory.name) / 'authorization-audit.jsonl'
+        path.write_bytes(b'x' * AUTHORIZATION_AUDIT_MAX_BYTES)
+        self.assertEqual(self.call('/api/config', self.store.load())[0], 200)
+        rotated = Path(str(path) + '.1')
+        self.assertEqual(rotated.stat().st_size, AUTHORIZATION_AUDIT_MAX_BYTES)
+        event, = path.read_text(encoding='utf-8').splitlines()
+        self.assertEqual((json.loads(event)['path'], json.loads(event)['allowed']), ('/api/config', True))
 
     def test_promotion_spend_preserves_missing_attribution_and_corrects_bill(self):
         store = ProductStore(self.directory.name)

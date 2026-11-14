@@ -26,6 +26,7 @@ from scripts.console_comment_reply import ConsoleCommentReply
 WEB = Path(__file__).parent / "local-console"
 ACCESS_ROLES = ('viewer', 'operator', 'admin')
 ACCESS_ACCOUNT = re.compile(r'[a-z0-9][a-z0-9_-]{0,39}')
+AUTHORIZATION_AUDIT_MAX_BYTES = 4 * 1024 * 1024
 OPERATOR_POST_PATHS = {
     '/api/live/start', '/api/live/video-seek', '/api/live/rotation', '/api/live/control',
     '/api/live/stop', '/api/live/enqueue', '/api/live/insert', '/api/live/speak',
@@ -170,7 +171,12 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
         }
         with audit_lock:
             store.directory.mkdir(parents=True, exist_ok=True)
-            with (store.directory / 'authorization-audit.jsonl').open('a', encoding='utf-8', newline='\n') as stream:
+            path = store.directory / 'authorization-audit.jsonl'
+            if path.is_file() and path.stat().st_size >= AUTHORIZATION_AUDIT_MAX_BYTES:
+                rotated = store.directory / 'authorization-audit.jsonl.1'
+                rotated.unlink(missing_ok=True)
+                path.replace(rotated)
+            with path.open('a', encoding='utf-8', newline='\n') as stream:
                 stream.write(json.dumps(event, ensure_ascii=False, separators=(',', ':')) + '\n')
     product_lock = threading.Lock()
     product_store = None
