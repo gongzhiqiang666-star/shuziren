@@ -75,6 +75,7 @@ class ConsolePackageTests(unittest.TestCase):
             (root / 'active.json').write_text(json.dumps({
                 'current': 'b' * 40, 'previous': 'a' * 40,
             }), encoding='utf-8')
+            (root / 'data-schema.json').write_text('{"version":1}', encoding='utf-8')
             result = restore_data_backup(root, wanted.name)
             self.assertEqual(result['status'], 'ok')
             self.assertEqual((data / 'console.json').read_text(encoding='utf-8'), 'old')
@@ -95,11 +96,39 @@ class ConsolePackageTests(unittest.TestCase):
                 restore_data_backup(root, backup.name)
             self.assertEqual(current.read_text(encoding='utf-8'), 'before')
 
+    def test_data_schema_gate_blocks_rollback_run_and_restore(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            root.mkdir(exist_ok=True)
+            (root / 'data-schema.json').write_text('{"version":2}', encoding='utf-8')
+            active = {'current': 'a' * 40, 'previous': 'b' * 40}
+            with (patch('scripts.console_package.read_active', return_value=active),
+                  patch('scripts.console_package.check_release', return_value=(root, {'data_schema': 1})),
+                  patch('scripts.console_package.check_startup') as startup):
+                with self.assertRaisesRegex(ValueError, 'migration path'):
+                    switch_release(root)
+                with self.assertRaisesRegex(ValueError, 'cannot open'):
+                    run_release(root, 0)
+            startup.assert_not_called()
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            data = root / 'data'
+            data.mkdir()
+            (data / 'console.json').write_text('schema-one', encoding='utf-8')
+            backup = create_data_backup(root, 'a' * 40, 'b' * 40)
+            (root / 'data-schema.json').write_text('{"version":2}', encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'schema is incompatible'):
+                restore_data_backup(root, backup.name)
+            self.assertEqual((data / 'console.json').read_text(encoding='utf-8'), 'schema-one')
+
     def test_release_switch_respects_shop_process_lock_without_launcher(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             shop = root / 'data' / 'shops' / 'shop-pilot'
             active = {'current': 'release', 'previous': 'release'}
+            root.mkdir(exist_ok=True)
+            (root / 'data-schema.json').write_text('{"version":1}', encoding='utf-8')
             with patch('scripts.console_package.read_active', return_value=active):
                 with InstanceLock(shop), self.assertRaises(OSError):
                     switch_release(root)
@@ -119,7 +148,7 @@ class ConsolePackageTests(unittest.TestCase):
                 return 0
 
             with (patch('scripts.console_package.read_active', return_value=active),
-                  patch('scripts.console_package.check_release', return_value=(root, {})),
+                  patch('scripts.console_package.check_release', return_value=(root, {'data_schema': 1})),
                   patch('scripts.console_package.subprocess.call') as launch):
                 launch.side_effect = lambda *args, **kwargs: first_running() if launch.call_count == 1 else 0
                 self.assertEqual(run_release(root, 0, shop_id='first'), 0)
@@ -138,7 +167,7 @@ class ConsolePackageTests(unittest.TestCase):
             root = parent / 'install'
             outside = parent / 'outside' / 'shops' / 'shop-pilot'
             with (patch('scripts.console_package.read_active', return_value={'current': 'release'}),
-                  patch('scripts.console_package.check_release', return_value=(root, {})),
+                  patch('scripts.console_package.check_release', return_value=(root, {'data_schema': 1})),
                   patch('scripts.local_console_config.shop_data_directory', return_value=outside),
                   patch('scripts.console_package.subprocess.call') as launch):
                 with self.assertRaisesRegex(ValueError, 'inside the managed installation'):
@@ -149,7 +178,7 @@ class ConsolePackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             with (patch('scripts.console_package.read_active', return_value={'current': 'release'}),
-                  patch('scripts.console_package.check_release', return_value=(root, {})),
+                  patch('scripts.console_package.check_release', return_value=(root, {'data_schema': 1})),
                   patch('scripts.console_package.subprocess.call', return_value=0) as launch,
                   patch.dict('scripts.console_package.os.environ', {'SHUZIREN_MANAGED_ACCESS_ROLE': 'admin'})):
                 self.assertEqual(run_release(root, 0, shop_id='pilot', access_role='viewer',
@@ -386,7 +415,8 @@ class ConsolePackageTests(unittest.TestCase):
             root = Path(directory)
             package = root / 'source.zip'
             files = dict.fromkeys(REQUIRED, b'fixture')
-            manifest = {'version': 1, 'commit': 'a' * 40, 'files': {name: digest(data) for name, data in files.items()}}
+            manifest = {'version': 1, 'commit': 'a' * 40, 'data_schema': 1,
+                        'files': {name: digest(data) for name, data in files.items()}}
             with ZipFile(package, 'w') as archive:
                 for name, data in files.items():
                     archive.writestr(name, data)

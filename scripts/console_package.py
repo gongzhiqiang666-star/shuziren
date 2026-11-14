@@ -36,6 +36,8 @@ REQUIRED = {'scripts/local_console.py', 'scripts/local-console/index.html', 'pac
             'packaging/requirements-console.txt', 'packaging/README.md'}
 COMMIT_ID = re.compile(r'[0-9a-f]{40}(?:[0-9a-f]{24})?')
 BACKUP_ID = re.compile(r'[0-9]{8}T[0-9]{6}Z-[0-9a-f]{32}')
+CURRENT_DATA_SCHEMA = 1
+DATA_SCHEMA_STATE = 'data-schema.json'
 
 
 def allowed(name):
@@ -68,7 +70,7 @@ def build(output, revision='HEAD'):
         files = {item.filename: source.read(item) for item in source.infolist() if not item.is_dir() and allowed(item.filename)}
     if not REQUIRED <= files.keys():
         raise ValueError('Revision lacks required console package files')
-    manifest = {'version': 1, 'commit': commit, 'data_schema': 1,
+    manifest = {'version': 1, 'commit': commit, 'data_schema': CURRENT_DATA_SCHEMA,
                 'files': {name: digest(data) for name, data in sorted(files.items())}}
     with ZipFile(output, 'x') as archive:
         for name, data in sorted(files.items()):
@@ -90,6 +92,7 @@ def read_package(archive):
     files = manifest.get('files') if isinstance(manifest, dict) else None
     if (not isinstance(files, dict) or manifest.get('version') != 1 or not REQUIRED <= files.keys()
             or not isinstance(manifest.get('commit'), str) or not COMMIT_ID.fullmatch(manifest['commit'])
+            or type(manifest.get('data_schema')) is not int or manifest['data_schema'] < 1
             or set(files) != set(names) - {MANIFEST}):
         raise ValueError('Package contents disagree with manifest')
     for name, expected in files.items():
@@ -137,6 +140,41 @@ def write_active(root, state):
             stream.flush()
             os.fsync(stream.fileno())
         temporary.replace(root / 'active.json')
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def read_data_schema(root, active=None):
+    root = Path(root)
+    path = root / DATA_SCHEMA_STATE
+    if path.exists():
+        try:
+            state = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise ValueError('Installed data schema state is unreadable') from error
+        if (not isinstance(state, dict) or set(state) != {'version'}
+                or type(state['version']) is not int or state['version'] < 1):
+            raise ValueError('Invalid installed data schema state')
+        return state['version']
+    active = read_active(root) if active is None else active
+    if active.get('current') is not None:
+        return check_release(root.resolve(), active['current'])[1]['data_schema']
+    return None
+
+
+def write_data_schema(root, version):
+    if type(version) is not int or version < 1:
+        raise ValueError('Invalid data schema version')
+    root = Path(root)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=root, delete=False) as stream:
+            temporary = Path(stream.name)
+            json.dump({'version': version}, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(root / DATA_SCHEMA_STATE)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
@@ -200,6 +238,7 @@ def create_data_backup(root, current_commit, target_commit):
         metadata = {
             'version': 1, 'created_at': datetime.now(timezone.utc).isoformat(),
             'current_commit': current_commit, 'target_commit': target_commit,
+            'data_schema': read_data_schema(root) or CURRENT_DATA_SCHEMA,
             'files': dict(sorted(records.items())),
         }
         (stage / 'backup-manifest.json').write_bytes(
@@ -223,7 +262,9 @@ def verify_data_backup(root, backup_id):
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise ValueError('Backup manifest is unreadable') from error
     records = manifest.get('files') if isinstance(manifest, dict) else None
+    schema = manifest.get('data_schema', 1) if isinstance(manifest, dict) else None
     if (not isinstance(manifest, dict) or manifest.get('version') != 1 or not isinstance(records, dict)
+            or type(schema) is not int or schema < 1
             or COMMIT_ID.fullmatch(str(manifest.get('current_commit', ''))) is None
             or COMMIT_ID.fullmatch(str(manifest.get('target_commit', ''))) is None):
         raise ValueError('Unsupported backup manifest')
@@ -259,7 +300,7 @@ def verify_data_backup(root, backup_id):
             with closing(sqlite3.connect(candidate.as_uri() + '?mode=ro', uri=True)) as database:
                 if database.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
                     raise ValueError(f'Backup database failed integrity check: {relative}')
-    return backup, manifest
+    return backup, {**manifest, 'data_schema': schema}
 
 
 def _verify_restored_copy(directory, manifest):
@@ -301,6 +342,9 @@ def restore_data_backup(root, backup_id):
             probes.close()
         backup, manifest = verify_data_backup(root, backup_id)
         active = read_active(root)
+        installed_schema = read_data_schema(root, active) or CURRENT_DATA_SCHEMA
+        if manifest['data_schema'] != installed_schema:
+            raise ValueError('Backup data schema is incompatible with the installed release')
         current = active['current'] or '0' * 40
         safety = create_data_backup(root, current, current)
         with tempfile.TemporaryDirectory(prefix='.restore-', dir=root) as temporary:
@@ -333,7 +377,8 @@ def check_release(root, commit):
         raise ValueError('Installed release is outside its version directory')
     manifest = json.loads((release / MANIFEST).read_text(encoding='utf-8'))
     files = manifest.get('files', {})
-    if (manifest.get('commit') != commit or manifest.get('version') != 1 or manifest.get('data_schema', 1) != 1
+    if (manifest.get('commit') != commit or manifest.get('version') != 1
+            or type(manifest.get('data_schema')) is not int or manifest['data_schema'] < 1
             or not isinstance(files, dict) or not REQUIRED <= files.keys()):
         raise ValueError('Installed release is incompatible or incomplete')
     for name, expected in files.items():
@@ -430,6 +475,7 @@ def switch_release(root, archive=None, with_media=False):
                 instances.enter_context(InstanceLock(directory))
         media = configured_media(root / 'data') if with_media else None
         active = read_active(root)
+        installed_schema = read_data_schema(root, active)
         if archive is None:
             commit = active['previous']
             if commit is None:
@@ -437,8 +483,6 @@ def switch_release(root, archive=None, with_media=False):
         else:
             with ZipFile(archive) as package:
                 manifest = read_package(package)
-            if manifest.get('data_schema', 1) != 1:
-                raise ValueError('Package requires an unsupported user-data schema')
             commit = manifest['commit']
             release = root / 'releases' / commit
             if not release.exists():
@@ -446,11 +490,19 @@ def switch_release(root, archive=None, with_media=False):
             if check_release(root, commit)[1] != manifest:
                 raise ValueError('This commit already has a different installed manifest')
         if commit != active['current']:
-            release, _ = check_release(root, commit)
+            release, release_manifest = check_release(root, commit)
+            candidate_schema = release_manifest['data_schema']
+            if installed_schema is None:
+                if candidate_schema != CURRENT_DATA_SCHEMA:
+                    raise ValueError('Fresh installation requires the current supported data schema')
+            elif candidate_schema != installed_schema:
+                raise ValueError('No data migration path exists between installed and candidate schemas')
             check_startup(release, root, media)
             if active['current'] is not None:
                 create_data_backup(root, active['current'], commit)
             active = {'current': commit, 'previous': active['current']}
+            if installed_schema is None:
+                write_data_schema(root, candidate_schema)
             write_active(root, active)
         return active
 
@@ -469,7 +521,10 @@ def run_release(root, port, with_media=False, shop_id=None, access_role='admin',
             commit = read_active(root)['current']
             if commit is None:
                 raise ValueError('Install a release first')
-            release, _ = check_release(root, commit)
+            release, manifest = check_release(root, commit)
+            installed_schema = read_data_schema(root, {'current': commit, 'previous': None})
+            if manifest['data_schema'] != installed_schema:
+                raise ValueError('Installed release cannot open the current user-data schema')
             data = root / 'data'
             if shop_id is not None:
                 data = shop_data_directory(data, shop_id)
