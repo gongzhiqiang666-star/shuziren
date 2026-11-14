@@ -1,8 +1,12 @@
 import tempfile
+import subprocess
+import sys
+import time
 import unittest
 from pathlib import Path
 
-from recovered.ip_pipeline import StepFileCheckpoint, completed_step_ready, pipeline_fingerprint
+from recovered.ip_pipeline import (StepFileCheckpoint, completed_step_ready,
+                                   pipeline_fingerprint, project_pipeline_lock)
 from recovered.main import Api
 
 
@@ -48,6 +52,47 @@ class PipelineApi(Api):
 
 
 class IpPipelineTests(unittest.TestCase):
+    def test_project_lock_serializes_other_process_and_recovers_after_exit(self):
+        project_id = "cross-process-test"
+        code = (
+            "import time; from recovered.ip_pipeline import project_pipeline_lock; "
+            f"lock=project_pipeline_lock({project_id!r}); lock.__enter__(); "
+            "print('ready',flush=True); time.sleep(.8); lock.__exit__(None,None,None)"
+        )
+        process = subprocess.Popen(
+            [sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        try:
+            self.assertEqual(process.stdout.readline().strip(), "ready")
+            started = time.monotonic()
+            with project_pipeline_lock(project_id):
+                waited = time.monotonic() - started
+            self.assertGreaterEqual(waited, .5)
+            process.communicate(timeout=3)
+            self.assertEqual(process.returncode, 0)
+            started = time.monotonic()
+            with project_pipeline_lock(project_id):
+                pass
+            self.assertLess(time.monotonic() - started, .3)
+
+            crash = subprocess.Popen(
+                [sys.executable, "-c", code.replace("time.sleep(.8)", "time.sleep(30)")],
+                cwd=Path(__file__).resolve().parents[1], stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True,
+            )
+            self.assertEqual(crash.stdout.readline().strip(), "ready")
+            crash.kill()
+            crash.communicate(timeout=3)
+            started = time.monotonic()
+            with project_pipeline_lock(project_id):
+                pass
+            self.assertLess(time.monotonic() - started, .3)
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.communicate()
+
     def test_fingerprint_is_stable_and_changes_with_input(self):
         project = {"name": "项目", "rewritten_script": "文案"}
         first = pipeline_fingerprint("p1", {"voice": "a"}, project)
@@ -66,6 +111,27 @@ class IpPipelineTests(unittest.TestCase):
             self.assertEqual(checkpoint.rollback(), [])
             self.assertEqual(old.read_text(encoding="utf-8"), "old")
             self.assertFalse(new.exists())
+
+    def test_next_checkpoint_recovers_files_left_by_crashed_process(self):
+        with tempfile.TemporaryDirectory() as root:
+            old = Path(root) / "old.wav"; old.write_text("old", encoding="utf-8")
+            new = Path(root) / "new.srt"
+            project = {"subtitle_path": str(old), "subtitle_video_path": str(new)}
+            payload = repr(project)
+            code = (
+                "import os; from pathlib import Path; "
+                "from recovered.ip_pipeline import StepFileCheckpoint; "
+                f"p={payload}; StepFileCheckpoint(p,'subtitles'); "
+                "Path(p['subtitle_path']).write_text('corrupt',encoding='utf-8'); "
+                "Path(p['subtitle_video_path']).write_text('partial',encoding='utf-8'); os._exit(9)"
+            )
+            crashed = subprocess.run([sys.executable, "-c", code],
+                                     cwd=Path(__file__).resolve().parents[1])
+            self.assertEqual(crashed.returncode, 9)
+            checkpoint = StepFileCheckpoint(project, "subtitles")
+            self.assertEqual(old.read_text(encoding="utf-8"), "old")
+            self.assertFalse(new.exists())
+            checkpoint.close()
 
     def test_failure_is_persisted_and_next_call_resumes_after_completed_steps(self):
         with tempfile.TemporaryDirectory() as root:
