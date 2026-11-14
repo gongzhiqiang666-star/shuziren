@@ -301,6 +301,8 @@ class ConsoleLive:
                     elif event.get('event') == 'progress':
                         with self.lock:
                             self.status['frames'] = event['frames']
+                            self.status['reused_frames'] = event['reused_frames']
+                            self.status['queue_length'] = event['queue_length']
                     elif event.get('event') == 'seek':
                         if not stopping:
                             deadline = float('inf')

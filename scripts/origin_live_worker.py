@@ -89,8 +89,10 @@ def main():
                 raise RuntimeError("本地视频播放意外停止")
             now = time.monotonic()
             if now >= next_progress:
-                frames = manager.player.get_playback_stats_snapshot()["output_frames"]
-                print(json.dumps({"event": "progress", "frames": frames}), flush=True)
+                stats = manager.player.get_playback_stats_snapshot()
+                print(json.dumps({"event": "progress", "frames": stats["output_frames"],
+                                  "reused_frames": stats["reused_frames"],
+                                  "queue_length": stats["queue_length"]}), flush=True)
                 next_progress = now + 1
             try:
                 command = commands.get_nowait()
