@@ -85,6 +85,10 @@ class ProductStoreTests(unittest.TestCase):
         self.assertEqual(self.store.import_business_metrics(product_id, '\ufeff' + header + first), 1)
         row, = self.store.business_metrics(product_id)
         self.assertEqual((row['clicks'], row['orders'], row['stock'], row['scope']), (0, None, 10, '商品,按日'))
+        correction = '商家报表,2026-11-01,2026-11-01,"商品,按日",3,5,1,8\n'
+        with self.assertRaisesRegex(ProductError, '第 3 行'):
+            self.store.import_business_metrics(product_id, header + correction + invalid)
+        self.assertEqual(self.store.business_metrics(product_id), [row])
         with self.assertRaisesRegex(ProductError, '重复'):
             self.store.import_business_metrics(product_id, header + first + first)
 
