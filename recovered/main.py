@@ -1330,7 +1330,49 @@ class Api(PluginInstallerApi):
         return os.path.join(os.path.dirname(__file__), "assets", "ip_agent_projects")
 
     def _get_ip_agent_project_dir(self, project_id):
-        return os.path.join(self._get_ip_agent_base_dir(), project_id)
+        import re
+        identifier = str(project_id or "")
+        if re.fullmatch(r"[A-Za-z0-9_-]{1,80}", identifier) is None or identifier in (".", ".."):
+            raise ValueError("无效的 IP 项目 ID")
+        base = Path(self._get_ip_agent_base_dir()).resolve()
+        target = (base / identifier).resolve()
+        if target.parent != base:
+            raise ValueError("无效的 IP 项目 ID")
+        return str(target)
+
+    def _get_ip_agent_publish_audit_dir(self):
+        return str((Path(self._get_ip_agent_base_dir()).resolve().parent / "ip_agent_publish_audit").resolve())
+
+    def _archive_ip_agent_publish_audit(self, project_id, info):
+        def audit_plan(value):
+            plan = dict(value or {})
+            plan["thumbnail_present"] = bool(plan.pop("thumbnail_path", ""))
+            plan.pop("video_path", None)
+            return plan
+
+        attempts = []
+        for value in list(info.get("publish_attempts") or [])[-100:]:
+            attempt = dict(value or {})
+            attempt["plan"] = audit_plan(attempt.get("plan"))
+            attempts.append(attempt)
+        last_result = info.get("publish_last_result") or {}
+        if not attempts and not last_result:
+            return ""
+        audit_dir = Path(self._get_ip_agent_publish_audit_dir())
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        archived_at = datetime.now().isoformat(timespec="seconds")
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        target = audit_dir / f"{project_id}-{stamp}.yaml"
+        record = {
+            "schema_version": 1, "project_id": str(project_id),
+            "project_name": str(info.get("name") or ""), "created_at": info.get("create_time", ""),
+            "project_updated_at": info.get("update_time", ""), "archived_at": archived_at,
+            "publish_last_request_id": info.get("publish_last_request_id", ""),
+            "publish_last_plan": audit_plan(info.get("publish_last_plan")),
+            "publish_last_result": last_result, "publish_attempts": attempts,
+        }
+        self._write_yaml_file(str(target), record)
+        return str(target)
 
     def _get_ip_agent_project_info_path(self, project_id):
         return os.path.join(self._get_ip_agent_project_dir(project_id), "project_info.yaml")
@@ -1505,8 +1547,18 @@ class Api(PluginInstallerApi):
             target = self._get_ip_agent_project_dir(project_id)
             if not os.path.isdir(target):
                 return {"error": "IP项目不存在"}
+            if hasattr(self, "_ip_publish_lock"):
+                with self._ip_publish_lock:
+                    if str(project_id) in self._ip_publish_active:
+                        return {"error": "项目正在发布，不能删除", "code": "publish_in_progress"}
+            info_path = self._get_ip_agent_project_info_path(project_id)
+            info = self._read_yaml_file(info_path) if os.path.isfile(info_path) else {}
+            audit_path = self._archive_ip_agent_publish_audit(project_id, info)
             shutil.rmtree(target)
-            return {"status": "success", "message": "删除成功"}
+            result = {"status": "success", "message": "删除成功"}
+            if audit_path:
+                result["publish_audit_path"] = audit_path
+            return result
         except Exception as error:
             return {"error": f"删除IP项目失败: {error}"}
 

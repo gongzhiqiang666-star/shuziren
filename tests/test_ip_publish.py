@@ -2,6 +2,7 @@ import tempfile
 import threading
 import types
 import unittest
+import yaml
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
@@ -168,6 +169,59 @@ class IpPublishTests(unittest.TestCase):
                 release.set()
                 for item in reversed(patches):
                     item.stop()
+
+    def test_delete_archives_publish_audit_without_local_media_paths(self):
+        with tempfile.TemporaryDirectory() as root:
+            api = Api.__new__(Api)
+            projects = Path(root) / "projects"
+            api._get_ip_agent_base_dir = lambda: str(projects)
+            created = api.create_ip_agent_project("已发布项目")["project"]
+            project_id = created["id"]
+            video = Path(api._get_ip_agent_project_dir(project_id)) / "result" / "最终成片.mp4"
+            video.parent.mkdir(parents=True, exist_ok=True)
+            video.write_bytes(b"published-video")
+            plan = build_publish_plan(video, "标题", [], ["douyin"])
+            api._save_ip_agent_project(project_id, {
+                "publish_last_request_id": plan["request_id"], "publish_last_plan": plan,
+                "publish_last_result": {"success": True, "results": {"douyin": {"success": True}}},
+                "publish_attempts": [{"request_id": plan["request_id"], "status": "success", "plan": plan}],
+            })
+            result = api.delete_ip_agent_project(project_id)
+            self.assertEqual(result["status"], "success")
+            self.assertFalse(Path(api._get_ip_agent_project_dir(project_id)).exists())
+            audit = Path(result["publish_audit_path"])
+            self.assertTrue(audit.is_file())
+            record = yaml.safe_load(audit.read_text(encoding="utf-8"))
+            self.assertEqual(record["publish_last_request_id"], plan["request_id"])
+            self.assertEqual(record["publish_last_plan"]["video_sha256"], plan["video_sha256"])
+            self.assertNotIn("video_path", record["publish_last_plan"])
+            self.assertNotIn("video_path", record["publish_attempts"][0]["plan"])
+
+    def test_delete_keeps_project_when_audit_fails_or_publish_is_running(self):
+        with tempfile.TemporaryDirectory() as root:
+            api = Api.__new__(Api)
+            projects = Path(root) / "projects"
+            api._get_ip_agent_base_dir = lambda: str(projects)
+            created = api.create_ip_agent_project("待保护项目")["project"]
+            project_id = created["id"]
+            api._save_ip_agent_project(project_id, {"publish_last_result": {"success": True}})
+            with mock.patch.object(api, "_archive_ip_agent_publish_audit", side_effect=OSError("磁盘已满")):
+                failed = api.delete_ip_agent_project(project_id)
+            self.assertIn("磁盘已满", failed["error"])
+            self.assertTrue(Path(api._get_ip_agent_project_dir(project_id)).is_dir())
+            api._ip_publish_lock = threading.RLock()
+            api._ip_publish_active = {project_id}
+            active = api.delete_ip_agent_project(project_id)
+            self.assertEqual(active.get("code"), "publish_in_progress")
+            self.assertTrue(Path(api._get_ip_agent_project_dir(project_id)).is_dir())
+
+    def test_ip_project_id_cannot_escape_project_root(self):
+        with tempfile.TemporaryDirectory() as root:
+            api = Api.__new__(Api)
+            api._get_ip_agent_base_dir = lambda: str(Path(root) / "projects")
+            for identifier in ("../outside", "..", "a/b", "a\\b", ""):
+                with self.assertRaisesRegex(ValueError, "无效"):
+                    api._get_ip_agent_project_dir(identifier)
 
 
 if __name__ == "__main__":
