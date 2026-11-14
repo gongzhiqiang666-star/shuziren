@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import time
+import os
 from pathlib import Path
+from urllib.parse import urlsplit
+from uuid import uuid4
 
 import requests
 
@@ -11,6 +14,7 @@ import requests
 RH_BASE = "https://www.runninghub.cn/openapi/v2"
 RH_TEXT2IMG = RH_BASE + "/seedream-v5-pro/text-to-image"
 DEFAULT_MODEL = "seedream-v5-pro"
+MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 
 
 def _as_path(path): return Path(path).expanduser().resolve()
@@ -88,9 +92,44 @@ def poll_task_url(*, api_key, task_id, poll_interval=5, poll_timeout=900):
 
 
 def download_image(url, dest, timeout=300):
+    parsed = urlsplit(str(url or ""))
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("RunningHub 图片下载地址必须是 HTTPS")
     target = Path(dest); target.parent.mkdir(parents=True, exist_ok=True)
-    response = _request("GET", url, timeout=timeout); target.write_bytes(response.content)
-    return target
+    pending = target.with_name(f".{target.name}.{uuid4().hex}.pending")
+    response = None
+    try:
+        response = _request("GET", url, timeout=timeout, stream=True)
+        declared = int(response.headers.get("Content-Length") or 0)
+        if declared < 0 or declared > MAX_DOWNLOAD_BYTES:
+            raise ValueError("RunningHub 图片超过 100 MiB 限制")
+        total = 0
+        with pending.open("xb") as handle:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > MAX_DOWNLOAD_BYTES:
+                    raise ValueError("RunningHub 图片超过 100 MiB 限制")
+                handle.write(chunk)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if total == 0:
+            raise ValueError("RunningHub 返回了空图片")
+        from PIL import Image
+        with Image.open(pending) as image:
+            image.verify()
+        with Image.open(pending) as image:
+            if image.format not in {"PNG", "JPEG", "WEBP"} or image.width <= 0 or image.height <= 0:
+                raise ValueError("RunningHub 返回的图片格式无效")
+            image.load()
+        pending.replace(target)
+        return target
+    finally:
+        if response is not None:
+            close = getattr(response, "close", None)
+            if callable(close): close()
+        pending.unlink(missing_ok=True)
 
 
 def _generate_and_download_cancellable(*, api_key, prompt, dest, aspect_ratio="9:16", resolution="2k",
