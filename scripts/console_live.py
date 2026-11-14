@@ -487,6 +487,8 @@ class ConsoleLive:
                 segments = playback_segments(script)
                 if any(segment['type'] in {'assistant', 'pause'} for segment in segments):
                     item['segments'] = segments
+                if script.get('legacy_role'):
+                    item['legacy_script_role'] = script['legacy_role']
                 items.append(item)
             if preparation is not None:
                 self.tts.products.record_preparation_application(session_id, preparation, verify_items=True)
@@ -559,6 +561,8 @@ class ConsoleLive:
                                 generated_audio_sha256=utterance.original_sha256,
                                 played_pcm_sha256=utterance.pcm_sha256,
                             )
+                            if 'legacy_script_role' in item:
+                                rotation['task_speech_provenance']['legacy_script_role'] = item['legacy_script_role']
                             pending = None
                         elif state['status'] not in {'running', 'succeeded'}:
                             raise ProductError(state.get('error') or '轮播语音合成失败')

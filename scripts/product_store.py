@@ -902,8 +902,9 @@ class ProductStore:
             source['facts_review'] = 'version_current'
         source['segment'] = None
         if source['script_text'] is not None:
-            script = {'text': source['script_text'],
-                      'legacy_role': legacy_script_role(source['product_snapshot'], position)}
+            provenance = source['speech_provenance'] or {}
+            role = provenance.get('legacy_script_role', legacy_script_role(source['product_snapshot'], position))
+            script = {'text': source['script_text'], 'legacy_role': role}
             segments = playback_segments(script)
             if not any(segment['type'] in {'assistant', 'pause'} for segment in segments):
                 segments = [{'type': 'host', 'content': source['script_text']}]
@@ -1677,14 +1678,26 @@ class ProductStore:
                        (script_id, current["id"], current["version"], json.dumps(current, ensure_ascii=False), script, source,parent_script_id))
             return script_id
 
+    @staticmethod
+    def _script_roles(rows):
+        roles = {}
+        for position, row in enumerate(rows):
+            parent = row['parent_script_id']
+            role = roles.get(parent) if parent else legacy_script_role(json.loads(row['snapshot']), position)
+            if role is not None:
+                roles[row['id']] = role
+        return roles
+
     def scripts(self, product_id):
         with self.connect() as db:
             self.decode(db.execute("SELECT * FROM products WHERE id=?", (product_id,)).fetchone())
+            rows = db.execute("SELECT * FROM scripts WHERE product_id=? ORDER BY rowid", (product_id,)).fetchall()
+            roles = self._script_roles(rows)
             result = []
-            for row in db.execute("SELECT * FROM scripts WHERE product_id=? ORDER BY rowid", (product_id,)):
+            for row in rows:
                 value = dict(row)
                 value["snapshot"] = json.loads(value["snapshot"])
-                role = legacy_script_role(value["snapshot"], len(result))
+                role = roles.get(value['id'])
                 if role is not None:
                     value['legacy_role'] = role
                 result.append(value)

@@ -13,6 +13,18 @@ from scripts.product_store import Conflict, ProductError, ProductStore, product_
 
 
 class ProductStoreTests(unittest.TestCase):
+    def test_revised_legacy_script_keeps_assistant_role(self):
+        product = self.store.save(title='茶杯', content='商品事实', product_index=1,
+                                  extra={'v122': {'script_roles': ['host', 'assistant']}})
+        self.store.add_script(product, '主播原稿')
+        assistant = self.store.add_script(product, '助播原稿')
+        first_edit = self.store.add_script(product, '助播改稿', parent_script_id=assistant)
+        second_edit = self.store.add_script(product, '助播二次改稿', parent_script_id=first_edit)
+        independent = self.store.add_script(product, '独立新稿')
+        roles = {script['id']: script.get('legacy_role') for script in self.store.scripts(product['id'])}
+        self.assertEqual([roles[script] for script in (assistant, first_edit, second_edit, independent)],
+                         ['assistant', 'assistant', 'assistant', None])
+
     def test_preparation_application_distinguishes_review_edits(self):
         product = self.product()
         script = self.store.add_script(product, '商品话术')
