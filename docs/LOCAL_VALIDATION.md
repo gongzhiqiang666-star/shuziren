@@ -162,3 +162,5 @@ A01-05 合并回归：包含失败计数、操作等待清除与历史报告的�
 V08 / G02 最新准备包校验的 Windows 实播通过。通过 HTTP 入口验证改选话术后重新审核、双商品轮播、插播、人工接管与恢复、停播和历史报告，输出 937 帧。证据 logs/validation/v08-preparation-current-02/result.json。此次由实播脚本操作，Chrome 交互和并发更正实播仍待验。
 
 V08 / G02 最新实播留样双轨经 FFmpeg -xerror 完整解码通过。重新打开场次 SQLite 库，应用快照的两个商品及审阅稿 SHA-256 可查，指纹与该版本保存的审阅稿一致。证据同 v08-preparation-current-02。Chrome 页面仍待复验。
+
+V08 / G02 新版实播脚本通过。选用话术变更后重新审核，实播输出 936 帧，历史场次报告同时匹配准备包版本、审阅稿指纹和两件商品的话术。证据 logs/validation/v08-review-digest-live/result.json。Chrome 交互仍待验。
