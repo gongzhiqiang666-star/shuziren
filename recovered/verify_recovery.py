@@ -3474,6 +3474,10 @@ def verify_get_srt_lifecycle():
     rows=srt._build_subtitles_from_timestamps(
         {"text":"甲，乙丙","timestamp":[[100,800],[800,1200]]},2000)
     assert rows==[(100,800,"甲，"),(800,1300,"乙丙")]
+    english_pairs=[[index*200,(index+1)*200] for index in range(10)]
+    rows=srt._build_subtitles_from_timestamps(
+        {"text":"Before, I run.","timestamps":english_pairs},3000)
+    assert [row[2] for row in rows]==["Before,","I run."]
     text="甲"*25;pairs=[[index*100,(index+1)*100] for index in range(25)]
     rows=srt._build_subtitles_from_timestamps({"text":text,"timestamps":pairs},4000)
     assert [len(row[2]) for row in rows]==[24,1] and rows[0][1]==2400
@@ -3490,6 +3494,14 @@ def verify_get_srt_lifecycle():
     try:
         rows=srt._build_subtitles_from_plain_text({},6000)
         assert rows==[(0,1500,"甲，"),(1500,4500,"乙乙乙！"),(4500,6000,"丙丙")]
+    finally:srt.whisper_result_to_text=original_text
+    original_text=srt.whisper_result_to_text;srt.whisper_result_to_text=lambda _result:"hello world."
+    try:assert srt._build_subtitles_from_plain_text({},2000)[0][2]=="hello world."
+    finally:srt.whisper_result_to_text=original_text
+    original_text=srt.whisper_result_to_text;srt.whisper_result_to_text=lambda _result:"a"*24+"."
+    try:
+        boundary=srt._build_subtitles_from_plain_text({},2000)
+        assert len(boundary)==1 and boundary[0][2]=="a"*24+"."
     finally:srt.whisper_result_to_text=original_text
     original_which=srt.shutil.which;original_run=srt.subprocess.run
     extracted=[]

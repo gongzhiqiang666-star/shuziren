@@ -63,3 +63,11 @@ Windows 实测选择 VB-Audio CABLE Input 全局编号 4，使用产品播放器
 本机存在约 3.09 GB `large-v3.pt`、OpenAI Whisper 和 RTX 3060 CUDA。使用 8 秒英语 WAV 调用产品 `recognize_audio_file`，模型自动检测英语并输出两句文本。首轮发现英文句号未包含在句末标点集合，已有句号又被补一个，结果出现 `..`；修复后新增英文已完成句回归并重新真实推理。
 
 复测输出为 `Before, I chased a wayward gale. Now I hunt a storm of darkness.`，仅一个结束句号；耗时 12.54 秒（本轮系统缓存条件），输出 TXT 原子保存。模型清理后 `torch.cuda.memory_allocated()` 为 8,519,680 字节，属于框架残留量，不宣称显存完全归零。Triton 内核因环境缺 CUDA toolkit 回退到较慢实现，但推理成功。
+
+## Whisper 真实 SRT
+
+原视频无音轨，使用同项目配套的 8 秒自有 WAV 与 H.264 视频本机封装成验证 MP4，再调用产品 `generate_srt_for_video`。首轮真实 SRT 暴露两个英文边界问题：时间戳/纯文本构建器删除词间空格；恰好达到 24 个可见字符时，随后句号被拆成单独 131 ms 字幕。
+
+修复后空格保留但不消耗字符时间戳，纯文本长度按非空格字符计算，紧邻切块的标点并回上一条。利用同次真实 Whisper 调试 JSON 重建，最终三条为：`Before,`（0～903 ms）、`I chased a wayward gale.`（903～3999 ms）、`Now I hunt a storm of darkness.`（3999～8000 ms）。时间轴连续、不重叠、不越过音轨，完整恢复契约新增英文空格和 24 字符+句号边界并通过。
+
+独立重建命令若未配置随包 FFprobe，MP4 时长读取会明确失败；在产品部署使用的 FFmpeg/FFprobe PATH 下通过。该依赖已由运行环境管理，不静默用错误时长。

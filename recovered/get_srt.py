@@ -16,7 +16,7 @@ from .whisper_runtime import (cleanup_whisper_model, load_whisper_model,
                               transcribe_with_whisper, whisper_result_to_text)
 
 
-PUNCTUATION = "。！？!?；;，,、"
+PUNCTUATION = "。.!！？?；;，,、"
 MAX_SUBTITLE_CHARS = 24
 MIN_SUBTITLE_MS = 500
 MAX_SUBTITLE_MS = 4500
@@ -147,7 +147,11 @@ def _build_subtitles_from_timestamps(result, max_duration_ms):
         current_start = current_end = None
         current_chars = 0
 
-    for char in (char for char in text if not char.isspace()):
+    for char in text:
+        if char.isspace():
+            if chunks and chunks[-1] != " ":
+                chunks.append(" ")
+            continue
         if char in PUNCTUATION:
             chunks.append(char)
             if (current_start is not None and current_end is not None and
@@ -173,17 +177,27 @@ def _build_subtitles_from_timestamps(result, max_duration_ms):
 
 def _build_subtitles_from_plain_text(result, max_duration_ms):
     text = normalize_subtitle_text(whisper_result_to_text(result))
-    chars = [char for char in text if not char.isspace()]
+    chars = list(text)
     if not chars or max_duration_ms <= 0:
         return []
     chunks, current = [], []
+    visible_chars = 0
     for char in chars:
+        if char.isspace():
+            if current and current[-1] != " ":
+                current.append(" ")
+            continue
+        if char in PUNCTUATION and not current and chunks:
+            chunks[-1] = normalize_subtitle_text(chunks[-1] + char)
+            continue
         current.append(char)
-        if char in PUNCTUATION or len(current) >= MAX_SUBTITLE_CHARS:
+        visible_chars += 1
+        if char in PUNCTUATION or visible_chars >= MAX_SUBTITLE_CHARS:
             chunk = normalize_subtitle_text("".join(current))
             if chunk:
                 chunks.append(chunk)
             current = []
+            visible_chars = 0
     if current:
         chunk = normalize_subtitle_text("".join(current))
         if chunk:
