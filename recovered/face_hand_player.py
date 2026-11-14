@@ -9,6 +9,7 @@ from time import monotonic
 import numpy as np
 
 from .video_player import _AudioOutput, _VirtualCamOutput, _WindowOutput, _pick_sample_rate
+from .output_mode import normalize_output_mode
 
 
 def _align_audio_to_frames(audio, frame_count, spf):
@@ -71,7 +72,7 @@ class FaceHandVideoStreamManager:
         self.hand_videos = list(hand_videos)
         self.window_width = window_width
         self.window_height = window_height
-        self.image_output_mode = image_output_mode
+        self.image_output_mode = normalize_output_mode(image_output_mode)
         self.fps = fps
         self._face_history = []
         self._hand_history = []
@@ -258,7 +259,7 @@ class FaceHandVideoStreamManager:
         with self._clip_lock:
             if self._worker is not None and self._worker.is_alive():
                 return self._ready.is_set() and not self._stop.is_set()
-            if self.fps <= 0 or self.image_output_mode not in {"window", "virtual_cam"}:
+            if self.fps <= 0:
                 self.last_error = "视频输出配置无效"
                 return False
             self.last_error = None

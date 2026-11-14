@@ -14,6 +14,8 @@ from queue import Empty, Queue
 from threading import Event, Thread, current_thread
 from time import sleep, time
 
+from .output_mode import normalize_output_mode
+
 
 DEFAULT_FPS = 25
 AUDIO_SAMPLE_RATE = 44100
@@ -248,7 +250,7 @@ class Player:
         self.fps = DEFAULT_FPS
         self.width = width
         self.height = height
-        self.output_mode = output_mode
+        self.output_mode = normalize_output_mode(output_mode)
         self._frame_processor = frame_processor
         self._switch_lock = Lock()
         self._main_worker = None
@@ -357,7 +359,7 @@ class Player:
             if self._output is None:
                 if self.output_mode == "window":
                     output = _WindowOutput(self.width, self.height)
-                elif self.output_mode in ("vcam", "camera"):
+                elif self.output_mode == "virtual_cam":
                     output = _VirtualCamOutput(self.width, self.height, self.fps)
                 self._output = output
             self._play_loop()
