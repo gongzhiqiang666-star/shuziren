@@ -407,3 +407,5 @@ G07-04 Chrome 重复提问跨场次对照通过。空场显示 0 组；试验场
 G07-04 Chrome 未入队提问对照补验通过。试验场增加一条同商品同问题的未入队记录，重复次数从 2 增至 3，单列未入队 1 条，空场保留两个零值。证据 logs/validation/g07-unqueued-compare-chrome-01/report.txt。配置本机 FFmpeg 后控制台 HTTP 回归 49 项全通过，见 logs/http-regression-dfc663f.log。真实商家问答和运营效果仍待验。
 
 G08-04 Chrome 历史试卖指标补验通过。首版结论保留样品成本 0 分、5 笔订单、0 笔退款、按时履约未知、毛利 -100 分，未被第二版覆盖。证据 logs/validation/g08-history-metrics-chrome-01/report.txt。真实供应商试卖仍待验。
+
+G09-03 本机 Chrome 验证通过。保持审核与暂停记录面板展开，执行本机审核和暂停后，历史从空记录自动更新为一条审核、再更新为审核与暂停各一条。使用隔离账单，平台动作和回退仍待验。
