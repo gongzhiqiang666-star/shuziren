@@ -5029,6 +5029,8 @@ def verify_whisper_runtime_contract():
             "text":"顶层已完整！","segments":[{"text":"不应覆盖"}]})=="顶层已完整！"
         assert whisper_runtime.whisper_result_to_text({
             "text":"hello world","segments":[{"text":"hello"},{"text":"world"}]})=="hello. world."
+        assert whisper_runtime.whisper_result_to_text({
+            "text":"Already complete.","segments":[{"text":"Already complete."}]})=="Already complete."
         assert whisper_runtime.whisper_result_to_text({"text":"没有分段"})=="没有分段。"
         info=whisper_runtime.whisper_result_to_sentence_info({"segments":[
             {"start":-0.1,"end":0.6,"words":[

@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 WHISPER_MODEL_DIR_NAME = "whisper"
 WHISPER_MODEL_NAME = "large-v3"
 WHISPER_PUNCTUATION_PROMPT = "请准确识别语音内容，并保留自然的句号、逗号、问号和感叹号。For non-Chinese speech, keep natural punctuation in the target language."
-SENTENCE_PUNCTUATION = "。！？!?；;"
+SENTENCE_PUNCTUATION = "。.!！？?；;"
 
 
 def resolve_whisper_model_path(asr_weight_path: str) -> Path:

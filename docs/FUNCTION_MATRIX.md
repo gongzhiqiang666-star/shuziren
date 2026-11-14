@@ -59,7 +59,7 @@
 |---|---|---|---|---|---|
 | MED-001 | 音频设备枚举和播放 | `audio_devices/audio_player.pyd` | `audio_devices.py`, `audio_player.py` | 静态验证通过 | 修复 host 局部序号误作全局设备编号和单设备查询失败中止扫描；Windows 实测 2 输入、5 输出均可打开。播放器支持指定全局编号和幂等关闭，VB-Audio 连续两实例播放/释放通过且保留原构造签名。物理热插拔、独占冲突和播放中消失待验，见 `evidence/a06-audio-device-index.md` |
 | MED-002 | 音频裁剪与编辑器 | `process_audio_clip/launch_audio_editor` | `audio_clip.py`, `edit_audio.py` | 静态验证通过 | PCM WAV 门禁、受限预览及 WAV/TXT 双文件事务；修复 ASR 模型路径并隔离任务目录。22.49秒同源 WAV/MP3 真实 FunASR 均生成4段一致文本，时间戳仅末端差30ms；失败隔离回归2项通过。Windows GUI、物理热插拔和独占冲突仍待验，见 `evidence/a06-audio-device-index.md` |
-| MED-003 | Whisper/FunASR 识别及 SRT | 原生 ASR 模块调用链 | `whisper_runtime.py`, `funasr_runtime.py`, `get_srt.py`, `audio_clip.py` | 静态验证通过 | 真实 FunASR WAV/MP3 四段与原子 manifest 已验证；Whisper 音频/SRT 使用唯一临时文件，失败清理，文本 fsync 原子替换并保留旧结果。Whisper CPU/GPU、长音频、多语言准确性及真实 SRT 全链待验，见 `evidence/a06-audio-device-index.md` |
+| MED-003 | Whisper/FunASR 识别及 SRT | 原生 ASR 模块调用链 | `whisper_runtime.py`, `funasr_runtime.py`, `get_srt.py`, `audio_clip.py` | 静态验证通过 | 真实 FunASR WAV/MP3 四段与原子 manifest；Whisper 唯一临时文件、失败清理和原子文本；RTX 3060 large-v3 真实 8 秒英语识别通过并修复 ASCII 句号重复。Whisper CPU、长音频、多语言准确性及真实 SRT 全链待验，见 `evidence/a06-audio-device-index.md` |
 | MED-004 | 本地音色克隆预处理 | `clone_voice_local` Ghidra 主体 | `voice_clone_infer_api.py`, `clone_manager.py` | 静态验证通过 | 真实 FFmpeg/ASR、模型资源、坏音频和中文路径 |
 | MED-005 | ZipVoice 本地语音推理 | `voice_infer.pyd` | `voice_infer.py`、`scripts/tts_worker.py` | 静态验证通过 | A01-02 已有 Windows CPU/CUDA 合成、双参考音缓存隔离、显存清理及独立媒体任务证据。原程序差分、并发、人工音质和直播待验 |
 | MED-006 | OmniVoice 本地语音推理 | `voice_infer_v2.pyd` | `voice_infer_v2.py`、`scripts/tts_worker.py` | 静态验证通过 | A01-02 已有 RTX 3060 合成、中英语言缓存隔离及独立媒体任务证据。原程序差分、显存量化、双参考音、人工音质和直播待验 |

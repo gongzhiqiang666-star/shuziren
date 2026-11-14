@@ -57,3 +57,9 @@ Windows 实测选择 VB-Audio CABLE Input 全局编号 4，使用产品播放器
 音频识别不再在源文件旁创建固定 `{stem}_temp.wav`，改用独立系统临时目录；识别文本写入同目录随机 pending，flush/fsync 后原子替换，失败保留旧 `.txt`。SRT 音轨提取也由固定 stem 文件改为 `mkstemp` 唯一 WAV，FFmpeg 失败立即删除预创建文件。
 
 恢复契约验证两个同名 SRT 输入的临时路径不同、FFmpeg 失败无残留；音频 ASR 成功和失败均清理临时目录与模型，失败时已存在文本保持原值且无 pending。完整恢复基线通过。本项是生命周期验证，真实 Whisper 模型推理另行记录。
+
+## Whisper large-v3 CUDA 实测
+
+本机存在约 3.09 GB `large-v3.pt`、OpenAI Whisper 和 RTX 3060 CUDA。使用 8 秒英语 WAV 调用产品 `recognize_audio_file`，模型自动检测英语并输出两句文本。首轮发现英文句号未包含在句末标点集合，已有句号又被补一个，结果出现 `..`；修复后新增英文已完成句回归并重新真实推理。
+
+复测输出为 `Before, I chased a wayward gale. Now I hunt a storm of darkness.`，仅一个结束句号；耗时 12.54 秒（本轮系统缓存条件），输出 TXT 原子保存。模型清理后 `torch.cuda.memory_allocated()` 为 8,519,680 字节，属于框架残留量，不宣称显存完全归零。Triton 内核因环境缺 CUDA toolkit 回退到较慢实现，但推理成功。
