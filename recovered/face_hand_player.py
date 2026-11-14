@@ -85,6 +85,7 @@ class FaceHandVideoStreamManager:
         self._video_output = None
         self._tts_samples = np.empty(0, dtype=np.float32)
         self._tts_path = None
+        self._tts_queue_name = None
         self.sample_rate = 44100
         self._stop = Event()
         self._worker = None
@@ -328,6 +329,10 @@ class FaceHandVideoStreamManager:
         with self._clip_lock:
             queue = self._audio_queues.setdefault(queue_name, deque())
             queue.append((audio_path, use_silent_features, target_face_index))
+            if queue_name == "danmu" and self._tts_queue_name == "normal":
+                self._tts_samples = np.empty(0, dtype=np.float32)
+                self._tts_path = None
+                self._tts_queue_name = None
 
     def get_queue_lengths(self):
         with self._clip_lock:
@@ -339,6 +344,7 @@ class FaceHandVideoStreamManager:
                 queue.clear()
             self._tts_samples = np.empty(0, dtype=np.float32)
             self._tts_path = None
+            self._tts_queue_name = None
 
     def _load_tts(self, path):
         return self._decode_audio(path)
@@ -360,11 +366,13 @@ class FaceHandVideoStreamManager:
         with self._clip_lock:
             if not self._tts_samples.size:
                 self._tts_path = None
-                for queue in self._audio_queues.values():
+                self._tts_queue_name = None
+                for queue_name, queue in self._audio_queues.items():
                     if queue:
                         path, _, _ = queue.popleft()
                         self._tts_samples = self._load_tts(path)
                         self._tts_path = path
+                        self._tts_queue_name = queue_name
                         break
             chunk = _align_audio_to_frames(self._tts_samples, 1, spf)
             self._tts_samples = self._tts_samples[spf:]

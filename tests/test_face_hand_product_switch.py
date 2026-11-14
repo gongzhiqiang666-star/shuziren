@@ -38,6 +38,27 @@ class FaceHandProductSwitchTests(unittest.TestCase):
         manager._player.clear_audio_queues.assert_called_once_with()
         manager._interaction_llm_executor.shutdown(wait=True)
 
+    def test_interaction_audio_preempts_active_product_audio(self):
+        player = FaceHandVideoStreamManager(face_videos=[], hand_videos=[])
+        samples = {
+            "product.wav": np.arange(20, dtype=np.float32),
+            "reply.wav": np.full(6, 99, dtype=np.float32),
+        }
+        player._load_tts = lambda path: samples[path]
+        player.add_audio_to_queue("product.wav", queue_name="normal")
+        product, path = player._take_tts(4)
+        self.assertEqual(path, "product.wav")
+        self.assertEqual(player._tts_queue_name, "normal")
+        self.assertEqual(player._tts_samples.size, 16)
+
+        player.add_audio_to_queue("reply.wav", queue_name="danmu")
+        reply, path = player._take_tts(4)
+
+        self.assertEqual(path, "reply.wav")
+        self.assertEqual(player._tts_queue_name, "danmu")
+        self.assertTrue(np.array_equal(reply, np.full(4, 99, dtype=np.float32)))
+        self.assertFalse(np.any(reply == product[-1]))
+
 
 if __name__ == "__main__":
     unittest.main()
