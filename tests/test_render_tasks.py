@@ -174,12 +174,15 @@ class RenderTests(unittest.TestCase):
         self.audio.products.save_live_content_schedule('scene', 'spoken', '账号一', '公开',
                                                        '2027-01-01T09:00:00+08:00')
         package = self.tasks.publication_package('scene', 'spoken', task_id)
+        first_package_hash = digest(package)
         with zipfile.ZipFile(package) as archive:
             self.assertEqual(set(archive.namelist()), {
                 'video.mp4', 'cover.jpg', 'captions.srt', 'metadata.json', 'SHA256SUMS.txt'})
             metadata = json.loads(archive.read('metadata.json'))
             self.assertEqual((metadata['body'], metadata['account']), ('审核后的发布文案', '账号一'))
             self.assertNotIn(str(self.root), json.dumps(metadata, ensure_ascii=False))
+            self.assertTrue(all(item.date_time == (1980, 1, 1, 0, 0, 0) for item in archive.infolist()))
+        self.assertEqual(digest(self.tasks.publication_package('scene', 'spoken', task_id)), first_package_hash)
         self.audio.products.save_live_content_draft('scene', 'spoken', '排期后又修改的文案')
         with self.assertRaises(Conflict):
             self.tasks.publication_package('scene', 'spoken', task_id)

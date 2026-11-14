@@ -59,6 +59,10 @@ def main():
     shutil.copy2(video, root / 'live-content-avatar.mp4')
     shutil.copy2(tasks.cover_path(task['id']), root / 'live-content-cover.jpg')
     package = tasks.publication_package('validation-scene', 'validation-speech', task['id'])
+    package_hash = hashlib.sha256(package.read_bytes()).hexdigest()
+    if hashlib.sha256(tasks.publication_package(
+            'validation-scene', 'validation-speech', task['id']).read_bytes()).hexdigest() != package_hash:
+        raise SystemExit('publication package retry is not deterministic')
     shutil.copy2(package, root / 'publication-package.zip')
     with zipfile.ZipFile(package) as archive:
         names = set(archive.namelist())

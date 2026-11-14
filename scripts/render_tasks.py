@@ -4,6 +4,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import threading
 import uuid
@@ -300,13 +301,21 @@ class RenderTasks:
             assets['metadata.json'] = hashlib.sha256(manifest).hexdigest()
             work = (self.jobs/render_task_id).resolve(); package = work/'publication-package.zip'
             temporary = work/('publication-package.' + uuid.uuid4().hex + '.tmp')
+            def entry(name, compression):
+                info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+                info.compress_type = compression; info.create_system = 3; info.external_attr = 0o100644 << 16
+                return info
+            def copy_asset(archive, source_path, name):
+                with source_path.open('rb') as source_stream, archive.open(
+                        entry(name, zipfile.ZIP_STORED), 'w') as target_stream:
+                    shutil.copyfileobj(source_stream, target_stream, length=1024 * 1024)
             try:
-                with zipfile.ZipFile(temporary, 'w', compression=zipfile.ZIP_DEFLATED,
-                                     compresslevel=6) as archive:
-                    archive.write(video, 'video.mp4'); archive.write(cover, 'cover.jpg')
-                    archive.writestr('captions.srt', subtitle); archive.writestr('metadata.json', manifest)
+                with zipfile.ZipFile(temporary, 'w') as archive:
+                    copy_asset(archive, video, 'video.mp4'); copy_asset(archive, cover, 'cover.jpg')
+                    archive.writestr(entry('captions.srt', zipfile.ZIP_DEFLATED), subtitle)
+                    archive.writestr(entry('metadata.json', zipfile.ZIP_DEFLATED), manifest)
                     checksums = ''.join(f'{digest_value}  {name}\n' for name, digest_value in assets.items())
-                    archive.writestr('SHA256SUMS.txt', checksums.encode('ascii'))
+                    archive.writestr(entry('SHA256SUMS.txt', zipfile.ZIP_DEFLATED), checksums.encode('ascii'))
                 temporary.replace(package)
             finally:
                 temporary.unlink(missing_ok=True)
