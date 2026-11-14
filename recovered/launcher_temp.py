@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 from ctypes import wintypes
 
 
@@ -74,33 +75,50 @@ def get_gpu_info():
     return False
 
 
+def resolve_launch_plan(executable=None, gpu_50=None):
+    """Resolve and validate launcher-owned paths without starting a process."""
+    executable = Path(executable or sys.executable).resolve()
+    internal_dir = executable.parent / "_internal"
+    use_gpu_50 = get_gpu_info() if gpu_50 is None else bool(gpu_50)
+    preferred = internal_dir / "env_50" if use_gpu_50 else internal_dir / "env"
+    python_exe = preferred / "python.exe"
+    selected = "env_50" if preferred.name == "env_50" else "env"
+    if selected == "env_50" and not python_exe.is_file():
+        preferred = internal_dir / "env"
+        python_exe = preferred / "python.exe"
+        selected = "env"
+    start_script = internal_dir / "start.py"
+    missing = [str(path) for path in (python_exe, start_script) if not path.is_file()]
+    if missing:
+        raise FileNotFoundError("启动文件缺失: " + ", ".join(missing))
+    ffmpeg_dir = preferred / "ffmpeg"
+    ffmpeg_bin = ffmpeg_dir / "bin"
+    return {"internal_dir": internal_dir, "env_dir": preferred, "environment": selected,
+            "python_exe": python_exe, "start_script": start_script,
+            "ffmpeg_dir": ffmpeg_dir, "ffmpeg_bin": ffmpeg_bin}
+
+
 def main():
     disable_execution_speed_throttling()
-    internal_dir = os.path.join(os.path.dirname(sys.executable), "_internal")
-    env_dir = os.path.join(internal_dir, "env")
-    if get_gpu_info():
-        env_50_dir = os.path.join(internal_dir, "env_50")
-        if os.path.exists(env_50_dir):
-            env_dir = env_50_dir
-
-    python_exe = os.path.join(env_dir, "python.exe")
-    if not os.path.exists(python_exe) and env_dir.endswith("env_50"):
-        env_dir = os.path.join(internal_dir, "env")
-        python_exe = os.path.join(env_dir, "python.exe")
-
-    start_script = os.path.join(internal_dir, "start.py")
-    ffmpeg_dir = os.path.join(env_dir, "ffmpeg")
-    ffmpeg_bin = os.path.join(ffmpeg_dir, "bin")
+    try:
+        plan = resolve_launch_plan()
+    except Exception as error:
+        print(f"数字人启动失败: {error}", file=sys.stderr)
+        return 1
     env = os.environ.copy()
-    env["FFMPEG_HOME"] = ffmpeg_dir
-    if os.path.exists(ffmpeg_bin):
-        env["PATH"] = ffmpeg_bin + os.pathsep + env.get("PATH", "")
+    env["FFMPEG_HOME"] = str(plan["ffmpeg_dir"])
+    if plan["ffmpeg_bin"].is_dir():
+        env["PATH"] = str(plan["ffmpeg_bin"]) + os.pathsep + env.get("PATH", "")
 
     try:
-        process = subprocess.Popen([python_exe, start_script], cwd=internal_dir, env=env)
+        process = subprocess.Popen(
+            [str(plan["python_exe"]), str(plan["start_script"])],
+            cwd=str(plan["internal_dir"]), env=env,
+        )
         disable_execution_speed_throttling(process.pid)
         return process.wait()
-    except Exception:
+    except Exception as error:
+        print(f"数字人启动失败: {error}", file=sys.stderr)
         return 1
 
 

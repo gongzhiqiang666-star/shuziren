@@ -19,7 +19,7 @@
 
 | ID | 用户功能 | 原入口/主要证据 | 当前重建模块 | 当前状态 | 完成前必须验证 |
 |---|---|---|---|---|---|
-| SYS-001 | Windows 一键启动与环境选择 | `launcher_temp`、PYZ 95 模块 | `recovered/launcher_temp.py` | 静态验证通过 | Win10/11 双环境启动、无 GPU、RTX 50 系分支、子进程退出码 |
+| SYS-001 | Windows 一键启动与环境选择 | `launcher_temp`、PYZ 95 模块 | `recovered/launcher_temp.py` | 静态验证通过 | 普通/RTX 50环境选择、50环境缺失回退、缺Python/start.py诊断、FFmpeg环境和子进程退出码4项通过；本机授权双环境路径解析及RTX 3060探测通过，见 `evidence/a07-windows-launcher.md`。Win10/11、无NVIDIA和真实RTX 50整机启动待验 |
 | SYS-002 | GPU/显存探测及运行环境初始化 | `main._initialize_environment` | `main_environment.py`, `gpu_probe.py` | 静态验证通过 | NVIDIA/无 NVIDIA/命令失败三类 Windows 实机 |
 | SYS-003 | 关闭 Windows 执行速度节流 | `win_power_throttling.pyd` Ghidra 证据 | `win_power_throttling.py` | 静态验证通过 | Windows API 权限、远程 PID、keep-alive 生命周期 |
 | SYS-004 | 系统配置、用户配置合并与私密配置迁移 | `main.pyd` 配置调用链 | `main_config.py` | 静态验证通过 | `%LOCALAPPDATA%` 路径、旧配置迁移、异常断电原子写入 |
