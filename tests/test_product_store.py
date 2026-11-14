@@ -24,6 +24,15 @@ class ProductStoreTests(unittest.TestCase):
         roles = {script['id']: script.get('legacy_role') for script in self.store.scripts(product['id'])}
         self.assertEqual([roles[script] for script in (assistant, first_edit, second_edit, independent)],
                          ['assistant', 'assistant', 'assistant', None])
+        self.store.record_live_session('scene', 100)
+        item = {'product_id': product['id'], 'product_version': product['version'], 'script_id': second_edit}
+        self.store.record_rotation_completion(
+            'scene', 'speech', item, 0, voice_id='assistant-voice',
+            speech_provenance={'legacy_script_role': 'assistant'},
+        )
+        source = self.store.live_content_source('scene', 'speech')
+        self.assertEqual(source['segment'], {'type': 'assistant', 'content': '助播二次改稿'})
+        self.assertEqual(source['voice_id'], 'assistant-voice')
 
     def test_preparation_application_distinguishes_review_edits(self):
         product = self.product()
