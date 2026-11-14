@@ -423,3 +423,5 @@ G10-02 工作台导航 Chrome 验证通过。点击选品依据与采购候选�
 G01-04 迟到报表补齐覆盖的 HTTP 回归通过。不同来源或口径的同日报表无法填补缺口。同口径报表到达后重新查询，四天合计 4 笔订单，期末库存缺失时仍为未知。商品库回归 18 项、经营数据 HTTP 回归 4 项通过。真实商家报表与店铺角色权限仍待验。
 
 G05-02 将 Chrome 实际下载的成片 SRT 与原视频和音轨流复制封装为三轨 Matroska。本机 FFprobe 确认字幕与视频均在 0.043 秒起始，音轨从 0 秒起始，字幕持续 4.096 秒。音视频完整解码通过。产物 logs/validation/g05-render-subtitle-chrome-01/subtitle-render-check.mkv。图形剪辑工具导入和人工口型同步继续待验。
+
+G10-04 对旧模板主播与助播实播留样独立复验。FFprobe 确认 35.001 秒录制包含音视频双轨，FFmpeg 以 -xerror 完整解码通过。与先前来源接口核对结果共同保留，人工听感、改写后角色与真实商家模板仍待验。证据 logs/validation/g10-legacy-assistant-live-02/receiver.mkv。
