@@ -46,6 +46,17 @@ def _read_startup_admin_id():
     return _read_startup_admin_id_impl()
 
 
+def _bounded_read_bytes(path, maximum, label):
+    path = Path(path)
+    size = path.stat().st_size
+    if size > maximum:
+        raise ValueError(f"{label}超过大小限制")
+    data = path.read_bytes()
+    if len(data) != size:
+        raise OSError(f"{label}读取期间发生变化")
+    return data
+
+
 class Api(PluginInstallerApi):
     _INLINE_MEDIA_MAX_BYTES = 64 * 1024 * 1024
 
@@ -130,8 +141,15 @@ class Api(PluginInstallerApi):
         return list(dict.fromkeys(path for path in values if path.is_dir()))
 
     def _find_asset(self, relative):
+        relative = Path(relative)
+        if relative.is_absolute() or any(part in ("", ".", "..") for part in relative.parts):
+            raise ValueError("资源路径无效")
         for root in self._asset_roots():
-            candidate = root / relative
+            candidate = (root / relative).resolve()
+            try:
+                candidate.relative_to(root.resolve())
+            except ValueError:
+                continue
             if candidate.exists(): return candidate
         return self._asset_roots()[0] / relative
 
@@ -143,7 +161,7 @@ class Api(PluginInstallerApi):
         try:
             path = self._find_asset("assets/web/id.txt")
             if path.is_file():
-                value = path.read_text(encoding="utf-8").strip()
+                value = _bounded_read_bytes(path, 128, "管理员ID").decode("utf-8").strip()
                 if value.isdigit():
                     return {"status": "success", "admin_id": int(value)}
             return {"status": "success", "admin_id": None}
@@ -195,9 +213,7 @@ class Api(PluginInstallerApi):
             path = self._find_asset("assets/web/oem_config.json")
             if not path.is_file():
                 return {"status": "success", "config": {}}
-            import json
-            with path.open("r", encoding="utf-8") as source:
-                config = json.load(source)
+            config = json.loads(_bounded_read_bytes(path, 1024 * 1024, "贴牌配置").decode("utf-8"))
             if not isinstance(config, dict):
                 config = {}
             return {"status": "success", "config": config}
@@ -210,7 +226,9 @@ class Api(PluginInstallerApi):
             path = self._find_asset("assets/web/bg.png")
             if not path.is_file():
                 return {"error": "背景图片不存在"}
-            encoded_string = base64.b64encode(path.read_bytes()).decode("utf-8")
+            encoded_string = base64.b64encode(
+                _bounded_read_bytes(path, 16 * 1024 * 1024, "背景图片")
+            ).decode("utf-8")
             return {"status": "success", "image_data": "data:image/png;base64," + encoded_string}
         except Exception as error:
             return {"error": f"获取背景图片失败: {error}"}
