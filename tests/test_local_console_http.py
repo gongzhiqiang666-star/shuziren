@@ -160,6 +160,9 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(clients['viewer'].call('/api/preflight', {'version': 1, 'runtime_root': '', 'port': 5158})[0], 200)
         status, denied = clients['operator'].call('/api/products', product)
         self.assertEqual((status, denied['access_role']), (403, 'operator'))
+        self.assertEqual(clients['operator'].call('/api/preparation-templates', {
+            'name': '无权模板', 'goal': '目标', 'audience': '', 'constraints': '',
+        })[0], 403)
         self.assertEqual(clients['operator'].call('/api/live/stop', {'session_id': 'missing'})[0], 409)
         self.assertEqual(clients['admin'].call('/api/products', product)[0], 200)
         self.assertEqual(clients['viewer'].call('/api/products')[1]['products'], [])
@@ -168,6 +171,63 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual([(event['account_id'], event['path'], event['allowed']) for event in events], [
             ('account-viewer', '/api/products', False),
         ])
+
+    def test_shared_preparation_template_reuses_structure_without_shop_facts(self):
+        clients = []
+        for shop_id in ('first', 'second'):
+            config = ConfigStore(shop_data_directory(self.directory.name, shop_id))
+            server = create_server(config, port=0, shop_id=shop_id)
+            self.addCleanup(server.server_close)
+            worker = threading.Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            self.addCleanup(worker.join, 5)
+            self.addCleanup(server.shutdown)
+            client = ConsoleHTTPTests()
+            client.base = f'http://127.0.0.1:{server.server_port}'
+            client.token = client.call('/api/session')[1]['token']
+            clients.append(client)
+        first, second = clients
+        first_product = first.call('/api/products', {
+            'title': '一店商品', 'content': '含一店价格与活动', 'product_index': 1,
+        })[1]['product']
+        second_product = second.call('/api/products', {
+            'title': '二店商品', 'content': '含二店价格与活动', 'product_index': 1,
+        })[1]['product']
+        self.assertEqual(first.call('/api/live/preparation', {
+            'product_ids': [first_product['id']], 'goal': '提高讲解清晰度', 'audience': '新客',
+            'promotion': '一店满减 99 元', 'stock': '一店库存 12', 'shipping': '一店当日发货',
+            'constraints': '每件商品先讲使用场景',
+        })[0], 200)
+        status, response = first.call('/api/preparation-templates', {
+            'name': '新客讲解结构', 'goal': '提高讲解清晰度', 'audience': '新客',
+            'constraints': '每件商品先讲使用场景',
+        })
+        self.assertEqual(status, 200)
+        template = response['template']
+        self.assertEqual(set(template), {'id', 'name', 'goal', 'audience', 'constraints', 'created_at'})
+        self.assertNotIn('一店', json.dumps(template, ensure_ascii=False))
+        self.assertEqual(second.call('/api/preparation-templates')[1]['templates'], [template])
+        self.assertEqual(first.call('/api/preparation-templates', {
+            'name': '不允许携带活动', 'goal': '目标', 'audience': '', 'constraints': '',
+            'promotion': '一店活动',
+        })[0], 400)
+        self.assertEqual(first.call('/api/preparation-templates', {
+            'name': '空模板', 'goal': '', 'audience': '', 'constraints': '',
+        })[0], 400)
+        self.assertEqual(second.call('/api/preparation-templates/apply', {'template_id': '../first'})[0], 400)
+        self.assertEqual(second.call('/api/live/preparation', {
+            'product_ids': [second_product['id']], 'goal': '旧目标', 'audience': '旧人群',
+            'promotion': '二店赠品活动', 'stock': '二店库存 88', 'shipping': '二店次日发货',
+            'constraints': '旧限制',
+        })[0], 200)
+        status, applied = second.call('/api/preparation-templates/apply', {'template_id': template['id']})
+        self.assertEqual(status, 200)
+        self.assertEqual(applied['draft'], {
+            'product_ids': [second_product['id']], 'goal': template['goal'], 'audience': template['audience'],
+            'promotion': '二店赠品活动', 'stock': '二店库存 88', 'shipping': '二店次日发货',
+            'constraints': template['constraints'],
+        })
+        self.assertNotIn(first_product['id'], json.dumps(applied, ensure_ascii=False))
 
     def test_invalid_access_account_is_rejected_before_server_start(self):
         with self.assertRaisesRegex(ValueError, '账号编号无效'):
@@ -1526,6 +1586,7 @@ class ConsoleHTTPTests(unittest.TestCase):
             status, value = self.call('/api/state')
             self.assertEqual(status, 200)
             self.assertEqual(value['live_status'], '未启动')
+            self.assertEqual(self.call('/api/preparation-templates'), (200, {'templates': []}))
         self.assertEqual(list(Path(self.directory.name).iterdir()), [])
 
     def test_save_reload_and_read_only_preflight(self):
@@ -1553,9 +1614,16 @@ class ConsoleHTTPTests(unittest.TestCase):
 
     def test_static_and_unknown_paths(self):
         with urlopen(self.base + '/', timeout=3) as response:
-            self.assertIn('数字人工作台', response.read().decode())
+            page = response.read().decode()
+            self.assertIn('数字人工作台', page)
+            self.assertIn('id="preparation-template-list"', page)
+            self.assertIn('应用模板并保留本店事实', page)
             self.assertIn("frame-ancestors 'none'", response.headers['Content-Security-Policy'])
             self.assertIn("media-src 'self' blob:", response.headers['Content-Security-Policy'])
+        with urlopen(self.base + '/app.js', timeout=3) as response:
+            script = response.read().decode()
+            self.assertIn("request('/api/preparation-templates'", script)
+            self.assertIn("request('/api/preparation-templates/apply'", script)
         self.assertEqual(self.call('/console.json')[0], 404)
 
     def test_shutdown_requires_explicit_request_and_stops_server(self):

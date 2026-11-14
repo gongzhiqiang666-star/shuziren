@@ -1157,6 +1157,56 @@ const preparationReviewSave = $('preparation-review-save');
 let preparationRevision;
 let preparedRotation = null;
 let savedPreparationReview = null;
+async function loadPreparationTemplates(selected) {
+  const {templates} = await request('/api/preparation-templates');
+  $('preparation-template-list').replaceChildren(new Option('请选择模板', ''),
+    ...templates.map(template => new Option(template.name, template.id)));
+  if (selected) $('preparation-template-list').value = selected;
+  return templates;
+}
+$('preparation-template-save').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  const status = $('preparation-template-status');
+  button.disabled = true;
+  status.textContent = '';
+  try {
+    const payload = {name:$('preparation-template-name').value};
+    for (const field of ['goal', 'audience', 'constraints']) payload[field] = $('preparation-' + field).value;
+    const {template} = await request('/api/preparation-templates', payload);
+    await loadPreparationTemplates(template.id);
+    status.textContent = '已保存通用模板；商品和本店经营事实未写入模板';
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+$('preparation-template-apply').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  const status = $('preparation-template-status');
+  const templateId = $('preparation-template-list').value;
+  if (!templateId) { status.textContent = '请选择模板'; return; }
+  button.disabled = true;
+  status.textContent = '';
+  try {
+    const {draft, missing, template} = await request('/api/preparation-templates/apply', {template_id:templateId});
+    showPreparationProducts(draft.product_ids);
+    for (const field of preparationFields) $('preparation-' + field).value = draft[field];
+    showPreparationMissing(missing);
+    updatePreparationPreview(draft);
+    $('preparation-package-panel').hidden = true;
+    $('preparation-package').value = '';
+    preparationRevision = undefined;
+    preparedRotation = null;
+    savedPreparationReview = null;
+    renderLiveButtons();
+    status.textContent = `已应用「${template.name}」；本店商品、活动、库存和发货条件保持不变`;
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
 $('preparation-apply').addEventListener('click', async event => {
   const button = event.currentTarget;
   button.disabled = true;
@@ -1374,6 +1424,7 @@ async function loadPreparation() {
     for (const field of preparationFields) $('preparation-' + field).value = draft[field];
     showPreparationMissing(missing);
     updatePreparationPreview(draft);
+    await loadPreparationTemplates();
     preparationSave.disabled = false;
   } catch (error) {
     $('preparation-error').textContent = error.message;

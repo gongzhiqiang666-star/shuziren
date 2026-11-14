@@ -174,12 +174,21 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                 stream.write(json.dumps(event, ensure_ascii=False, separators=(',', ':')) + '\n')
     product_lock = threading.Lock()
     product_store = None
+    preparation_template_store = None
     def products():
         nonlocal product_store
         with product_lock:
             if product_store is None:
                 product_store = ProductStore(store.directory)
             return product_store
+    def preparation_templates():
+        nonlocal preparation_template_store
+        with product_lock:
+            if preparation_template_store is None:
+                from scripts.preparation_template_store import PreparationTemplateStore
+                root = store.directory.parent.parent if shop_id is not None else store.directory
+                preparation_template_store = PreparationTemplateStore(root)
+            return preparation_template_store
     def current_live_advice(session):
         if session['status'] != 'running' or not session.get('id'):
             return live_advice(session)
@@ -536,6 +545,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     return self.respond(200, {'baseline': products().live_lineup_baseline()})
                 if path == "/api/live/preparation/package":
                     return self.respond(200, products().build_live_preparation())
+                if path == "/api/preparation-templates":
+                    return self.respond(200, {'templates': preparation_templates().list()})
                 if path == "/api/products/after-sales/compare":
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                     if (set(query) != {'product_id', 'source', 'baseline_start', 'baseline_end', 'trial_start', 'trial_end'}
@@ -1115,6 +1126,21 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         data = products()
                         data.save_live_preparation(**value)
                         return self.respond(200, data.live_preparation())
+                    if path == "/api/preparation-templates":
+                        if set(value) != {'name', 'goal', 'audience', 'constraints'}:
+                            raise ProductError('准备模板字段无效')
+                        return self.respond(200, {'template': preparation_templates().save(**value)})
+                    if path == "/api/preparation-templates/apply":
+                        if set(value) != {'template_id'}:
+                            raise ProductError('准备模板应用参数无效')
+                        template = preparation_templates().get(value['template_id'])
+                        data = products()
+                        current = data.live_preparation()['draft']
+                        data.save_live_preparation(
+                            product_ids=current['product_ids'], promotion=current['promotion'],
+                            stock=current['stock'], shipping=current['shipping'],
+                            **{field: template[field] for field in ('goal', 'audience', 'constraints')})
+                        return self.respond(200, {'template': template, **data.live_preparation()})
                     if path == "/api/products":
                         allowed = {"title", "content", "product_index", "product_id", "version", "product_facts"}
                         if not {"title", "content", "product_index"} <= value.keys() or value.keys() - allowed:

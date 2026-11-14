@@ -189,6 +189,14 @@
 <label for="preparation-constraints">本场限制</label><textarea id="preparation-constraints" maxlength="2000" rows="2"></textarea>
 <button type="submit" disabled>保存准备草稿</button>
 </form>
+<fieldset><legend>跨店准备模板</legend>
+<p class="hint">模板只保存场次目标、目标人群和本场限制，不保存商品、价格、库存、发货、活动、音色或账号。</p>
+<label for="preparation-template-name">新模板名称</label><input id="preparation-template-name" maxlength="100">
+<button id="preparation-template-save" type="button">保存当前通用结构</button>
+<label for="preparation-template-list">已有模板</label><select id="preparation-template-list"><option value="">请选择模板</option></select>
+<button id="preparation-template-apply" type="button" class="secondary">应用模板并保留本店事实</button>
+<p id="preparation-template-status" role="status"></p>
+</fieldset>
 <p id="preparation-status" role="status"></p>
 <p id="preparation-error" role="alert"></p>
 <details>
