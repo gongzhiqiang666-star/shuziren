@@ -440,8 +440,16 @@ class ProductStore:
             rotation['after_sales_tasks'] = package['after_sales_tasks']
         return rotation
 
-    def record_preparation_application(self, session_id, preparation):
+    def record_preparation_application(self, session_id, preparation, *, verify_items=False):
         with self.connect() as db:
+            if verify_items:
+                db.execute('BEGIN IMMEDIATE')
+                for item in preparation['items']:
+                    product = db.execute('SELECT version FROM products WHERE id=?',
+                                         (item['product_id'],)).fetchone()
+                    if (product is None or product['version'] != item['product_version']
+                            or self.selected_script(item['product_id'], connection=db) != item['script_id']):
+                        raise Conflict('商品或话术已变化，请重新预览准备包')
             db.execute("""
                 INSERT INTO live_preparation_applications (session_id, revision, snapshot)
                 VALUES (?, ?, ?) ON CONFLICT(session_id, snapshot) DO NOTHING
@@ -1688,8 +1696,8 @@ class ProductStore:
                 raise Conflict('话术所用的商品事实已到期，请更新话术')
             db.execute('INSERT OR REPLACE INTO script_selection VALUES(?,?)',(product_id,script_id))
 
-    def selected_script(self, product_id):
-        with self.connect() as db:
+    def selected_script(self, product_id, *, connection=None):
+        with nullcontext(connection) if connection is not None else self.connect() as db:
             row=db.execute('''SELECT s.id, s.created_at, s.snapshot FROM script_selection choice
                 JOIN scripts s ON s.id=choice.script_id JOIN products p ON p.id=choice.product_id
                 WHERE p.id=? AND s.product_id=p.id AND s.product_version=p.version''',(product_id,)).fetchone()

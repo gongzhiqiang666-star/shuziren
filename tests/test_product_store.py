@@ -13,6 +13,24 @@ from scripts.product_store import Conflict, ProductError, ProductStore, product_
 
 
 class ProductStoreTests(unittest.TestCase):
+    def test_preparation_application_rechecks_selected_script_before_recording(self):
+        product = self.product()
+        product_id = product['id']
+        script = self.store.add_script(product, '原话术')
+        replacement = self.store.add_script(product, '新话术')
+        snapshot = {'revision': 'reviewed', 'items': [{
+            'product_id': product_id, 'product_version': product['version'], 'script_id': script,
+        }]}
+        self.store.record_live_session('first', 100)
+        self.store.record_live_session('second', 101)
+        self.store.select_script(product_id, script)
+        self.store.record_preparation_application('first', snapshot, verify_items=True)
+        self.store.select_script(product_id, replacement)
+        with self.assertRaisesRegex(Conflict, '商品或话术已变化'):
+            self.store.record_preparation_application('second', snapshot, verify_items=True)
+        self.assertEqual(self.store.live_preparation_applications('first'), [snapshot])
+        self.assertEqual(self.store.live_preparation_applications('second'), [])
+
     def test_business_csv_import_is_atomic_and_preserves_unknowns(self):
         product_id = self.product()['id']
         header = 'source,period_start,period_end,scope,clicks,orders,refunds,stock\n'

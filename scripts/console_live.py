@@ -489,7 +489,7 @@ class ConsoleLive:
                     item['segments'] = segments
                 items.append(item)
             if preparation is not None:
-                self.tts.products.record_preparation_application(session_id, preparation)
+                self.tts.products.record_preparation_application(session_id, preparation, verify_items=True)
             if self.rotation and self.rotation['task_id']:
                 self.session.discard_pending(self.rotation['task_id'])
             self.rotation = {'items': items, 'index': 0, 'segment': 0, 'task_id': None} if items else None
