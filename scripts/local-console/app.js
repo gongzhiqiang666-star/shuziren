@@ -1252,8 +1252,8 @@ preparationPreview.addEventListener('click', async () => {
       }));
     }
     preparationRevision = revision;
-    savedPreparationReview = review;
     $('preparation-package').value = review ?? lines.join('\n');
+    savedPreparationReview = review == null ? null : $('preparation-package').value;
     $('preparation-package-panel').hidden = false;
   } catch (error) {
     $('preparation-error').textContent = error.message;
