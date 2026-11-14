@@ -9,7 +9,8 @@ import uuid
 import wave
 from zipfile import ZipFile
 
-from scripts.console_package import MANIFEST, REQUIRED, digest, install, run_release, switch_release
+from scripts.console_package import (MANIFEST, REQUIRED, create_data_backup, digest, install,
+                                     run_release, switch_release)
 from scripts.console_data_migration import import_v122_products, migrate_data, migrate_v122_assets, migrate_v122_products
 from scripts.avatar_store import AvatarStore
 from scripts.local_console import InstanceLock
@@ -19,6 +20,49 @@ from scripts.voice_store import VoiceStore, fingerprint
 
 
 class ConsolePackageTests(unittest.TestCase):
+    def test_release_backup_copies_files_and_sqlite_consistently(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            data = root / 'data'
+            data.mkdir()
+            (data / 'console.json').write_text('{"version":1}', encoding='utf-8')
+            media = data / 'voices' / str(uuid.uuid4())
+            media.mkdir(parents=True)
+            (media / 'ref_text.txt').write_text('备份音色', encoding='utf-8')
+            database = data / 'products.sqlite3'
+            with closing(sqlite3.connect(database)) as db:
+                db.execute('CREATE TABLE sample(value TEXT)')
+                db.execute('INSERT INTO sample VALUES (?)', ('before-upgrade',))
+                db.commit()
+            backup = create_data_backup(root, 'a' * 40, 'b' * 40)
+            manifest = json.loads((backup / 'backup-manifest.json').read_text(encoding='utf-8'))
+            self.assertEqual(manifest['current_commit'], 'a' * 40)
+            self.assertEqual(manifest['target_commit'], 'b' * 40)
+            self.assertEqual(set(manifest['files']), {
+                'console.json', 'products.sqlite3', media.relative_to(data).as_posix() + '/ref_text.txt',
+            })
+            for relative, record in manifest['files'].items():
+                payload = (backup / 'data' / relative).read_bytes()
+                self.assertEqual(record['size'], len(payload))
+                self.assertEqual(record['sha256'], digest(payload))
+            with closing(sqlite3.connect(backup / 'data/products.sqlite3')) as db:
+                self.assertEqual(db.execute('SELECT value FROM sample').fetchone()[0], 'before-upgrade')
+            (data / 'console.json').write_text('changed', encoding='utf-8')
+            self.assertEqual((backup / 'data/console.json').read_text(encoding='utf-8'), '{"version":1}')
+
+    def test_backup_failure_prevents_release_pointer_switch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            active = {'current': 'a' * 40, 'previous': 'b' * 40}
+            with (patch('scripts.console_package.read_active', return_value=active),
+                  patch('scripts.console_package.check_release', return_value=(root, {'data_schema': 1})),
+                  patch('scripts.console_package.check_startup'),
+                  patch('scripts.console_package.create_data_backup', side_effect=OSError('disk full')),
+                  patch('scripts.console_package.write_active') as write):
+                with self.assertRaisesRegex(OSError, 'disk full'):
+                    switch_release(root)
+            write.assert_not_called()
+
     def test_release_switch_respects_shop_process_lock_without_launcher(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

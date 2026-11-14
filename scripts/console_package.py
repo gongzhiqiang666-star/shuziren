@@ -1,6 +1,6 @@
 """Build, verify and stage a Windows console source package from a Git revision."""
 import argparse
-from contextlib import ExitStack
+from contextlib import closing, ExitStack
 import hashlib
 import io
 import json
@@ -8,10 +8,15 @@ import os
 from pathlib import Path, PurePosixPath
 from queue import Empty, Queue
 import re
+import shutil
+import sqlite3
+import stat
 import subprocess
 import sys
 import tempfile
 import threading
+from datetime import datetime, timezone
+import uuid
 from urllib.request import Request, urlopen
 from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile, ZipInfo
 
@@ -136,6 +141,72 @@ def write_active(root, state):
             temporary.unlink(missing_ok=True)
 
 
+def _reparse(path):
+    return path.is_symlink() or bool(
+        getattr(path.lstat(), 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def create_data_backup(root, current_commit, target_commit):
+    """Create an immutable, self-verifying snapshot before a release switch."""
+    root = Path(root).resolve()
+    source = root / 'data'
+    if not source.exists():
+        return None
+    if not source.is_dir() or _reparse(source):
+        raise ValueError('Managed data directory is unsafe')
+    backup_root = root / 'backups'
+    if backup_root.exists() and (not backup_root.is_dir() or _reparse(backup_root)):
+        raise ValueError('Backup directory is unsafe')
+    backup_root.mkdir(parents=True, exist_ok=True)
+    identifier = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ-') + uuid.uuid4().hex
+    final = backup_root / identifier
+    with tempfile.TemporaryDirectory(prefix='.backup-', dir=backup_root) as temporary:
+        stage = Path(temporary) / 'snapshot'
+        target = stage / 'data'
+        target.mkdir(parents=True)
+        records = {}
+        for directory, names, files in os.walk(source, followlinks=False):
+            directory = Path(directory)
+            relative_directory = directory.relative_to(source)
+            for name in list(names):
+                candidate = directory / name
+                if _reparse(candidate):
+                    raise ValueError(f'Linked data directory cannot be backed up: {candidate}')
+                (target / relative_directory / name).mkdir(parents=True, exist_ok=True)
+            for name in files:
+                original = directory / name
+                relative = (relative_directory / name).as_posix()
+                if name == 'console.lock' or name.endswith(('.sqlite3-wal', '.sqlite3-shm')):
+                    continue
+                if not original.is_file() or _reparse(original):
+                    raise ValueError(f'Linked or irregular data file cannot be backed up: {original}')
+                copied = target.joinpath(*PurePosixPath(relative).parts)
+                copied.parent.mkdir(parents=True, exist_ok=True)
+                if name.endswith('.sqlite3'):
+                    with closing(sqlite3.connect(original.as_uri() + '?mode=ro', uri=True)) as existing:
+                        with closing(sqlite3.connect(copied)) as snapshot:
+                            existing.backup(snapshot)
+                            if snapshot.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
+                                raise ValueError(f'Backup database failed integrity check: {relative}')
+                else:
+                    before = hashlib.sha256(original.read_bytes()).hexdigest()
+                    shutil.copy2(original, copied)
+                    if hashlib.sha256(original.read_bytes()).hexdigest() != before:
+                        raise ValueError(f'Data file changed during backup: {relative}')
+                payload = copied.read_bytes()
+                records[relative] = {'size': len(payload), 'sha256': digest(payload),
+                                     'kind': 'sqlite' if name.endswith('.sqlite3') else 'file'}
+        metadata = {
+            'version': 1, 'created_at': datetime.now(timezone.utc).isoformat(),
+            'current_commit': current_commit, 'target_commit': target_commit,
+            'files': dict(sorted(records.items())),
+        }
+        (stage / 'backup-manifest.json').write_bytes(
+            json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True).encode('utf-8') + b'\n')
+        stage.rename(final)
+    return final
+
+
 def check_release(root, commit):
     release = root / 'releases' / commit
     if release.resolve().parent != root / 'releases' or release.is_symlink():
@@ -257,6 +328,8 @@ def switch_release(root, archive=None, with_media=False):
         if commit != active['current']:
             release, _ = check_release(root, commit)
             check_startup(release, root, media)
+            if active['current'] is not None:
+                create_data_backup(root, active['current'], commit)
             active = {'current': commit, 'previous': active['current']}
             write_active(root, active)
         return active
