@@ -2886,4 +2886,83 @@ async function taobaoGoods(explain) {
 $('taobao-goods-refresh').addEventListener('click', () => taobaoGoods(false));
 $('taobao-explain').addEventListener('click', () => taobaoGoods(true));
 window.addEventListener('pagehide', () => clearTimeout(taobaoTimer));
-action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await loadPreparation(); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender);await loadLive();await loadTaobao(); });
+let stickerProjects = [], stickerProject = null, stickerGenerating = false;
+function stickerPayload() {
+  return {product_name:$('sticker-product-name').value.trim(),
+          product_selling_points:$('sticker-selling-points').value.trim()};
+}
+function renderStickerButtons() {
+  const selected = Boolean(stickerProject?.id);
+  $('sticker-save').disabled = !selected || stickerGenerating;
+  $('sticker-prompts').disabled = !selected || stickerGenerating;
+  $('sticker-generate').disabled = !selected || stickerGenerating;
+  $('sticker-cancel').disabled = !selected || !stickerGenerating;
+}
+function showStickerProject(project) {
+  stickerProject = project;
+  $('sticker-product-name').value = project?.product_name || '';
+  $('sticker-selling-points').value = project?.product_selling_points || '';
+  $('sticker-bg-prompt').value = project?.background_prompt || '';
+  $('sticker-fg-prompt').value = project?.foreground_prompt || '';
+  $('sticker-cover-prompt').value = project?.cover_prompt || '';
+  for (const [id, field] of [['sticker-bg-preview','bg'],['sticker-fg-preview','fg_white'],
+                              ['sticker-alpha-preview','fg_alpha'],['sticker-cover-preview','cover']]) {
+    const image = $(id), source = project?.[field + '_preview_url'];
+    if (source) image.src = source; else image.removeAttribute('src');
+  }
+  $('sticker-status').textContent = project ? `项目状态：${project.status || 'draft'}${project.last_error ? ' · ' + project.last_error : ''}` : '';
+  renderStickerButtons();
+}
+async function loadStickerProject(projectId) {
+  if (!projectId) return showStickerProject(null);
+  const {project} = await request('/api/stickers?' + new URLSearchParams({project_id:projectId}));
+  showStickerProject(project);
+}
+async function loadStickers(selectedId) {
+  const {projects} = await request('/api/stickers'); stickerProjects = projects;
+  const id = selectedId || stickerProject?.id || '';
+  $('sticker-list').replaceChildren(new Option('请选择项目',''),
+    ...projects.map(project => new Option(`${project.name} · ${project.status}`, project.id)));
+  $('sticker-list').value = projects.some(project => project.id === id) ? id : '';
+  await loadStickerProject($('sticker-list').value);
+}
+async function stickerAction(work) {
+  $('sticker-error').textContent = '';
+  try { await work(); } catch (error) { $('sticker-error').textContent = error.message || '贴片项目操作失败'; }
+  finally { renderStickerButtons(); }
+}
+$('sticker-list').addEventListener('change', () => stickerAction(() => loadStickerProject($('sticker-list').value)));
+$('sticker-reload').addEventListener('click', () => stickerAction(() => loadStickers()));
+$('sticker-create').addEventListener('click', () => stickerAction(async () => {
+  const {project} = await request('/api/stickers/create', {name:$('sticker-new-name').value.trim()});
+  $('sticker-new-name').value = ''; await loadStickers(project.id);
+}));
+$('sticker-save').addEventListener('click', () => stickerAction(async () => {
+  const data = {...stickerPayload(), background_prompt:$('sticker-bg-prompt').value.trim(),
+    foreground_prompt:$('sticker-fg-prompt').value.trim(), cover_prompt:$('sticker-cover-prompt').value.trim()};
+  const {project} = await request('/api/stickers/update', {project_id:stickerProject.id, data});
+  showStickerProject(project); $('sticker-status').textContent = '项目已保存并可重开。';
+}));
+$('sticker-prompts').addEventListener('click', () => stickerAction(async () => {
+  const result = await request('/api/stickers/prompts', {project_id:stickerProject.id, product:stickerPayload()});
+  $('sticker-bg-prompt').value = result.background_prompt;
+  $('sticker-fg-prompt').value = result.foreground_prompt;
+  $('sticker-cover-prompt').value = result.cover_prompt;
+  await loadStickerProject(stickerProject.id);
+}));
+$('sticker-generate').addEventListener('click', () => stickerAction(async () => {
+  const apiKey = $('sticker-api-key').value.trim();
+  if (!apiKey) throw new Error('请填写本次使用的 RunningHub API Key');
+  stickerGenerating = true; renderStickerButtons(); $('sticker-status').textContent = '正在生成整套贴片，可随时取消。';
+  try {
+    await request('/api/stickers/generate', {project_id:stickerProject.id, runninghub_api_key:apiKey,
+      background_prompt:$('sticker-bg-prompt').value.trim(), foreground_prompt:$('sticker-fg-prompt').value.trim(),
+      cover_prompt:$('sticker-cover-prompt').value.trim()});
+  } finally { stickerGenerating = false; $('sticker-api-key').value = ''; }
+  await loadStickerProject(stickerProject.id);
+}));
+$('sticker-cancel').addEventListener('click', () => stickerAction(async () => {
+  const result = await request('/api/stickers/cancel', {project_id:stickerProject.id});
+  $('sticker-status').textContent = result.status === 'cancel_requested' ? '已请求取消，正在等待任务退出。' : result.message;
+}));
+action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await loadPreparation(); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender);await loadLive();await loadTaobao();await loadStickers(); });

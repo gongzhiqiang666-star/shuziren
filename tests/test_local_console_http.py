@@ -1567,6 +1567,39 @@ class ConsoleHTTPTests(unittest.TestCase):
         (Path(self.directory.name)/'avatars'/avatar_id/'frames/000000.jpg').unlink()
         self.assertEqual(self.call('/api/avatars/sample?id='+avatar_id)[0],400)
 
+    def test_sticker_project_save_prompts_generation_and_previews(self):
+        status, value = self.call('/api/stickers/create', {'name': '茶杯直播贴片'})
+        self.assertEqual(status, 201, value)
+        project_id = value['project']['id']
+        update = {'name': '茶杯直播贴片', 'product_name': '青瓷杯', 'product_price': '',
+                  'product_selling_points': '青绿色，530毫升', 'product_content': '泡茶使用',
+                  'product_item_id': 'cup-1', 'product_pic': ''}
+        self.assertEqual(self.call('/api/stickers/update', {
+            'project_id': project_id, 'data': update})[0], 200)
+        status, prompts = self.call('/api/stickers/prompts', {
+            'project_id': project_id, 'product': update})
+        self.assertEqual(status, 200, prompts)
+        self.assertIn('background_prompt', prompts)
+        self.assertEqual(self.call('/api/stickers/update', {
+            'project_id': project_id, 'data': {'bg_path': '../foreign.png'}})[0], 400)
+
+        from PIL import Image
+        colours = iter(('red', 'green', 'blue'))
+        def provider(_self, *, dest, **_):
+            Image.new('RGB', (96, 160), next(colours)).save(dest, 'PNG')
+        with patch('recovered.main.Api._generate_live_sticker_image_file', provider):
+            status, generated = self.call('/api/stickers/generate', {
+                'project_id': project_id, 'runninghub_api_key': 'request-only-key',
+                **{key: prompts[key] for key in ('background_prompt', 'foreground_prompt', 'cover_prompt')},
+            })
+        self.assertEqual(status, 200, generated)
+        current = self.call('/api/stickers?project_id=' + project_id)[1]['project']
+        for field in ('bg', 'fg_white', 'fg_alpha', 'cover'):
+            self.assertTrue(current[field + '_preview_url'].startswith('data:image/png;base64,'))
+        projects = self.call('/api/stickers')[1]['projects']
+        self.assertEqual([item['id'] for item in projects], [project_id])
+        self.assertEqual(self.call('/api/stickers/cancel', {'project_id': project_id})[1]['status'], 'idle')
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
@@ -1666,8 +1699,11 @@ class ConsoleHTTPTests(unittest.TestCase):
             self.assertIn('数字人工作台', page)
             self.assertIn('id="preparation-template-list"', page)
             self.assertIn('应用模板并保留本店事实', page)
+            self.assertIn('id="sticker-panel"', page)
             self.assertIn("frame-ancestors 'none'", response.headers['Content-Security-Policy'])
             self.assertIn("media-src 'self' blob:", response.headers['Content-Security-Policy'])
+            self.assertIn("img-src 'self' data:", response.headers['Content-Security-Policy'])
+            self.assertIn("script-src 'self';", response.headers['Content-Security-Policy'])
         with urlopen(self.base + '/app.js', timeout=3) as response:
             script = response.read().decode()
             self.assertIn("request('/api/preparation-templates'", script)

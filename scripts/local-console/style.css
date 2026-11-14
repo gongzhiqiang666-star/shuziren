@@ -3,3 +3,4 @@ textarea,select{width:100%;border:1px solid #a9b6c9;border-radius:7px;padding:12
 .workspace-nav{display:flex;flex-wrap:wrap;gap:10px 18px;margin:0 0 20px}.workspace-nav a{color:#274778;text-underline-offset:3px}.workspace-nav a:focus-visible{outline:3px solid #88aaff;outline-offset:3px}
 
 #render-preview{display:block;max-width:100%;height:auto;margin-top:18px}#render-error{color:#b42318}
+.preview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-top:18px}.preview-grid figure{margin:0}.preview-grid img{display:block;width:100%;aspect-ratio:9/16;object-fit:contain;background:#eef2f7;border:1px solid #d9e0ea;border-radius:7px}.preview-grid figure:last-child img{aspect-ratio:1}.preview-grid figcaption{font-size:13px;color:#5b687d;margin-top:5px}#sticker-error{color:#b42318}

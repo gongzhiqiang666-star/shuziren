@@ -204,6 +204,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
     tts_manager = None
     avatar_manager = None
     render_manager = None
+    sticker_manager = None
     live_manager = None
     taobao = ConsoleTaobao(store.directory)
     replies = ConsoleCommentReply()
@@ -212,6 +213,21 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
         status = live_manager.state()['status'] if live_manager else 'idle'
         return {'idle': '未启动', 'preparing': '准备中', 'running': '本机输出中',
                 'stopping': '停止中', 'stopped': '已停止', 'failed': '输出失败'}[status]
+    def stickers():
+        nonlocal sticker_manager
+        with lock:
+            if tasks_closed: raise ProductError('控制台正在退出')
+            if sticker_manager is None:
+                from recovered.main import Api
+                sticker_manager = Api.__new__(Api)
+                sticker_manager.runtime_dir = store.directory
+                sticker_manager.config = {}
+            return sticker_manager
+    def sticker_result(result):
+        if not isinstance(result, dict): raise ProductError('贴片项目返回无效')
+        if result.get('error'): raise ProductError(result['error'])
+        if result.get('status') == 'error': raise ProductError(result.get('message') or '贴片项目操作失败')
+        return result
     def tasks():
         nonlocal task_manager
         with lock:
@@ -231,6 +247,9 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
             if render_manager is not None: render_manager.close()
             if tts_manager is not None: tts_manager.close()
             if avatar_manager is not None: avatar_manager.close()
+            if sticker_manager is not None:
+                _, jobs = sticker_manager._live_sticker_job_state()
+                for event in tuple(jobs.values()): event.set()
     def preparation():
         nonlocal avatar_manager
         with lock:
@@ -294,7 +313,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     self.send_header("Content-Disposition", f'attachment; filename="{attachment}"')
                 self.send_header("Cache-Control", "no-store")
                 self.send_header("X-Content-Type-Options", "nosniff")
-                self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'")
+                self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'")
                 self.end_headers()
                 self.wfile.write(content)
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
@@ -521,6 +540,14 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                 if path == '/api/avatars':
                     avatars=AvatarStore(store.directory)
                     return self.respond(200,{'avatars':avatars.list(),'selected':avatars.selected()})
+                if path == '/api/stickers':
+                    query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                    if not query:
+                        return self.respond(200, sticker_result(stickers().get_all_live_sticker_projects()))
+                    ids = query.get('project_id', [])
+                    if set(query) != {'project_id'} or len(ids) != 1 or not 1 <= len(ids[0]) <= 64:
+                        raise ProductError('贴片项目编号无效')
+                    return self.respond(200, sticker_result(stickers().get_live_sticker_project(ids[0])))
                 if path == '/api/avatar-preparation/state':
                     task=(avatar_manager.state() if avatar_manager is not None else
                           preparation().state() if preflight(store.load())['runtime_root'] else None)
@@ -870,6 +897,37 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             raise AvatarError('形象导入字段无效')
                         avatar=AvatarStore(store.directory).import_prepared(value['source'],value['name'])
                         return self.respond(201,{'avatar':avatar})
+                    if path == '/api/stickers/create':
+                        if set(value) != {'name'} or not isinstance(value['name'], str) or len(value['name']) > 100:
+                            raise ProductError('贴片项目名称无效')
+                        return self.respond(201, sticker_result(stickers().create_live_sticker_project(value['name'])))
+                    if path == '/api/stickers/update':
+                        if set(value) != {'project_id', 'data'} or not isinstance(value['project_id'], str) or not isinstance(value['data'], dict):
+                            raise ProductError('贴片项目保存字段无效')
+                        allowed = {'name', 'product_name', 'product_price', 'product_selling_points',
+                                   'product_content', 'product_item_id', 'product_pic', 'background_prompt',
+                                   'foreground_prompt', 'cover_prompt', 'room_title', 'room_titles'}
+                        if set(value['data']) - allowed:
+                            raise ProductError('贴片项目包含不可修改字段')
+                        return self.respond(200, sticker_result(stickers().update_live_sticker_project(
+                            value['project_id'], value['data'])))
+                    if path == '/api/stickers/prompts':
+                        if set(value) != {'project_id', 'product'} or not isinstance(value['project_id'], str) or not isinstance(value['product'], dict):
+                            raise ProductError('贴片提示词字段无效')
+                        return self.respond(200, sticker_result(stickers().generate_live_sticker_prompts(value)))
+                    if path == '/api/stickers/generate':
+                        required = {'project_id', 'runninghub_api_key'}
+                        if not required <= set(value) or set(value) - required - {
+                                'background_prompt', 'foreground_prompt', 'cover_prompt', 'image_config'}:
+                            raise ProductError('贴片生成字段无效')
+                        if not all(isinstance(value[key], str) and value[key] for key in required):
+                            raise ProductError('贴片项目或 RunningHub API Key 无效')
+                        return self.respond(200, sticker_result(stickers().generate_live_sticker_images(value)))
+                    if path == '/api/stickers/cancel':
+                        if set(value) != {'project_id'} or not isinstance(value['project_id'], str):
+                            raise ProductError('贴片取消字段无效')
+                        return self.respond(200, sticker_result(
+                            stickers().cancel_live_sticker_generation(value['project_id'])))
                     if path == '/api/avatar-preparation/start':
                         if set(value)!={'source','name','resolution'}:
                             raise AvatarError('视频制作字段无效')
