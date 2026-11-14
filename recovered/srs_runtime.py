@@ -72,24 +72,33 @@ def stop_srs_process(process, timeout=3.0):
     """Stop only the SRS process tree represented by *process*."""
     if process is None or process.poll() is not None:
         return
+    wait_timeout = max(0.1, float(timeout))
     if sys.platform == "win32":
-        subprocess.run(
-            ["taskkill", "/F", "/T", "/PID", str(process.pid)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=max(0.1, float(timeout)),
-            check=False,
-        )
         try:
-            process.wait(timeout=max(0.1, float(timeout)))
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=wait_timeout,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            # taskkill is the preferred process-tree cleanup on Windows, but a
+            # broken/missing taskkill must not skip fallback cleanup of the
+            # exact process handle that this application owns.
+            pass
+        try:
+            process.wait(timeout=wait_timeout)
         except subprocess.TimeoutExpired:
             process.kill()
+            process.wait(timeout=wait_timeout)
     else:
         process.terminate()
         try:
-            process.wait(timeout=max(0.1, float(timeout)))
+            process.wait(timeout=wait_timeout)
         except subprocess.TimeoutExpired:
             process.kill()
+            process.wait(timeout=wait_timeout)
 
 
 def srs_process_status(process):

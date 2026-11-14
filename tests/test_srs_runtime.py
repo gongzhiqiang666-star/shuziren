@@ -13,6 +13,7 @@ class FakeProcess:
         self._last = None
         self.pid = pid
         self.waited = False
+        self.killed = False
 
     def poll(self):
         self._last = next(self._poll_values, self._last)
@@ -22,6 +23,10 @@ class FakeProcess:
         self.waited = True
         self._last = 0
         return 0
+
+    def kill(self):
+        self.killed = True
+        self._last = -9
 
 
 class SrsRuntimeTests(unittest.TestCase):
@@ -73,6 +78,20 @@ class SrsRuntimeTests(unittest.TestCase):
         self.assertEqual(command, ["taskkill", "/F", "/T", "/PID", "2468"])
         self.assertNotIn("/IM", command)
         self.assertTrue(process.waited)
+
+    @mock.patch.object(srs_runtime.sys, "platform", "win32")
+    def test_shutdown_falls_back_when_taskkill_times_out(self):
+        process = mock.Mock(pid=2468)
+        process.poll.return_value = None
+        process.wait.side_effect = [subprocess.TimeoutExpired("srs.exe", 0.1), 0]
+        with mock.patch.object(
+            srs_runtime.subprocess,
+            "run",
+            side_effect=subprocess.TimeoutExpired("taskkill", 0.1),
+        ):
+            srs_runtime.stop_srs_process(process, timeout=0.1)
+        process.kill.assert_called_once_with()
+        self.assertEqual(process.wait.call_count, 2)
 
     def test_status(self):
         self.assertEqual(srs_runtime.srs_process_status(None), "unavailable")

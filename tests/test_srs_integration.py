@@ -5,7 +5,7 @@ import unittest
 import urllib.request
 from pathlib import Path
 
-from recovered.srs_runtime import start_bundled_srs, stop_srs_process
+from recovered.srs_runtime import SRS_PORTS, _port_is_listening, start_bundled_srs, stop_srs_process
 
 
 @unittest.skipUnless(os.environ.get("SHUZIREN_RUN_SRS_INTEGRATION") == "1", "requires bundled Windows SRS")
@@ -43,6 +43,10 @@ class SrsIntegrationTests(unittest.TestCase):
                 publisher.stderr.close()
             stop_srs_process(process)
         self.assertIsNotNone(process.poll())
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline and any(_port_is_listening(port) for port in SRS_PORTS):
+            time.sleep(0.05)
+        self.assertEqual([], [port for port in SRS_PORTS if _port_is_listening(port)])
 
 
 if __name__ == "__main__":
