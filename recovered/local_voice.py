@@ -6,9 +6,15 @@ MODULES = {
     "v1": "bin.voice_infer.infer_api",
     "v2": "bin.voice_infer_v2.infer_api",
     "v3": "bin.voice_infer_v3.infer_api",
-    "malai_local": "bin.voice_infer_malai_local.infer_api",
-    "vietnam_local": "bin.voice_infer_vietnam_local.infer_api",
+    # Product routing uses the already validated resident OmniVoice provider
+    # for Southeast Asian languages. The recovered F5 service clients remain
+    # importable compatibility adapters, but are not an undeclared runtime
+    # dependency of the product path.
+    "malai_local": "bin.voice_infer_v2.infer_api",
+    "vietnam_local": "bin.voice_infer_v2.infer_api",
 }
+
+DEFAULT_LANGUAGES = {"malai_local": "ms-MY", "vietnam_local": "vi-VN"}
 
 
 def synthesize_local_audio(main_config, voice_id, text, speed, version="v1"):
@@ -21,6 +27,7 @@ def synthesize_local_audio(main_config, voice_id, text, speed, version="v1"):
         voice_infer_version=version,
     )
     try:
-        return synthesizer.synthesize(text=text, speed=speed)
+        return synthesizer.synthesize(
+            text=text, speed=speed, language=DEFAULT_LANGUAGES.get(version))
     finally:
         synthesizer.clear()

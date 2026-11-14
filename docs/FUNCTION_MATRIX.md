@@ -64,7 +64,7 @@
 | MED-005 | ZipVoice 本地语音推理 | `voice_infer.pyd` | `voice_infer.py`、`scripts/tts_worker.py` | 静态验证通过 | A01-02 已有 Windows CPU/CUDA 合成、双参考音缓存隔离、显存清理及独立媒体任务证据。原程序差分、并发、人工音质和直播待验 |
 | MED-006 | OmniVoice 本地语音推理 | `voice_infer_v2.pyd` | `voice_infer_v2.py`、`scripts/tts_worker.py` | 静态验证通过 | A01-02 已有 RTX 3060 合成、中英语言缓存隔离及独立媒体任务证据。原程序差分、显存量化、双参考音、人工音质和直播待验 |
 | MED-007 | IndexTTS 本地语音推理 | `voice_infer_v3.pyd` | `voice_infer_v3.py` | 开发中 | V03真实CUDA新文本、缓存/取消/恢复、双参考A/B/A和ASR/声纹自动核验已通过对应范围；人工听感、长文本、峰值/长稳及录音实机仍待验收 |
-| MED-008 | 马来语/越南语本地语音 | 对应 `voice_infer_*_local.pyd` | `voice_infer_malai_local.py`, `voice_infer_vietnam_local.py` | 开发中 | 真实模型、语言发音、CPU/GPU |
+| MED-008 | 马来语/越南语本地语音 | 对应 `voice_infer_*_local.pyd` | `local_voice.py`, `voice_infer_v2.py`, `voice_infer_malai_local.py`, `voice_infer_vietnam_local.py` | 静态验证通过 | 产品主链的 `malai_local`/`vietnam_local` 统一路由常驻 OmniVoice，并固定 `ms-MY`/`vi-VN`；原 F5 服务客户端保留为兼容适配器。RTX 3060 两语言真实合成、缓存隔离及各约 70 秒轮播/插播/接管/双轨回采通过；2 项路由测试及完整契约通过，见 `evidence/a01-multilingual-local-voice.md`。人工发音听感、口音语料、CPU 性能和原 F5 服务差分仍待验 |
 | MED-009 | Minimax/CosyVoice 在线音色克隆与生成 | `start_voice_clone_*`、在线语音模块 | `online_voice_generate.py`, `cosyvoice.py` | 静态验证通过 | 真实账号、区域端点、上传、鉴权和计费错误 |
 | MED-010 | 离线形象克隆 | `start_clone_local/clone_video_local` | `clone_manager.py`, `image_clone_*`、`scripts/avatar_store.py`、`scripts/avatar_tasks.py`、`scripts/render_tasks.py`、`scripts/raw_video_writer.py` | 开发中 | V04真实720p制作、原生关键点差分、形象管理及页面生成/完整播放/取消/失效通过对应范围；直接NVENC候选两后端各50条完整媒体、精度及旧编码数值筛查通过，TRT热态32.818fps/P95 33.027ms达标。主ASR分歧保留、人工质量/多分辨率/KT板、实际持续输出仍待验收；V04-04f产品方案选择/绑定/真实编码取消与页面恢复已通过对应范围 |
 | MED-011 | 人脸检测、关键点、口型特征与遮挡处理 | SCRFD/S3FD/PFLD/WeNet/Hubert 链 | `image_*`, `s3fd_*`, `pfld_mobileone.py`, `hubert_extractor.py` | 静态验证通过 | 真实权重、GPU、遮挡/侧脸/多人和性能 |
@@ -97,8 +97,8 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 50 |
-| 开发中 | 8 |
+| 静态验证通过 | 51 |
+| 开发中 | 7 |
 | 已分析 | 0 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |
