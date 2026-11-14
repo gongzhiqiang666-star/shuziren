@@ -23,6 +23,23 @@ from scripts.console_taobao import ConsoleTaobao
 from scripts.console_comment_reply import ConsoleCommentReply
 
 WEB = Path(__file__).parent / "local-console"
+ACCESS_ROLES = ('viewer', 'operator', 'admin')
+OPERATOR_POST_PATHS = {
+    '/api/live/start', '/api/live/video-seek', '/api/live/rotation', '/api/live/control',
+    '/api/live/stop', '/api/live/enqueue', '/api/live/insert', '/api/live/speak',
+    '/api/live/advice/acknowledge', '/api/live/advice/revoke',
+    '/api/taobao/goods', '/api/taobao/explain', '/api/taobao/auto-reply',
+    '/api/taobao/reply', '/api/taobao/login', '/api/taobao/start', '/api/taobao/stop',
+    '/api/shutdown', '/api/preflight',
+}
+
+
+def role_allows_post(role, path):
+    if role == 'admin':
+        return True
+    if role == 'operator':
+        return path in OPERATOR_POST_PATHS
+    return path == '/api/preflight'
 
 
 class ConsoleServer(ThreadingHTTPServer):
@@ -129,7 +146,10 @@ def live_advice(session, repeated_questions=()):
     return advice
 
 
-def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=None, shop_id=None):
+def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=None, shop_id=None,
+                  access_role='admin'):
+    if access_role not in ACCESS_ROLES:
+        raise ValueError('控制台访问角色无效')
     token = secrets.token_urlsafe(32)
     lock = threading.RLock()
     product_lock = threading.Lock()
@@ -450,7 +470,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         return self.respond(503, {'error': '无法读取音频设备：' + str(error)})
                     return self.respond(200, {'devices': devices})
                 if path == "/api/session":
-                    return self.respond(200, {"token": token, "tts_engine": tts_engine, "shop_id": shop_id})
+                    return self.respond(200, {"token": token, "tts_engine": tts_engine, "shop_id": shop_id,
+                                              "access_role": access_role})
                 if path == '/api/voices':
                     voices=VoiceStore(store.directory)
                     return self.respond(200,{'voices':voices.list(),'selected':voices.selected()})
@@ -643,6 +664,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                 if not isinstance(value, dict):
                     raise ConfigError("请求必须为对象")
                 path = urlsplit(self.path).path
+                if not role_allows_post(access_role, path):
+                    return self.respond(403, {"error": "当前账号角色无权执行此操作", "access_role": access_role})
                 if path in {'/api/taobao/goods', '/api/taobao/explain'}:
                     fields = {'capture_id'} if path.endswith('/goods') else {'capture_id', 'goods_id'}
                     if set(value) != fields or not isinstance(value['capture_id'], str):
@@ -1130,6 +1153,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="数字人本地控制台")
     parser.add_argument("--data-directory", type=Path)
     parser.add_argument("--shop-id", help="在数据目录下使用独立的店铺工作区")
+    parser.add_argument("--access-role", choices=ACCESS_ROLES,
+                        default=os.environ.get('SHUZIREN_MANAGED_ACCESS_ROLE', 'admin'),
+                        help="当前本机入口的访问角色")
     parser.add_argument("--port", type=int)
     parser.add_argument("--tts-engine", choices=("indextts", "zipvoice", "omnivoice"), default="indextts")
     parser.add_argument("--tts-model-root", type=Path)
@@ -1147,7 +1173,8 @@ def main(argv=None):
         instance.__enter__()
         server = create_server(store, args.port, tts_engine=args.tts_engine,
                                tts_model_root=args.tts_model_root,
-                               shop_id=args.shop_id or os.environ.get('SHUZIREN_MANAGED_SHOP_ID'))
+                               shop_id=args.shop_id or os.environ.get('SHUZIREN_MANAGED_SHOP_ID'),
+                               access_role=args.access_role)
     except OSError as error:
         instance.__exit__()
         logging.error("启动失败：%s", error)

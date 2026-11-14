@@ -69,6 +69,18 @@ class ConsolePackageTests(unittest.TestCase):
                     run_release(root, 0, shop_id='pilot')
                 launch.assert_not_called()
 
+    def test_managed_release_passes_scoped_access_role_without_inheriting_parent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            with (patch('scripts.console_package.read_active', return_value={'current': 'release'}),
+                  patch('scripts.console_package.check_release', return_value=(root, {})),
+                  patch('scripts.console_package.subprocess.call', return_value=0) as launch,
+                  patch.dict('scripts.console_package.os.environ', {'SHUZIREN_MANAGED_ACCESS_ROLE': 'admin'})):
+                self.assertEqual(run_release(root, 0, shop_id='pilot', access_role='viewer'), 0)
+            environment = launch.call_args.kwargs['env']
+            self.assertEqual(environment['SHUZIREN_MANAGED_ACCESS_ROLE'], 'viewer')
+            self.assertEqual(environment['SHUZIREN_MANAGED_SHOP_ID'], 'pilot')
+
     def test_shop_migration_preserves_prepared_avatar(self):
         try:
             import cv2

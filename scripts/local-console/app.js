@@ -56,7 +56,9 @@ async function load() {
   catch(error) { $('live-status').textContent = '状态读取失败'; throw error; }
   $('runtime-root').value = state.config.runtime_root; $('port').value = state.config.port;
   $('live-status').textContent = state.live_status;
-  $('data-directory').textContent = (session.shop_id ? '店铺 ' + session.shop_id + ' · ' : '') + '配置目录：' + state.data_directory;
+  const roleName = {viewer:'只读', operator:'运营', admin:'管理员'}[session.access_role] || session.access_role;
+  $('data-directory').textContent = (session.shop_id ? '店铺 ' + session.shop_id + ' · ' : '')
+    + '角色：' + roleName + ' · 配置目录：' + state.data_directory;
   document.title = session.shop_id ? '数字人工作台 · ' + session.shop_id : '数字人工作台';
 }
 $('settings').addEventListener('submit', event => {event.preventDefault(); action(async () => {

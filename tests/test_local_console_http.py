@@ -134,6 +134,34 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(second.call('/api/live/content-draft?session_id=shop-scene&task_id=shop-clip')[0], 400)
         self.assertEqual(second.call('/api/live/content-draft', draft)[0], 400)
 
+    def test_shop_roles_enforce_read_operator_and_admin_boundaries(self):
+        clients = {}
+        for role in ('viewer', 'operator', 'admin'):
+            config = ConfigStore(shop_data_directory(self.directory.name, role))
+            server = create_server(config, port=0, shop_id=role, access_role=role)
+            self.addCleanup(server.server_close)
+            worker = threading.Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            self.addCleanup(worker.join, 5)
+            self.addCleanup(server.shutdown)
+            client = ConsoleHTTPTests()
+            client.base = f'http://127.0.0.1:{server.server_port}'
+            session = client.call('/api/session')[1]
+            client.token = session['token']
+            self.assertEqual(session['access_role'], role)
+            clients[role] = client
+
+        product = {'title': '角色测试商品', 'content': '仅管理员可修改', 'product_index': 1}
+        self.assertEqual(clients['viewer'].call('/api/products')[0], 200)
+        status, denied = clients['viewer'].call('/api/products', product)
+        self.assertEqual((status, denied['access_role']), (403, 'viewer'))
+        self.assertEqual(clients['viewer'].call('/api/preflight', {'version': 1, 'runtime_root': '', 'port': 5158})[0], 200)
+        status, denied = clients['operator'].call('/api/products', product)
+        self.assertEqual((status, denied['access_role']), (403, 'operator'))
+        self.assertEqual(clients['operator'].call('/api/live/stop', {'session_id': 'missing'})[0], 409)
+        self.assertEqual(clients['admin'].call('/api/products', product)[0], 200)
+        self.assertEqual(clients['viewer'].call('/api/products')[1]['products'], [])
+
     def test_promotion_spend_preserves_missing_attribution_and_corrects_bill(self):
         store = ProductStore(self.directory.name)
         product = store.save(title='茶杯', content='商品说明', product_index=1)

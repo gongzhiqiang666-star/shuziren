@@ -155,7 +155,8 @@ def console_command(data, port, python=None):
 
 def console_environment():
     return {**{key: value for key, value in os.environ.items()
-               if key.upper() not in {'PYTHONPATH', 'PYTHONHOME', 'SHUZIREN_MANAGED_SHOP_ID'}},
+               if key.upper() not in {'PYTHONPATH', 'PYTHONHOME', 'SHUZIREN_MANAGED_SHOP_ID',
+                                      'SHUZIREN_MANAGED_ACCESS_ROLE'}},
             'PYTHONNOUSERSITE': '1'}
 
 
@@ -253,7 +254,7 @@ def switch_release(root, archive=None, with_media=False):
         return active
 
 
-def run_release(root, port, with_media=False, shop_id=None):
+def run_release(root, port, with_media=False, shop_id=None, access_role='admin'):
     from scripts.local_console import InstanceLock
     from scripts.local_console_config import shop_data_directory
 
@@ -277,6 +278,9 @@ def run_release(root, port, with_media=False, shop_id=None):
         environment = console_environment()
         if shop_id is not None:
             environment['SHUZIREN_MANAGED_SHOP_ID'] = shop_id
+        if access_role not in ('viewer', 'operator', 'admin'):
+            raise ValueError('Invalid managed access role')
+        environment['SHUZIREN_MANAGED_ACCESS_ROLE'] = access_role
         return subprocess.call(console_command(data, port, python), cwd=release, env=environment)
 
 
@@ -300,6 +304,8 @@ def main():
         if name == 'run':
             command.add_argument('--port', type=int)
             command.add_argument('--shop-id', help='使用独立的店铺数据目录')
+            command.add_argument('--access-role', choices=('viewer', 'operator', 'admin'), default='admin',
+                                 help='当前本机入口的访问角色')
     migration = commands.add_parser('migrate-data')
     migration.add_argument('--root', type=Path, required=True)
     migration.add_argument('--source', type=Path, required=True)
@@ -330,7 +336,7 @@ def main():
         print(json.dumps(migrate_data(args.source, args.root, args.shop_id), ensure_ascii=False))
         return 0
     if args.command == 'run':
-        return run_release(args.root, args.port, args.with_media, args.shop_id)
+        return run_release(args.root, args.port, args.with_media, args.shop_id, args.access_role)
     if args.command in {'deploy', 'rollback'}:
         print(json.dumps(switch_release(args.root, getattr(args, 'archive', None), args.with_media)))
         return 0
