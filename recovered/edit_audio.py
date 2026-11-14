@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import sys
+import wave
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -333,6 +334,8 @@ def natural_sort_key(value):
 
 
 class AudioEditorAPI:
+    MAX_PREVIEW_BYTES = 64 * 1024 * 1024
+
     def __init__(self):
         runtime = Path(os.environ.get("YUNCHUANG_RUNTIME_DIR") or
                        getattr(sys, "_MEIPASS", Path.cwd())).resolve()
@@ -405,6 +408,25 @@ class AudioEditorAPI:
         return {"basename": safe_name, "original_text": text, "current_text": text,
                 "wav_path": str(wav_path), "txt_path": str(txt_path)}
 
+    @staticmethod
+    def _validate_wav(path: Path) -> Dict[str, Any]:
+        try:
+            with wave.open(str(path), "rb") as source:
+                channels, width, rate, frames = (source.getnchannels(), source.getsampwidth(),
+                                                  source.getframerate(), source.getnframes())
+                compression = source.getcomptype()
+        except (OSError, EOFError, wave.Error) as error:
+            raise ValueError(f"{path.name} 不是有效的 WAV: {error}") from error
+        if compression != "NONE" or channels not in range(1, 9) or width not in range(1, 5):
+            raise ValueError(f"{path.name} 的 WAV 编码或声道不受支持")
+        if not 8000 <= rate <= 192000 or frames <= 0:
+            raise ValueError(f"{path.name} 的采样率或时长无效")
+        duration = frames / rate
+        if duration > 4 * 60 * 60:
+            raise ValueError(f"{path.name} 超过 4 小时时长上限")
+        return {"channels": channels, "sample_width": width, "sample_rate": rate,
+                "frames": frames, "duration": duration}
+
     def _convert_basename(self, basename: str) -> Dict[str, Any]:
         item = self.items[basename]
         text_content = str(item["current_text"] or "").strip()
@@ -421,6 +443,7 @@ class AudioEditorAPI:
         )
         if not temp_output_path or not Path(temp_output_path).is_file():
             raise RuntimeError(f"{basename} 未生成有效音频")
+        self._validate_wav(Path(temp_output_path))
         shutil.move(temp_output_path, item["wav_path"])
         Path(item["txt_path"]).write_text(text_content, encoding="utf-8")
         item["original_text"] = item["current_text"] = text_content
@@ -442,6 +465,8 @@ class AudioEditorAPI:
                 f"找到 {len(wav_files)} 个 wav，但缺少同名 txt，无法加载。"
                 "请先用「AI碎片化音频处理」生成带文本的切片。"
             )
+        for path in wav_files:
+            self._validate_wav(path)
         self.current_folder = str(folder)
         self.items = {
             path.stem: self._item_from_basename(path.stem) for path in wav_files
@@ -566,7 +591,13 @@ class AudioEditorAPI:
 
     def get_audio_base64(self, basename: str):
         try:
-            path = Path(self.current_folder) / f"{Path(basename).stem}.wav"
+            safe_name = Path(str(basename)).stem
+            if safe_name not in self.items:
+                raise ValueError("目标音频不存在")
+            path = Path(self.current_folder) / f"{safe_name}.wav"
+            self._validate_wav(path)
+            if path.stat().st_size > self.MAX_PREVIEW_BYTES:
+                raise ValueError("音频超过 64 MiB 预览上限")
             audio_data = "data:audio/wav;base64," + base64.b64encode(path.read_bytes()).decode("ascii")
             return self._build_state(audio_data=audio_data)
         except Exception as error:

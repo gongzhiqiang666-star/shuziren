@@ -428,6 +428,7 @@ def verify_audio_player_scan_contract():
 
 def verify_edit_audio_contract():
     import hashlib
+    import wave
     import recovered.edit_audio as edit_audio
     from recovered.edit_audio import AudioEditorAPI, EDIT_AUDIO_HTML
 
@@ -464,10 +465,27 @@ def verify_edit_audio_contract():
             raise AssertionError("wav without matching txt must fail")
 
         (root / "10.txt").write_text("苹果苹果", encoding="utf-8")
-        (root / "2.WAV").write_bytes(b"RIFF")
+        try:
+            api._load_folder(root)
+        except ValueError as error:
+            assert "10.wav 不是有效的 WAV" in str(error)
+        else:
+            raise AssertionError("damaged wav must fail before entering editor")
+        def write_wav(path, frames=160):
+            with wave.open(str(path), "wb") as target:
+                target.setnchannels(1); target.setsampwidth(2); target.setframerate(16000)
+                target.writeframes(bytes(frames * 2))
+        write_wav(root / "10.wav")
+        write_wav(root / "2.WAV")
         (root / "2.txt").write_text("苹果", encoding="utf-8")
         assert api._load_folder(root) == str(root.resolve())
         assert list(api.items) == ["2", "10"]
+        assert api.get_audio_base64("2")["audio_data"].startswith("data:audio/wav;base64,")
+        assert api.get_audio_base64("missing")["message"] == "目标音频不存在"
+        original_preview_limit = api.MAX_PREVIEW_BYTES
+        api.MAX_PREVIEW_BYTES = 1
+        assert api.get_audio_base64("2")["message"] == "音频超过 64 MiB 预览上限"
+        api.MAX_PREVIEW_BYTES = original_preview_limit
         result = api.apply_keyword_replace("苹果", "香蕉", api._serialize_items())
         assert result["replaced_count"] == 2
         assert result["message"] == "替换完成，共处理 2 条"
@@ -475,7 +493,8 @@ def verify_edit_audio_contract():
 
         synthesis_calls = []
         generated = root / "generated.wav"
-        generated.write_bytes(b"NEW-WAV")
+        write_wav(generated, 320)
+        generated_bytes = generated.read_bytes()
         class Synthesizer:
             def synthesize(self, **kwargs):
                 synthesis_calls.append(kwargs)
@@ -491,7 +510,7 @@ def verify_edit_audio_contract():
             {"text":"新文本", "speed":1.0, "reference_audio":str(resolved_root / "2.wav"),
              "reference_text":"香蕉"},
         ]
-        assert (root / "2.wav").read_bytes() == b"NEW-WAV"
+        assert (root / "2.wav").read_bytes() == generated_bytes
         assert (root / "2.txt").read_text(encoding="utf-8") == "新文本"
         assert api.convert_item("missing", "x")["message"] == "目标音频不存在"
         unchanged = api.convert_all(api._serialize_items())
