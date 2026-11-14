@@ -2,6 +2,8 @@ import tempfile
 import unittest
 import base64
 import io
+import threading
+import time
 from pathlib import Path
 
 from PIL import Image
@@ -80,6 +82,29 @@ class LiveStickerProjectTests(unittest.TestCase):
                 self.assertGreater(image.height, 0)
         with Image.open(project['cover_path']) as cover:
             self.assertEqual(cover.size, (750, 750))
+
+    def test_running_generation_can_be_cancelled_without_changing_complete_assets(self):
+        self.assertEqual(self.generate(['red', 'green', 'blue'])['status'], 'success')
+        before = self.asset_bytes(); entered = threading.Event(); result = []
+        def provider(*, image_config, **_):
+            cancel_check = image_config['_cancel_check']
+            entered.set()
+            while not cancel_check(): time.sleep(.01)
+            raise InterruptedError('图片生成已取消')
+        self.api._generate_live_sticker_image_file = provider
+        worker = threading.Thread(target=lambda: result.append(self.api.generate_live_sticker_images({
+            'project_id': self.project['id'], 'runninghub_api_key': 'local-test-key'})))
+        worker.start(); self.assertTrue(entered.wait(2))
+        duplicate = self.api.generate_live_sticker_images({
+            'project_id': self.project['id'], 'runninghub_api_key': 'local-test-key'})
+        self.assertIn('正在生成', duplicate['message'])
+        self.assertEqual(self.api.cancel_live_sticker_generation(self.project['id'])['status'], 'cancel_requested')
+        worker.join(2); self.assertFalse(worker.is_alive())
+        self.assertEqual(result[0]['status'], 'cancelled')
+        self.assertIn('已取消', result[0]['message'])
+        self.assertEqual(self.asset_bytes(), before)
+        self.assertEqual(self.api.get_live_sticker_project(self.project['id'])['project']['status'], 'cancelled')
+        self.assertEqual(self.api.cancel_live_sticker_generation(self.project['id'])['status'], 'idle')
 
 
 if __name__ == '__main__': unittest.main()

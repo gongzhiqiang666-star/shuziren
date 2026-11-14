@@ -7,7 +7,7 @@ import subprocess
 import sys
 import yaml
 from pathlib import Path
-from threading import RLock
+from threading import Event, RLock
 from tempfile import TemporaryDirectory
 
 from .clone_manager import CloneManager, VOICE_OPTIMIZE_MAX_SECONDS, VOICE_OPTIMIZE_SAMPLE_RATE, VOICE_OPTIMIZE_SAMPLE_TEXT
@@ -77,6 +77,8 @@ class Api(PluginInstallerApi):
         self._face_hand_live_manager = FaceHandLiveManager({} if config is None else config)
         self._clone_manager = CloneManager(self.config)
         self._live_lifecycle_lock = RLock()
+        self._live_sticker_generation_lock = RLock()
+        self._live_sticker_cancel_events = {}
         self._shutdown_complete = False
         self._live_action_assistant_process = None
         self._audio_editor_process = None
@@ -2056,12 +2058,30 @@ class Api(PluginInstallerApi):
         return bool(image_config) and all(Path(path).is_file() for path in image_config.values())
 
     def _generate_live_sticker_image_file(self, *, image_config, prompt, dest, aspect_ratio="9:16"):
-        from .runninghub_image import generate_and_download
-        generate_and_download(api_key=image_config["api_key"], prompt=prompt, dest=dest,
-                              aspect_ratio=aspect_ratio, resolution=image_config.get("resolution", "2k"),
-                              quality=image_config.get("quality", "low"),
-                              poll_interval=int(image_config.get("poll_interval", 5)),
-                              poll_timeout=int(image_config.get("poll_timeout", 900)))
+        from .runninghub_image import _generate_and_download_cancellable
+        cancel_check = image_config.get("_cancel_check")
+        _generate_and_download_cancellable(
+            api_key=image_config["api_key"], prompt=prompt, dest=dest,
+            aspect_ratio=aspect_ratio, resolution=image_config.get("resolution", "2k"),
+            quality=image_config.get("quality", "low"),
+            poll_interval=int(image_config.get("poll_interval", 5)),
+            poll_timeout=int(image_config.get("poll_timeout", 900)),
+            cancel_check=cancel_check)
+
+    def _live_sticker_job_state(self):
+        if not hasattr(self, "_live_sticker_generation_lock"):
+            self._live_sticker_generation_lock = RLock(); self._live_sticker_cancel_events = {}
+        return self._live_sticker_generation_lock, self._live_sticker_cancel_events
+
+    def cancel_live_sticker_generation(self, project_id):
+        if not isinstance(project_id, str) or not project_id.strip():
+            return {"status": "error", "message": "贴片项目 ID 无效"}
+        lock, jobs = self._live_sticker_job_state()
+        with lock:
+            event = jobs.get(project_id)
+            if event is None: return {"status": "idle", "message": "当前没有贴片生成任务"}
+            event.set()
+        return {"status": "cancel_requested", "project_id": project_id}
 
     def _archive_live_sticker_outputs(self, project_id, info):
         from datetime import datetime
@@ -2169,14 +2189,19 @@ class Api(PluginInstallerApi):
     def generate_live_sticker_images(self, data):
         from .live_sticker_image_utils import (compress_sticker_image, image_size_label,
                                                 key_green, resize_cover_square)
-        info = None
+        info = None; cancel_event = None; project_id = None
         try:
             project_id = data["project_id"]; info = self._load_live_sticker_project(project_id)
             if not info: raise FileNotFoundError("贴片项目不存在")
+            lock, jobs = self._live_sticker_job_state()
+            with lock:
+                if project_id in jobs: raise RuntimeError("该贴片项目正在生成")
+                cancel_event = Event(); jobs[project_id] = cancel_event
             api_key = str(data.get("runninghub_api_key") or "").strip()
             if not api_key: raise ValueError("请填写 RunningHub API Key")
             outputs = self._get_live_sticker_output_paths(project_id)
-            config = {"api_key": api_key, **(data.get("image_config") or {})}
+            config = {"api_key": api_key, **(data.get("image_config") or {}),
+                      "_cancel_check": cancel_event.is_set}
             directory = Path(self._get_live_sticker_project_dir(project_id))
             # Providers can fail or be cancelled after producing only part of a
             # batch. Build and validate all five assets off to the side so the
@@ -2189,10 +2214,12 @@ class Api(PluginInstallerApi):
                 self._generate_live_sticker_image_file(
                     image_config=config, prompt=data.get("foreground_prompt") or info["foreground_prompt"],
                     dest=staging["fg_white"])
+                if cancel_event.is_set(): raise InterruptedError("图片生成已取消")
                 key_green(staging["fg_white"], staging["fg_alpha"])
                 self._generate_live_sticker_image_file(
                     image_config=config, prompt=data.get("cover_prompt") or info["cover_prompt"],
                     dest=staging["cover_raw"], aspect_ratio="1:1")
+                if cancel_event.is_set(): raise InterruptedError("图片生成已取消")
                 resize_cover_square(staging["cover_raw"], staging["cover"])
                 compress_sticker_image(staging["bg"], staging["bg"])
                 if not all(Path(path).is_file() and Path(path).stat().st_size for path in staging.values()):
@@ -2222,11 +2249,17 @@ class Api(PluginInstallerApi):
             project = self._save_live_sticker_project(project_id, info)
             return {"status": "success", "project": self._attach_live_sticker_previews(project)}
         except Exception as error:
-            if info:
+            status = "cancelled" if isinstance(error, InterruptedError) else "error"
+            if info and cancel_event is not None:
                 try: self._save_live_sticker_project(data["project_id"], {
-                    "status": "error", "last_error": str(error)})
+                    "status": status, "last_error": str(error)})
                 except Exception: pass
-            return {"status": "error", "message": f"生成贴片失败: {error}"}
+            return {"status": status, "message": f"生成贴片失败: {error}"}
+        finally:
+            if cancel_event is not None:
+                lock, jobs = self._live_sticker_job_state()
+                with lock:
+                    if jobs.get(project_id) is cancel_event: jobs.pop(project_id, None)
 
     def _get_cloud_dh_base_dir(self):
         return str(Path(self.runtime_dir) / "cloud_dh_projects")

@@ -66,17 +66,25 @@ def submit_text_to_image(*, api_key, prompt, aspect_ratio="9:16", resolution="2k
     return str(task_id)
 
 
-def poll_task_url(*, api_key, task_id, poll_interval=5, poll_timeout=900):
+def _poll_task_url_cancellable(*, api_key, task_id, poll_interval=5, poll_timeout=900,
+                               cancel_check=None):
     deadline = time.monotonic() + poll_timeout
     url = RH_BASE + f"/task/{task_id}"
     while time.monotonic() < deadline:
+        if cancel_check and cancel_check(): raise InterruptedError("图片生成已取消")
         body = _request("GET", url, headers=_headers(api_key), timeout=60).json(); _raise_if_rh_failed(body)
         data = body.get("data") or body; status = str(data.get("status") or "").upper()
         urls = _result_urls(body)
         if urls: return urls[0]
         if status in {"FAILED", "ERROR", "CANCELLED"}: raise RuntimeError(_explain_rh_error(body))
+        if cancel_check and cancel_check(): raise InterruptedError("图片生成已取消")
         time.sleep(poll_interval)
     raise TimeoutError(f"RunningHub taskId={task_id} 超时")
+
+
+def poll_task_url(*, api_key, task_id, poll_interval=5, poll_timeout=900):
+    return _poll_task_url_cancellable(api_key=api_key, task_id=task_id,
+                                      poll_interval=poll_interval, poll_timeout=poll_timeout)
 
 
 def download_image(url, dest, timeout=300):
@@ -85,10 +93,21 @@ def download_image(url, dest, timeout=300):
     return target
 
 
-def generate_and_download(*, api_key, prompt, dest, aspect_ratio="9:16", resolution="2k",
-                          quality="low", poll_interval=5, poll_timeout=900):
+def _generate_and_download_cancellable(*, api_key, prompt, dest, aspect_ratio="9:16", resolution="2k",
+                                       quality="low", poll_interval=5, poll_timeout=900,
+                                       cancel_check=None):
+    if cancel_check and cancel_check(): raise InterruptedError("图片生成已取消")
     task_id = submit_text_to_image(api_key=api_key, prompt=prompt, aspect_ratio=aspect_ratio,
                                    resolution=resolution, quality=quality)
-    url = poll_task_url(api_key=api_key, task_id=task_id, poll_interval=poll_interval,
-                        poll_timeout=poll_timeout)
+    url = _poll_task_url_cancellable(api_key=api_key, task_id=task_id, poll_interval=poll_interval,
+                                     poll_timeout=poll_timeout, cancel_check=cancel_check)
+    if cancel_check and cancel_check(): raise InterruptedError("图片生成已取消")
     return download_image(url, dest)
+
+
+def generate_and_download(*, api_key, prompt, dest, aspect_ratio="9:16", resolution="2k",
+                          quality="low", poll_interval=5, poll_timeout=900):
+    return _generate_and_download_cancellable(
+        api_key=api_key, prompt=prompt, dest=dest, aspect_ratio=aspect_ratio,
+        resolution=resolution, quality=quality, poll_interval=poll_interval,
+        poll_timeout=poll_timeout)
