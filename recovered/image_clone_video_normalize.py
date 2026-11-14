@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from fractions import Fraction
 
 from .output_resolution import (
     DEFAULT_RESOLUTION,
@@ -14,8 +15,10 @@ from .output_resolution import (
 
 
 def get_video_info(video_path: str) -> dict:
+    from .video_player import _resolve_ffprobe_executable
+
     command=[
-        "ffprobe","-v","quiet","-print_format","json",
+        _resolve_ffprobe_executable(),"-v","quiet","-print_format","json",
         "-show_format","-show_streams",video_path,
     ]
     data=json.loads(subprocess.check_output(command).decode("utf-8"))
@@ -29,7 +32,10 @@ def get_video_info(video_path: str) -> dict:
         if "rotation" in side_data:rotation=int(side_data["rotation"])
     if abs(rotation)%180==90:width,height=height,width
     frame_rate=video_stream.get("r_frame_rate","0/1")
-    fps=eval(frame_rate,{"__builtins__":{}},{})
+    try:
+        fps=float(Fraction(str(frame_rate)))
+    except (ValueError, ZeroDivisionError, OverflowError):
+        fps=0.0
     return {
         "width":width,"height":height,"fps":fps,
         "is_landscape":width>height,"rotation":rotation,
@@ -39,6 +45,8 @@ def get_video_info(video_path: str) -> dict:
 
 
 def normalize_video(input_path: str, resolution: str = DEFAULT_RESOLUTION) -> str:
+    from .video_player import _resolve_ffmpeg_executable
+
     input_path=os.path.abspath(input_path)
     resolution_key=normalize_resolution_key(resolution)
     video_info=get_video_info(input_path)
@@ -49,7 +57,7 @@ def normalize_video(input_path: str, resolution: str = DEFAULT_RESOLUTION) -> st
     input_dir=os.path.dirname(input_path);input_filename=os.path.basename(input_path)
     output_path=os.path.join(input_dir,"normalized_"+input_filename)
     command=[
-        "ffmpeg","-y","-i",input_path,
+        _resolve_ffmpeg_executable(),"-y","-i",input_path,
         "-vf",f"scale={new_width}:{target_height}",
         "-c:v","libx264","-preset","medium","-crf","18",
         "-c:a","aac","-b:a","128k",
