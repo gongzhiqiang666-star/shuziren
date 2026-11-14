@@ -79,7 +79,14 @@ class RenderTasks:
 
     def _task_inputs(self, task):
         if task.get('source_kind') == 'live_content':
-            return self._content_inputs(task['content_session_id'], task['content_task_id'], task['avatar_id'])
+            binding, content, audio, avatar = self._content_inputs(
+                task['content_session_id'], task['content_task_id'], task['avatar_id'])
+            if task.get('bgm_sha256'):
+                bgm = (self.jobs/task['id']/'bgm').resolve()
+                if not bgm.is_file() or digest(bgm) != task['bgm_sha256']:
+                    raise Conflict('背景音乐已变化，请重新生成')
+                binding.update(bgm_sha256=task['bgm_sha256'], bgm_volume=task['bgm_volume'])
+            return binding, content, audio, avatar
         return self._inputs(task['tts_task_id'], task['avatar_id'])
 
     def _validate(self,task):
@@ -112,25 +119,40 @@ class RenderTasks:
             binding,content,audio,avatar=self._inputs(tts_task_id,avatar_id)
             return self._start(binding, content, audio, avatar, render_profile)
 
-    def start_content(self, session_id, task_id, avatar_id, render_profile='standard'):
+    def start_content(self, session_id, task_id, avatar_id, render_profile='standard',
+                      bgm_path=None, bgm_volume=.16):
         if not isinstance(render_profile, str) or render_profile not in PROFILES:
             raise ProductError('视频生成方案无效')
         if not all(isinstance(value, str) and value for value in (session_id, task_id, avatar_id)):
             raise ProductError('口播记录或形象ID无效')
+        if isinstance(bgm_volume, bool) or not isinstance(bgm_volume, (int, float)) or not 0 <= bgm_volume <= 1:
+            raise ProductError('背景音乐音量须在0到1之间')
+        bgm = None
+        if bgm_path not in (None, ''):
+            if not isinstance(bgm_path, str) or not Path(bgm_path).is_absolute():
+                raise ProductError('背景音乐须使用本机绝对路径')
+            try:
+                bgm = Path(bgm_path).resolve(strict=True)
+                if not bgm.is_file() or not 0 < bgm.stat().st_size <= 100 * 1024 * 1024:
+                    raise ProductError('背景音乐文件为空或超过100 MiB')
+            except OSError as error: raise ProductError('背景音乐文件无法读取') from error
         with self.lock:
             if self.closed: raise Conflict('视频合成服务正在退出')
             if self.process is not None or (self.monitor and self.monitor.is_alive()):
                 raise Conflict('已有视频合成任务，请等待或取消')
             binding, content, audio, avatar = self._content_inputs(session_id, task_id, avatar_id)
-            return self._start(binding, content, audio, avatar, render_profile)
+            return self._start(binding, content, audio, avatar, render_profile, bgm, float(bgm_volume))
 
-    def _start(self, binding, content, audio, avatar, render_profile):
+    def _start(self, binding, content, audio, avatar, render_profile, bgm=None, bgm_volume=.16):
             python=runtime_python(self.runtime)
             if not python.is_file():raise ProductError('缺少视频合成运行解释器')
             task_id=str(uuid.uuid4());work=self.jobs/task_id;work.mkdir()
             self.task={'id':task_id,'status':'running',**binding,'product_title':audio['product_title'],
                        'avatar_name':avatar['name'],'speed':audio['speed'],'render_profile':render_profile}
             if 'caption' in audio: self.task['caption'] = audio['caption']
+            if bgm is not None:
+                shutil.copy2(bgm, work/'bgm')
+                self.task.update(bgm_sha256=digest(work/'bgm'), bgm_volume=bgm_volume, bgm_name=bgm.name)
             log=(work/'worker.log').open('wb')
             try:
                 (work/'audio.wav').write_bytes(content);self._save()
@@ -176,6 +198,9 @@ class RenderTasks:
                                   cover=published['cover'], cover_sha256=published['cover_sha256'],
                                   published_full_decode_passed=published['full_decode_passed'],
                                   subtitles_burned=True)
+                    if published.get('bgm_mixed'):
+                        result.update(bgm_mixed=True, bgm_sha256=published['bgm_sha256'],
+                                      bgm_volume=published['bgm_volume'])
                 self.task.update(status='succeeded',result=result);self._save();accepted=True
         except Exception as error:
             with self.lock:
@@ -236,7 +261,9 @@ class RenderTasks:
         python = runtime_python(self.runtime)
         completed = subprocess.run([str(python), '-X', 'utf8', '-m', 'scripts.subtitle_burn_worker',
             '--runtime-root', str(self.runtime), '--video', result['output'], '--subtitle', str(subtitle),
-            '--audio', str(work/'audio.wav'), '--output', str(output)], cwd=Path(__file__).resolve().parents[1],
+            '--audio', str(work/'audio.wav'), '--output', str(output), *(
+                ['--bgm', str(work/'bgm'), '--bgm-volume', str(self.task['bgm_volume'])]
+                if self.task.get('bgm_sha256') else [])], cwd=Path(__file__).resolve().parents[1],
             capture_output=True, timeout=300, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
         try: response = json.loads(completed.stdout.decode('utf-8'))
         except (UnicodeDecodeError, ValueError): raise ProductError('字幕烧录工作进程返回无效') from None
@@ -249,6 +276,9 @@ class RenderTasks:
             raise ProductError('字幕烧录成片校验失败')
         if not cover.is_file() or digest(cover) != published.get('cover_sha256'):
             raise ProductError('短视频封面校验失败')
+        published['bgm_mixed'] = bool(self.task.get('bgm_sha256'))
+        if published['bgm_mixed']:
+            published.update(bgm_sha256=self.task['bgm_sha256'], bgm_volume=self.task['bgm_volume'])
         return published
 
     def cover_path(self, task_id):
@@ -297,6 +327,9 @@ class RenderTasks:
                 'account': schedule['account'], 'audience': schedule['audience'],
                 'publish_at': schedule['publish_at'], 'assets': assets,
             }
+            if state.get('bgm_sha256'):
+                metadata['bgm'] = {'name': state.get('bgm_name'), 'sha256': state['bgm_sha256'],
+                                   'volume': state['bgm_volume']}
             manifest = json.dumps(metadata, ensure_ascii=False, indent=2).encode('utf-8')
             assets['metadata.json'] = hashlib.sha256(manifest).hexdigest()
             work = (self.jobs/render_task_id).resolve(); package = work/'publication-package.zip'

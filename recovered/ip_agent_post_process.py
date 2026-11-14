@@ -199,7 +199,12 @@ def mix_bgm(video_path, bgm_path, output_path, *, volume=0.16):
     duration = _video_duration(video_path)
     command = [shutil.which("ffmpeg") or "ffmpeg", "-y", "-i", str(video_path), "-stream_loop", "-1", "-i", str(bgm_path)]
     if _has_audio(video_path):
-        graph = f"[1:a]volume={float(volume)},atrim=0:{duration}[bgm];[0:a]volume=1.0[main];[main][bgm]amix=inputs=2:duration=first:dropout_transition=2[a]"
+        # AAC can otherwise drop the final encoder frame after amix. A short
+        # silent tail preserves every narration sample while staying within
+        # the media verifier's 80 ms A/V duration tolerance.
+        graph = (f"[1:a]volume={float(volume)},atrim=0:{duration}[bgm];"
+                 f"[0:a]volume=1.0[main];[main][bgm]amix=inputs=2:duration=first:dropout_transition=2:normalize=0,"
+                 "alimiter=limit=0.98,apad=pad_dur=0.05[a]")
         command += ["-filter_complex", graph, "-map", "0:v:0", "-map", "[a]"]
     else:
         command += ["-filter:a", f"volume={float(volume)}", "-map", "0:v:0", "-map", "1:a:0", "-shortest"]

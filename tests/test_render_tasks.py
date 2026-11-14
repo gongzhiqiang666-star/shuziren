@@ -155,6 +155,19 @@ class RenderTests(unittest.TestCase):
         with self.assertRaises(Conflict):
             self.tasks._content_inputs('scene', 'spoken', self.avatar['id'])
 
+    def test_live_content_bgm_is_owned_version_bound_and_validated(self):
+        self.retained_content()
+        binding, _, _, _ = self.tasks._content_inputs('scene', 'spoken', self.avatar['id'])
+        task_id = str(uuid.uuid4()); work = self.tasks.jobs/task_id; work.mkdir()
+        bgm = work/'bgm'; bgm.write_bytes(b'owned music fixture')
+        task = {'id':task_id, 'status':'running', **binding, 'bgm_sha256':digest(bgm), 'bgm_volume':.16}
+        self.assertEqual(self.tasks._task_inputs(task)[0]['bgm_volume'], .16)
+        bgm.write_bytes(b'tampered music')
+        with self.assertRaises(Conflict): self.tasks._task_inputs(task)
+        for path, volume in [('relative.mp3', .16), (None, 1.1), (None, -0.1)]:
+            with self.assertRaises(ProductError):
+                self.tasks.start_content('scene', 'spoken', self.avatar['id'], bgm_path=path, bgm_volume=volume)
+
     def test_publication_package_binds_current_draft_schedule_and_asset_hashes(self):
         self.retained_content()
         binding, _, audio, avatar = self.tasks._content_inputs('scene', 'spoken', self.avatar['id'])

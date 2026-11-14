@@ -2720,6 +2720,14 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
           download.download = `口播-${event.task_id.replace(/[^a-zA-Z0-9_-]/g, '_')}.wav`;
           download.textContent = '下载原口播音频';
           const renderButton = document.createElement('button');
+          const bgmLabel = document.createElement('label');
+          const bgmInput = document.createElement('input');
+          bgmInput.placeholder = '可选：本机背景音乐绝对路径';
+          bgmLabel.append('背景音乐', bgmInput);
+          const bgmVolumeLabel = document.createElement('label');
+          const bgmVolume = document.createElement('input');
+          bgmVolume.type='number';bgmVolume.min='0';bgmVolume.max='1';bgmVolume.step='.01';bgmVolume.value='.16';
+          bgmVolumeLabel.append('背景音乐音量（0–1）', bgmVolume);
           renderButton.type = 'button';
           renderButton.textContent = '用原口播生成数字人短视频';
           renderButton.disabled = source.facts_review !== 'version_current' || source.segment == null;
@@ -2731,7 +2739,8 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
               if (!avatar_id) throw new Error('请先在数字人形象区域选用一个形象');
               const result = await request('/api/live/content-render', {
                 session_id:event.session_id, task_id:event.task_id, avatar_id,
-                render_profile:$('render-profile').value
+                render_profile:$('render-profile').value,
+                bgm_path:bgmInput.value.trim() || null, bgm_volume:Number(bgmVolume.value)
               });
               renderState = result.task;
               draftStatus.textContent = '已进入数字人渲染队列，可在“数字人视频”区域查看进度和成片。';
@@ -2741,7 +2750,7 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
               renderButton.disabled = false;
             }
           });
-          details.append(audio, download, renderButton);
+          details.append(audio, download, bgmLabel, bgmVolumeLabel, renderButton);
         }
         loaded = true;
       } catch (error) {

@@ -925,8 +925,9 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             raise Conflict('正在制作形象，请完成或取消后再合成视频')
                         return self.respond(202,{'task':renders().start(**value)})
                     if path == '/api/live/content-render':
-                        if set(value) not in ({'session_id','task_id','avatar_id'},
-                                              {'session_id','task_id','avatar_id','render_profile'}):
+                        required = {'session_id','task_id','avatar_id'}
+                        if (not required <= set(value)
+                                or not (set(value) - required) <= {'render_profile','bgm_path','bgm_volume'}):
                             raise ProductError('短视频生成字段无效')
                         if not all(isinstance(value[key], str) and value[key]
                                    for key in ('session_id', 'task_id', 'avatar_id')):

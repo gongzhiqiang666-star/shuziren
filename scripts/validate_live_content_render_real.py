@@ -3,8 +3,10 @@ import argparse
 import hashlib
 import json
 import shutil
+import subprocess
 import time
 import zipfile
+import numpy as np
 from pathlib import Path
 
 from scripts.avatar_store import AvatarStore
@@ -41,19 +43,43 @@ def main():
     avatars = AvatarStore(root)
     avatar = avatars.import_prepared(args.avatar_directory, '真实数字人验证形象')
     avatars.select(avatar['id'])
+    bgm = root/'validation-bgm.mp3'
+    ffmpeg = Path(args.runtime_root).resolve()/'_internal/env/ffmpeg/bin/ffmpeg.exe'
+    subprocess.run([str(ffmpeg), '-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i',
+                    'sine=frequency=997:duration=5', str(bgm)],
+                   check=True, timeout=60)
 
     class AudioContext:
         def __init__(self): self.products = products
 
     tasks = RenderTasks(args.runtime_root, root, AudioContext())
-    task = tasks.start_content('validation-scene', 'validation-speech', avatar['id'], 'standard')
+    task = tasks.start_content('validation-scene', 'validation-speech', avatar['id'], 'standard',
+                               str(bgm), .08)
     deadline = time.time() + 600
     while task['status'] == 'running' and time.time() < deadline:
         time.sleep(1)
         task = tasks.state()
     if task['status'] != 'succeeded':
         raise SystemExit(json.dumps(task, ensure_ascii=False))
+    if (task['result'].get('bgm_mixed') is not True or task['result'].get('bgm_volume') != .08
+            or task['result'].get('bgm_sha256') != hashlib.sha256(bgm.read_bytes()).hexdigest()):
+        raise SystemExit('background music provenance mismatch')
     video = tasks.video_path(task['id'])
+    def pcm(path):
+        return np.frombuffer(subprocess.check_output([str(ffmpeg), '-v', 'error', '-i', str(path),
+            '-vn', '-ac', '1', '-ar', '24000', '-f', 's16le', 'pipe:1'], timeout=60), dtype='<i2').astype(float)
+    voice, mixed = pcm(task['result']['output']), pcm(video)
+    def tone(values):
+        spectrum = np.abs(np.fft.rfft(values * np.hanning(len(values))))
+        frequencies = np.fft.rfftfreq(len(values), 1/24000)
+        return float(spectrum[np.argmin(np.abs(frequencies - 997))])
+    bgm_check = {'voice_samples': len(voice), 'mixed_samples': len(mixed),
+                 'tone_gain': tone(mixed) / max(1, tone(voice)),
+                 'rms_ratio': float(np.sqrt(np.mean(mixed*mixed)) / np.sqrt(np.mean(voice*voice)))}
+    if (bgm_check['mixed_samples'] < bgm_check['voice_samples'] or bgm_check['tone_gain'] < 5
+            or not .8 <= bgm_check['rms_ratio'] <= 1.25):
+        raise SystemExit('background music audio check failed: ' + json.dumps(bgm_check))
+    (root/'bgm-check.json').write_text(json.dumps(bgm_check, indent=2), encoding='utf-8')
     subtitle = tasks.subtitle(task['id'])
     (root / 'avatar-subtitles.srt').write_text(subtitle, encoding='utf-8')
     shutil.copy2(video, root / 'live-content-avatar.mp4')
@@ -80,7 +106,7 @@ def main():
         raise SystemExit('publication receipt is not bound to exported package')
     report = {'ok': True, 'task': task, 'video': str(root / 'live-content-avatar.mp4'),
               'subtitle': str(root / 'avatar-subtitles.srt'), 'cover': str(root / 'live-content-cover.jpg'),
-              'package': str(root / 'publication-package.zip')}
+              'package': str(root / 'publication-package.zip'), 'bgm_check': bgm_check}
     (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False))
 

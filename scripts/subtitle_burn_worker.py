@@ -9,6 +9,7 @@ import traceback
 from recovered.add_subtitles_to_video import add_subtitles_to_video, _get_video_resolution
 from scripts.avatar_render import verify_media
 from scripts.avatar_store import digest
+from recovered.ip_agent_post_process import mix_bgm
 
 
 def main():
@@ -18,6 +19,8 @@ def main():
     parser.add_argument('--subtitle', required=True, type=Path)
     parser.add_argument('--audio', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--bgm', type=Path)
+    parser.add_argument('--bgm-volume', type=float, default=.16)
     args = parser.parse_args()
     try:
         ffmpeg_dir = args.runtime_root.resolve() / '_internal/env/ffmpeg/bin'
@@ -28,11 +31,16 @@ def main():
         # The generic preset scales from video height and becomes oversized on
         # portrait video. Use portrait-safe bounds so a Chinese caption cannot
         # be clipped outside the publishable frame.
-        width, height = _get_video_resolution(args.video)
+        subtitle_source = args.video
+        mixed = args.output.with_name('mixed-bgm.mp4')
+        if args.bgm:
+            if not 0 <= args.bgm_volume <= 1: raise ValueError('背景音乐音量无效')
+            subtitle_source = Path(mix_bgm(args.video, args.bgm, mixed, volume=args.bgm_volume)).resolve()
+        width, height = _get_video_resolution(subtitle_source)
         font_size = max(28, round(min(width * .061, height * .04)))
         max_chars = max(8, int(width / (font_size * 1.12)))
         output = Path(add_subtitles_to_video(
-            args.video, args.subtitle, output_path=args.output,
+            subtitle_source, args.subtitle, output_path=args.output,
             font_size=font_size, max_chars_per_line=max_chars, margin_v=round(height * .075),
             animation='fade',
         )).resolve()
@@ -49,6 +57,7 @@ def main():
     except Exception as error:
         traceback.print_exc()
         response = {'ok': False, 'error': str(error), 'error_type': type(error).__name__}
+    if 'mixed' in locals(): mixed.unlink(missing_ok=True)
     print(json.dumps(response, ensure_ascii=False), flush=True)
     return 0 if response['ok'] else 1
 
