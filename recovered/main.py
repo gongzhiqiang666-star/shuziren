@@ -1628,30 +1628,47 @@ class Api(PluginInstallerApi):
 
     def extract_douyin_benchmark(self, url):
         from .asr_main import recognize_audio
+        from .douyin_benchmark import (normalize_douyin_url, probe_video,
+                                       resolve_ffprobe, select_downloaded_video)
         try:
-            if not str(url).strip(): raise ValueError("请输入抖音视频链接")
+            normalized_url = normalize_douyin_url(url)
             executable, script = self._get_douyin_downloader_paths()
-            result = subprocess.run([executable, script, str(url).strip()], cwd=str(Path(script).parent),
+            working_directory = Path(script).parent.resolve()
+            result = subprocess.run([executable, script, normalized_url], cwd=str(working_directory),
                                     capture_output=True, timeout=600)
             stdout = self._decode_subprocess_output(result.stdout).strip(); stderr = self._decode_subprocess_output(result.stderr).strip()
             if result.returncode: raise RuntimeError(stderr or stdout or "抖音视频下载失败")
-            video = next((Path(line.strip()) for line in reversed(stdout.splitlines()) if Path(line.strip()).is_file()), None)
-            if video is None: raise RuntimeError("下载成功但未找到视频文件")
+            video = select_downloaded_video(stdout, working_directory)
+            probe_video(video, resolve_ffprobe(self.runtime_dir))
             weight = (Path(self.runtime_dir) / "assets" / "pretrained_models" / "asr" / "whisper" / "large-v3.pt")
             recognized = recognize_audio(str(video), str(weight))
             return {"status": "success", "video_path": str(video.resolve()),
-                    "text_path": recognized["output_path"], "text": recognized["text"]}
+                    "text_path": recognized["output_path"], "text": recognized["text"], "source_url": normalized_url}
         except Exception as error: return {"status": "error", "message": str(error)}
 
     def extract_ip_agent_benchmark(self, project_id, url):
+        import tempfile
         try:
             info = self._load_ip_agent_project(project_id); result = self.extract_douyin_benchmark(url)
             if result.get("status") != "success": return result
-            target_dir = Path(self._get_ip_agent_project_dir(project_id)) / "benchmark"; target_dir.mkdir(parents=True, exist_ok=True)
-            video = target_dir / (Path(result["video_path"]).suffix and "对标视频" + Path(result["video_path"]).suffix or "对标视频.mp4")
-            transcript = target_dir / "对标文案.txt"
-            shutil.copy2(result["video_path"], video); transcript.write_text(result["text"], encoding="utf-8")
-            info.update({"benchmark_url": url, "benchmark_video_path": str(video),
+            project_dir = Path(self._get_ip_agent_project_dir(project_id))
+            target_dir = project_dir / "benchmark"
+            staged = Path(tempfile.mkdtemp(prefix=".benchmark-", dir=str(project_dir)))
+            backup = project_dir / ".benchmark-backup"
+            suffix = Path(result["video_path"]).suffix.lower() or ".mp4"
+            try:
+                shutil.copy2(result["video_path"], staged / ("对标视频" + suffix))
+                (staged / "对标文案.txt").write_text(result["text"], encoding="utf-8")
+                if backup.exists(): shutil.rmtree(backup)
+                if target_dir.exists(): target_dir.replace(backup)
+                staged.replace(target_dir)
+                shutil.rmtree(backup, ignore_errors=True)
+            except Exception:
+                shutil.rmtree(staged, ignore_errors=True)
+                if backup.exists() and not target_dir.exists(): backup.replace(target_dir)
+                raise
+            video = target_dir / ("对标视频" + suffix); transcript = target_dir / "对标文案.txt"
+            info.update({"benchmark_url": result.get("source_url") or url, "benchmark_video_path": str(video),
                          "benchmark_transcript_path": str(transcript), "benchmark_transcript": result["text"], "status": "benchmark_ready"})
             return {"status": "success", "project": self._save_ip_agent_project(project_id, info),
                     "video_path": str(video), "text_path": str(transcript), "text": result["text"]}

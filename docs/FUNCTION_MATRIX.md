@@ -43,7 +43,7 @@
 | CNT-005 | 违禁词检测/替换 | `forbidden_words.pyd`、`replace_forbidden_words.pyd` | `forbidden_words.py`, `replace_forbidden_words.py` | 静态验证通过 | 原词库、用户增补词、大小写/中英文边界 |
 | CNT-006 | IP Agent 项目创建、查询、更新、删除 | `Api.create/get/update/delete_ip_agent_project` | `main.py`, `ip_agent_post_process.py` | 静态验证通过 | 旧项目迁移、并发保存、损坏项目恢复 |
 | CNT-007 | IP 文案爆款拆解与多版本改写 | `rewrite_ip_script` 主体和常量表 | `main.py` | 静态验证通过 | Windows 原 `.pyd` 输出差分和真实 LLM 输出 |
-| CNT-008 | 抖音/IP 对标视频提取 | `extract_douyin_benchmark` | `main.py` | 已分析 | Windows 下载工具、登录/风控、失效链接和媒体格式 |
+| CNT-008 | 抖音/IP 对标视频提取 | `extract_douyin_benchmark` | `main.py`, `douyin_benchmark.py` | 静态验证通过 | 仅接受抖音官方 HTTPS 分享链接，下载产物必须位于工具目录、非空且为允许的视频扩展名，ASR 前用 FFprobe 验证真实视频轨；项目 benchmark 目录事务替换。4 项专项测试通过，本机 1 秒 H.264/AAC 媒体实测视频轨与时长有效。真实抖音登录/验证码/风控、失效短链及下载器升级待平台验证，见 `evidence/v02-douyin-benchmark.md` |
 | CNT-009 | IP 发布标题、简介、标签生成 | `generate_ip_agent_publish_meta` wrapper/body `0x180142690/0x180142a40` | `main.py`, `generate_title.py` | 静态验证通过 | Windows 原 `.pyd` 差分和真实 LLM 输出质量 |
 | CNT-010 | IP 一键成片流水线 | 音频→视频→字幕→精加工→发布 API | `main.py`, `ip_agent_post_process.py` | 开发中 | 全链真实媒体、断点恢复、失败清理和结果一致性 |
 | CNT-011 | IP 视频发布 | `publish_ip_agent_video` | `main.py` | 已分析 | 支持平台、账号登录、草稿/发布、失败重试 |
@@ -97,9 +97,9 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 47 |
+| 静态验证通过 | 48 |
 | 开发中 | 8 |
-| 已分析 | 3 |
+| 已分析 | 2 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |
 | 合计 | 58 |
