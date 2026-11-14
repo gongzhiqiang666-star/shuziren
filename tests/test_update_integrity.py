@@ -1,7 +1,13 @@
 import hashlib
+import ctypes
+import json
+import sys
 import tempfile
+import threading
 import unittest
 import zipfile
+from ctypes import wintypes
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
@@ -14,6 +20,33 @@ class FakeGui:
 
 
 class UpdateIntegrityTests(unittest.TestCase):
+    def test_loopback_update_service_returns_ordered_pending_versions(self):
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = json.dumps([
+                    {"version": 3, "download_url": "http://127.0.0.1/package-3.zip", "sha256": "3" * 64},
+                    {"version": 2, "download_url": "http://127.0.0.1/package-2.zip", "sha256": "2" * 64},
+                ]).encode("utf-8")
+                self.send_response(200); self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+
+            def log_message(self, *_args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        try:
+            with tempfile.TemporaryDirectory() as root:
+                runtime = Path(root); (runtime/"config").mkdir()
+                (runtime/"config/config.yaml").write_text(
+                    f"version: v001\nupdate_url: http://127.0.0.1:{server.server_port}\n", encoding="utf-8")
+                status = update_integrity.get_update_status(runtime)
+            self.assertTrue(status["has_update"])
+            self.assertEqual([item["version"] for item in status["pending_updates"]], [2, 3])
+            self.assertEqual(status["latest_version"], "v003")
+        finally:
+            server.shutdown(); server.server_close(); thread.join(timeout=3)
+
     def test_update_urls_require_https_except_loopback(self):
         self.assertEqual(
             update_integrity._resolve_update_status_url({"update_url": "https://updates.example.com"}),
@@ -103,6 +136,36 @@ class UpdateIntegrityTests(unittest.TestCase):
             updater.update_files("v123", 0, 1)
             self.assertEqual((base / "_internal" / "module.txt").read_text(encoding="utf-8"), "new")
             self.assertEqual(config.read_text(encoding="utf-8"), "version: old")
+
+    @unittest.skipUnless(sys.platform == "win32", "requires Windows sharing semantics")
+    def test_locked_target_preserves_old_file_cleans_stage_and_retries(self):
+        with tempfile.TemporaryDirectory() as root:
+            base = Path(root)/"app"
+            source = base/"temp_update"/"_internal"
+            target = base/"_internal"/"module.txt"
+            source.mkdir(parents=True); target.parent.mkdir(parents=True)
+            (source/"module.txt").write_text("new", encoding="utf-8")
+            target.write_text("old", encoding="utf-8")
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.CreateFileW.argtypes = (
+                wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+                wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+            )
+            kernel32.CreateFileW.restype = wintypes.HANDLE
+            kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+            kernel32.CloseHandle.restype = wintypes.BOOL
+            handle = kernel32.CreateFileW(str(target), 0x80000000, 0x1, None, 3, 0, None)
+            self.assertNotEqual(handle, wintypes.HANDLE(-1).value)
+            updater = update_integrity.Updater(FakeGui(), base)
+            try:
+                with self.assertRaises(OSError):
+                    updater.update_files("v123", 0, 1)
+                self.assertEqual(target.read_text(encoding="utf-8"), "old")
+                self.assertFalse(target.with_name("module.txt.update-new").exists())
+            finally:
+                self.assertTrue(kernel32.CloseHandle(handle))
+            updater.update_files("v123", 0, 1)
+            self.assertEqual(target.read_text(encoding="utf-8"), "new")
 
 
 if __name__ == "__main__":

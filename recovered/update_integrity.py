@@ -321,6 +321,7 @@ def update_files(self, version_text, version_index, total_versions):
     backup_root = Path(tempfile.mkdtemp(prefix="update-backup-", dir=str(target)))
     replaced = []
     created = []
+    staged_paths = []
     try:
         for index, item in enumerate(ordered, start=1):
             relative = item.relative_to(source)
@@ -333,19 +334,24 @@ def update_files(self, version_text, version_index, total_versions):
                 destination.mkdir(exist_ok=True, parents=True)
             else:
                 destination.parent.mkdir(exist_ok=True, parents=True)
-                if destination.exists():
+                existed = destination.exists()
+                backup = None
+                if existed:
                     backup = backup_root / relative
                     backup.parent.mkdir(exist_ok=True, parents=True)
                     shutil.copy2(destination, backup)
-                    replaced.append((destination, backup))
-                else:
-                    created.append(destination)
                 staged = destination.with_name(destination.name + ".update-new")
+                staged_paths.append(staged)
                 shutil.copy2(item, staged)
                 if file_sha256(item) != file_sha256(staged):
                     staged.unlink(missing_ok=True)
                     raise RuntimeError(L("hash_mismatch", path=relative))
                 os.replace(staged, destination)
+                staged_paths.remove(staged)
+                if existed:
+                    replaced.append((destination, backup))
+                else:
+                    created.append(destination)
             self._set_progress(
                 version_index, total_versions, 0.55 + index / total * 0.35,
                 L("applying", version=version_text),
@@ -366,6 +372,11 @@ def update_files(self, version_text, version_index, total_versions):
             raise RuntimeError(f"{error}; 更新回滚不完整: {'; '.join(rollback_errors)}") from error
         raise
     finally:
+        for staged in staged_paths:
+            try:
+                staged.unlink(missing_ok=True)
+            except OSError:
+                pass
         shutil.rmtree(backup_root, ignore_errors=True)
 
 
