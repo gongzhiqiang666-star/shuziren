@@ -15,3 +15,9 @@ PortAudio 的 `get_device_info_by_host_api_device_index` 返回设备信息中�
 逐个使用返回编号，以 48 kHz、16-bit、双声道打开 PortAudio 输出流，写入 100 ms 静音，随后 `stop_stream`、`close` 并 `terminate`。五个设备均成功打开和释放，退出码为 0。
 
 本轮没有物理拔插设备，也未制造其他程序的独占占用，因此热插拔、独占冲突、播放中设备消失仍为 A06-01 待验项。
+
+## 指定设备与释放
+
+`AudioPlayer` 保持原二进制的无参数构造签名，通过新增 `set_output_device(global_index)` 选择枚举出的设备；播放中拒绝切换。打开 PortAudio 流时显式传递 `output_device_index`。新增幂等 `close()`，依次停止线程/流并终止 PyAudio；关闭后的实例拒绝重新启动，析构仅作为兜底调用同一关闭路径。
+
+Windows 实测选择 VB-Audio CABLE Input 全局编号 4，使用产品播放器的 FFmpeg 转换与 PyAudio 路径播放 100 ms 静音并关闭；随后新建第二个播放器再次打开同一设备并播放、关闭成功。两实例均报告关闭，退出码 0，证明显式关闭后设备可立即复用。恢复契约覆盖指定编号传入 `open`、非法编号类型、播放中切换拒绝及两次关闭只终止一次后端。

@@ -266,6 +266,11 @@ def verify_audio_player_scan_contract():
             assert thread_calls == ["start", ("join", 2)]
             assert output.text == "音频播放器已启动\n音频播放器已停止\n"
             assert backend_calls == []
+            player.set_output_device(4)
+            assert player.output_device_index == 4
+            try: player.set_output_device("4")
+            except ValueError: pass
+            else: raise AssertionError("non-integer output device must fail")
         finally:
             audio_player.threading.Thread = original_thread
 
@@ -368,6 +373,7 @@ def verify_audio_player_scan_contract():
         player.player = types.SimpleNamespace(
             get_format_from_width=lambda width: playback_events.append(("width", width)) or "fmt",
             open=lambda **kwargs: playback_events.append(("open", kwargs)) or stream,
+            terminate=lambda: backend_calls.append("terminate"),
         )
         previous_pydub = sys.modules.get("pydub")
         previous_pydub_utils = sys.modules.get("pydub.utils")
@@ -397,7 +403,8 @@ def verify_audio_player_scan_contract():
         assert playback_events == [
             ("from_wav", "/tmp/native-converted.wav"), ("channels", 2), ("rate", 44100),
             ("chunks", chunk_sound, 1024), ("width", 2),
-            ("open", {"format":"fmt", "channels":2, "rate":44100, "output":True}),
+            ("open", {"format":"fmt", "channels":2, "rate":44100, "output":True,
+                      "output_device_index":4}),
             ("write", b"one"), ("write", b"two"), "stop_stream", "close",
             ("remove", "/tmp/native-converted.wav"),
         ]
@@ -413,9 +420,10 @@ def verify_audio_player_scan_contract():
             raise AssertionError("player thread must preserve playback exceptions")
     finally:
         with contextlib.redirect_stdout(types.SimpleNamespace(write=lambda _text: None, flush=lambda: None)):
-            player.stop()
+            player.close(); player.close()
         if previous_pyaudio is None: sys.modules.pop("pyaudio", None)
         else: sys.modules["pyaudio"] = previous_pyaudio
+    assert backend_calls == ["terminate"]
 
 
 def verify_edit_audio_contract():

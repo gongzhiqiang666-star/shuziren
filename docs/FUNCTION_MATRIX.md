@@ -57,7 +57,7 @@
 
 | ID | 用户功能 | 原入口/主要证据 | 当前重建模块 | 当前状态 | 完成前必须验证 |
 |---|---|---|---|---|---|
-| MED-001 | 音频设备枚举和播放 | `audio_devices/audio_player.pyd` | `audio_devices.py`, `audio_player.py` | 静态验证通过 | 修复 host 局部序号误作全局设备编号和单设备查询失败中止扫描；Windows 实测 2 输入、5 输出，五个输出均按返回编号完成 48 kHz 双声道静音打开/写入/关闭。物理热插拔、独占冲突和播放中消失待验，见 `evidence/a06-audio-device-index.md` |
+| MED-001 | 音频设备枚举和播放 | `audio_devices/audio_player.pyd` | `audio_devices.py`, `audio_player.py` | 静态验证通过 | 修复 host 局部序号误作全局设备编号和单设备查询失败中止扫描；Windows 实测 2 输入、5 输出均可打开。播放器支持指定全局编号和幂等关闭，VB-Audio 连续两实例播放/释放通过且保留原构造签名。物理热插拔、独占冲突和播放中消失待验，见 `evidence/a06-audio-device-index.md` |
 | MED-002 | 音频裁剪与编辑器 | `process_audio_clip/launch_audio_editor` | `audio_clip.py`, `edit_audio.py` | 静态验证通过 | Windows GUI、MP3/WAV、边界时长和编码失败 |
 | MED-003 | Whisper/FunASR 识别及 SRT | 原生 ASR 模块调用链 | `whisper_runtime.py`, `funasr_runtime.py`, `get_srt.py` | 静态验证通过 | 真实模型、CPU/GPU、长音频、多语言准确性 |
 | MED-004 | 本地音色克隆预处理 | `clone_voice_local` Ghidra 主体 | `voice_clone_infer_api.py`, `clone_manager.py` | 静态验证通过 | 真实 FFmpeg/ASR、模型资源、坏音频和中文路径 |

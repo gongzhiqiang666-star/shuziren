@@ -36,8 +36,12 @@ class AudioPlayer:
         self.stream = None
         self.is_playing = False
         self._ffmpeg_error_printed = False
+        self.output_device_index = None
+        self._closed = False
 
     def start(self):
+        if self._closed:
+            raise RuntimeError("音频播放器已关闭")
         if self.is_active:
             return False
         self.stop_flag = False
@@ -59,6 +63,20 @@ class AudioPlayer:
             self.stream = None
         self.is_playing = False
         print("音频播放器已停止")
+
+    def set_output_device(self, device_index):
+        if device_index is not None and type(device_index) is not int:
+            raise ValueError("输出设备编号必须是整数")
+        if self.is_active or self.is_playing:
+            raise RuntimeError("播放中不能切换输出设备")
+        self.output_device_index = device_index
+
+    def close(self):
+        if self._closed:
+            return
+        self.stop()
+        self.player.terminate()
+        self._closed = True
 
     def insert_audio(self, audio_path, queue_type="normal"):
         if queue_type.lower() == "danmu":
@@ -123,6 +141,7 @@ class AudioPlayer:
         from pydub.utils import make_chunks
 
         converted_path = None
+        self.is_playing = True
         try:
             converted_path = self._convert_audio_with_ffmpeg(audio_path)
             if not converted_path:
@@ -133,12 +152,15 @@ class AudioPlayer:
             sound = sound.set_channels(self.channels)
             sound = sound.set_frame_rate(self.rate)
             chunks = make_chunks(sound, self.chunk_size)
-            self.stream = self.player.open(
+            open_options = dict(
                 format=self.player.get_format_from_width(sound.sample_width),
                 channels=self.channels,
                 rate=self.rate,
                 output=True,
             )
+            if self.output_device_index is not None:
+                open_options["output_device_index"] = self.output_device_index
+            self.stream = self.player.open(**open_options)
             for chunk in chunks:
                 if self.stop_flag:
                     break
@@ -161,10 +183,10 @@ class AudioPlayer:
                     os.remove(converted_path)
                 except OSError as error:
                     print(f"删除临时文件失败: {error}")
+            self.is_playing = False
 
     def __del__(self):
         try:
-            self.stop()
-            self.player.terminate()
+            self.close()
         except Exception:
             pass
