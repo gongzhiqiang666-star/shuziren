@@ -1790,20 +1790,31 @@ class Api(PluginInstallerApi):
 
     def publish_ip_agent_video(self, project_id, data):
         import asyncio
-        from datetime import datetime
+        from .douyin_benchmark import probe_video, resolve_ffprobe
+        from .ip_publish import build_publish_plan
         try:
             info = self._load_ip_agent_project(project_id)
             candidates = [data.get("video_path"), info.get("final_video_path"),
                           info.get("subtitle_video_path"), info.get("video_path")]
             video = next((str(value) for value in candidates if value and Path(value).is_file()), "")
             if not video: raise FileNotFoundError("请先生成可用的视频成片")
-            platforms = list(dict.fromkeys(str(item).strip().lower() for item in data.get("platforms", []) if str(item).strip()))
-            if not platforms: raise ValueError("请至少选择一个发布平台")
             title = str(data.get("title") or info.get("publish_title") or info.get("name") or "").strip()
             tags = self._normalize_publish_tags(data.get("tags") or info.get("publish_tags"))
-            publish_date = data.get("publish_date", 0)
-            if isinstance(publish_date, str) and publish_date.strip():
-                publish_date = datetime.fromisoformat(publish_date.replace("Z", "+00:00"))
+            plan = build_publish_plan(
+                video, title, tags, data.get("platforms", []),
+                data.get("account_names") or data.get("publish_accounts") or {},
+                data.get("publish_date", 0), data.get("thumbnail_path") or info.get("cover_path"),
+                data.get("request_id"),
+            )
+            probe_video(plan["video_path"], resolve_ffprobe(self.runtime_dir))
+            public_plan = {key: value for key, value in plan.items() if key != "publish_date_value"}
+            if data.get("dry_run"):
+                return {"status": "success", "dry_run": True, "publish_plan": public_plan}
+            previous = info.get("publish_last_result") or {}
+            if (not data.get("force_republish") and info.get("publish_last_request_id") == plan["request_id"]
+                    and isinstance(previous, dict) and previous.get("success")):
+                return {"status": "success", "already_published": True,
+                        "publish_result": previous, "publish_plan": public_plan}
             try:
                 from tools.social_auto_upload.test import publish_video_to_platforms
             except ImportError:
@@ -1814,9 +1825,9 @@ class Api(PluginInstallerApi):
                 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
                 publish_video_to_platforms = module.publish_video_to_platforms
             coroutine = publish_video_to_platforms(
-                video_path=video, title=title, tags=tags, platforms=platforms,
-                account_names=data.get("account_names") or data.get("publish_accounts") or {},
-                publish_date=publish_date, thumbnail_path=data.get("thumbnail_path") or info.get("cover_path"),
+                video_path=plan["video_path"], title=plan["title"], tags=plan["tags"], platforms=plan["platforms"],
+                account_names=plan["account_names"], publish_date=plan["publish_date_value"],
+                thumbnail_path=plan["thumbnail_path"] or None,
                 handle_login=bool(data.get("handle_login", True)))
             try: asyncio.get_running_loop()
             except RuntimeError: result = asyncio.run(coroutine)
@@ -1829,11 +1840,16 @@ class Api(PluginInstallerApi):
                 thread = threading.Thread(target=runner); thread.start(); thread.join()
                 if "error" in holder: raise holder["error"]
                 result = holder["result"]
-            info.update({"publish_platforms": platforms, "publish_accounts": data.get("account_names") or {},
-                         "publish_title": title, "publish_tags": tags, "publish_date": str(publish_date or ""),
+            if not isinstance(result, dict) or not isinstance(result.get("success"), bool):
+                raise ValueError("发布模块返回结构无效")
+            info.update({"publish_platforms": plan["platforms"], "publish_accounts": plan["account_names"],
+                         "publish_title": plan["title"], "publish_tags": plan["tags"],
+                         "publish_date": public_plan["publish_date"], "publish_last_request_id": plan["request_id"],
+                         "publish_last_plan": public_plan,
                          "publish_last_result": result, "status": "published" if result.get("success") else "publish_failed"})
             self._save_ip_agent_project(project_id, info)
             return {"status": "success" if result.get("success") else "error", "publish_result": result,
+                    "publish_plan": public_plan,
                     "message": "发布任务完成" if result.get("success") else "部分或全部平台发布失败"}
         except Exception as error: return {"status": "error", "message": f"发布视频失败: {error}"}
 
