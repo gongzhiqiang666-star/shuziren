@@ -1145,7 +1145,8 @@ def main(argv=None):
     try:
         instance.__enter__()
         server = create_server(store, args.port, tts_engine=args.tts_engine,
-                               tts_model_root=args.tts_model_root, shop_id=args.shop_id)
+                               tts_model_root=args.tts_model_root,
+                               shop_id=args.shop_id or os.environ.get('SHUZIREN_MANAGED_SHOP_ID'))
     except OSError as error:
         instance.__exit__()
         logging.error("启动失败：%s", error)
