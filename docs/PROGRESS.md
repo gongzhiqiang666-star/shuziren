@@ -1,5 +1,7 @@
 # 四期任务进度与验证结果
 
+CNT-015/016 短视频与字幕状态复核完成。当前 15 项渲染回归通过；结合既有 RTX Windows 720×1280 H.264/AAC 真实成片、字幕/BGM/封面、完整解码及约 5 ms 轨尾差证据，两项提升为 Windows 验证通过。动态口型主观画质、多语言听感和长视频集中验收后置，见 `docs/evidence/a05-short-video-subtitle.md`。
+
 CNT-014 云数字人本地控制面复核完成。保存/更新全事务加锁；24 路并发全保留，替换失败保留旧 YAML，损坏读写拒绝。存储 3 项及远端协议/素材/归档/取消/重启 9 项通过；真实 RunningHub 继续待密钥，见 `docs/evidence/a07-cloud-dh-storage.md`。
 
 CNT-013 贴片标题事实与回退完成。主 LLM 格式/事实失败会回退 Ark，两家输出都执行数字/价格门禁；编造 `99` 回退、双提供商失败诊断和资料已有 `99元` 三项通过。真实付费标题/图片服务继续待密钥，见 `docs/evidence/a07-sticker-title-grounding.md`。

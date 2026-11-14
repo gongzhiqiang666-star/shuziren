@@ -50,8 +50,8 @@
 | CNT-012 | 直播贴片项目管理 | main CRUD/helper wrapper/body 与 26 字段 YAML、五类固定输出、历史归档及旧项目迁移证据，见 `rea-output/main-live-sticker-project-notes.md` | `main.py` | 静态验证通过 | YAML 原子替换及进程内读改写锁完成；中文项目 24 路并发全保留、替换失败旧字节不变、损坏读写拒绝 3 项，真实 PNG 批次/预览/归档/取消 4 项及恢复五关通过，见 `evidence/a07-sticker-project-storage.md`。原 `.pyd`、真实旧项目、页面点击和真实云图待外部条件 |
 | CNT-013 | 贴片提示词、房间标题和图片生成 | 对应 `live_sticker_*` 原生模块 | `live_sticker_prompts.py`, `live_sticker_titles.py`, `runninghub_image.py`, `content_grounding.py` | 静态验证通过 | 主 LLM 的解析/事实失败会回退 Ark，两家均执行数字/价格门禁；编造回退、双失败诊断和资料已有价格 3 项，真实 PNG 批次 4 项及恢复五关通过，见 `evidence/a07-sticker-title-grounding.md`。真实 DeepSeek/Ark/RunningHub、限流、自然度和图片比例待授权密钥 |
 | CNT-014 | 云端数字人项目与音视频生成 | `cloud_dh` 项目 API | `main.py`, `runninghub_talk.py`, `cloud_dh_prompts.py` | 静态验证通过 | 项目保存/更新加锁；中文项目 24 路并发全保留、替换失败保留旧 YAML 并清暂存、损坏读写拒绝 3 项。无 URL、轮询、HTTPS/2GiB/MP4、素材验证、归档、取消及重启中断 9 项和恢复五关通过，见 `evidence/a07-cloud-dh-storage.md`。真实 RunningHub 上传、队列、超时和画质转 E03 |
-| CNT-015 | 短视频配音、合成、列表和删除 | `generate_audio_for_short_video/create_short_video` | `short_video_audio_synthesis.py`, `generate_lip_sync_video.py` | 静态验证通过 | Windows FFmpeg、各语言 TTS、真实长视频和失败清理 |
-| CNT-016 | 字幕生成和烧录 | `add_subtitles_to_video.pyd`、SRT 链 | `add_subtitles_to_video.py`, `get_srt.py` | 静态验证通过 | 中文字体、长文本、时间轴、硬件编码和成片校验 |
+| CNT-015 | 短视频配音、合成、列表和删除 | `generate_audio_for_short_video/create_short_video` | `short_video_audio_synthesis.py`, `generate_lip_sync_video.py` | Windows 验证通过 | 当前 15 项渲染任务回归通过；RTX Windows 真实 720×1280 H.264/AAC 成片 3.293 秒完整解码，任务绑定、取消、失败清理、列表/元数据和产物哈希已有验证。多语言人工听感、真实长视频、动态口型画质和剪辑软件导入待集中验收，见 `evidence/a05-short-video-subtitle.md` |
+| CNT-016 | 字幕生成和烧录 | `add_subtitles_to_video.pyd`、SRT 链 | `add_subtitles_to_video.py`, `get_srt.py` | Windows 验证通过 | SRT 零起点时间轴、ASS 控制转义、字幕烧录、样式/高亮和失败回滚纳入 15+6 项回归；真实 Windows 成片含字幕并完整解码，历史中文截图证据保留。长文本、字体缺失、硬件编码矩阵和人工可读性待集中验收，见 `evidence/a05-short-video-subtitle.md` |
 
 ## P0：音频、语音和形象生产
 
@@ -97,10 +97,10 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 48 |
+| 静态验证通过 | 46 |
 | 开发中 | 0 |
 | 已分析 | 0 |
-| Windows 验证通过 | 10 |
+| Windows 验证通过 | 12 |
 | 端到端验证通过 | 0 |
 | 合计 | 58 |
 
