@@ -33,3 +33,15 @@ Windows 实测选择 VB-Audio CABLE Input 全局编号 4，使用产品播放器
 单条转换不再先覆盖 WAV 再直接写 TXT。新音频和新文本先写入同目录事务目录，旧 WAV/TXT 同时备份；新文本完成 flush/fsync 后依次原子替换。任一步失败时恢复已替换的旧文件，已保存文本状态不推进，并清理模型生成临时音频；用户正在编辑的文本仍留在内存中，可修复问题后重试。
 
 故障注入令第二次 `os.replace`（TXT 提交）抛出磁盘错误，验证 WAV 字节、TXT 内容和 `original_text` 均与操作前一致，事务目录由上下文清理。随后完整恢复基线通过。
+
+## WAV/MP3 真实 FunASR 切片
+
+修复 `process_audio_clip` 写死 `static_sources/pretrained_models/asr` 的路径错误，统一使用已有 ASR 双路径解析器；当前本机真实模型位于 `assets/pretrained_models/asr`。每次请求使用 UUID 独立输出目录，失败只删除本任务目录，不再与并发或上次结果共用 `temp` 根。
+
+用 22.48898 秒中文 WAV 及 FFmpeg 生成的同源 MP3，分别调用产品入口，参数为 4～10 秒。真实 FunASR 1.2.3 加载 SeACo Paraformer、FSMN VAD 和 CT-Transformer 标点模型，两种输入均生成 4 组 WAV/TXT：
+
+- WAV 时段：50～4470、4650～9130、9250～14750、15250～21415 ms；
+- MP3 前三段相同，末段为 15250～21445 ms，编码边界差 30 ms；
+- 四段文本逐段一致，输出时长与时间戳差值一致。
+
+`tests/test_audio_clip_api.py` 2 项通过：优先选择实际存在的 assets 模型、连续任务目录不相同；识别失败清理自身半成品而不删除另一任务文件。恢复基线通过。实测输出保留在本机媒体运行目录，模型、媒体和生成片段不提交 Git。

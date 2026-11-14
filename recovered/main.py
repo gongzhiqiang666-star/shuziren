@@ -1052,17 +1052,19 @@ class Api(PluginInstallerApi):
 
     def process_audio_clip(self, file_path, min_seconds=8, max_seconds=15):
         from .audio_clip import process_and_split_audio
+        from uuid import uuid4
 
-        output_dir = Path(self.runtime_dir) / "utils" / "audio_clip" / "temp"
-        asr_weight_path = Path(self.runtime_dir) / "static_sources" / "pretrained_models" / "asr"
+        output_dir = Path(self.runtime_dir) / "utils" / "audio_clip" / "temp" / uuid4().hex
+        asr_weight_path = Path(self._get_asr_weight_path())
         try:
             files = process_and_split_audio(
                 file_path, output_dir, asr_weight_path,
                 min_seconds=min_seconds, max_seconds=max_seconds,
             )
         except Exception as error:
+            shutil.rmtree(output_dir, ignore_errors=True)
             return {"status": "error", "message": str(error)}
-        return {"status": "success", "files": files}
+        return {"status": "success", "files": files, "output_dir": str(output_dir)}
 
     def _get_asr_weight_path(self):
         candidates = (
