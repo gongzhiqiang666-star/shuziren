@@ -267,6 +267,32 @@ class IpPublishTests(unittest.TestCase):
             self.assertEqual([item["status"] for item in final["publish_attempts"]],
                              ["interrupted", "success"])
 
+    def test_final_video_import_is_validated_and_preserves_previous_on_failure(self):
+        with tempfile.TemporaryDirectory() as root:
+            api = Api.__new__(Api)
+            api.runtime_dir = Path(root)
+            api._get_ip_agent_base_dir = lambda: str(Path(root) / "projects")
+            project = api.create_ip_agent_project("导入项目")["project"]
+            project_id = project["id"]
+            target = Path(project["final_video_path"])
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"old-video")
+            source = Path(root) / "new.mp4"
+            source.write_bytes(b"new-video")
+            with mock.patch("recovered.douyin_benchmark.resolve_ffprobe", return_value="ffprobe"), \
+                    mock.patch("recovered.douyin_benchmark.probe_video", side_effect=ValueError("视频损坏")):
+                failed = api.import_ip_agent_final_video(project_id, source)
+            self.assertEqual(failed["status"], "error")
+            self.assertEqual(target.read_bytes(), b"old-video")
+            self.assertEqual(list(target.parent.glob("*.pending")), [])
+            with mock.patch("recovered.douyin_benchmark.resolve_ffprobe", return_value="ffprobe"), \
+                    mock.patch("recovered.douyin_benchmark.probe_video"):
+                imported = api.import_ip_agent_final_video(project_id, source)
+            self.assertEqual(imported["status"], "success")
+            self.assertEqual(target.read_bytes(), b"new-video")
+            self.assertEqual(imported["project"]["status"], "ready_to_publish")
+            self.assertEqual(len(imported["project"]["final_video_sha256"]), 64)
+
 
 if __name__ == "__main__":
     unittest.main()

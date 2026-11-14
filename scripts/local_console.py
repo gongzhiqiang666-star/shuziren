@@ -222,11 +222,19 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                 sticker_manager = Api.__new__(Api)
                 sticker_manager.runtime_dir = store.directory
                 sticker_manager.config = {}
+                sticker_manager._get_ip_agent_base_dir = lambda: str(store.directory / 'ip_agent_projects')
             return sticker_manager
     def sticker_result(result):
         if not isinstance(result, dict): raise ProductError('贴片项目返回无效')
         if result.get('error'): raise ProductError(result['error'])
         if result.get('status') == 'error': raise ProductError(result.get('message') or '贴片项目操作失败')
+        return result
+    def ip_result(result):
+        if not isinstance(result, dict): raise ProductError('IP 项目返回无效')
+        if result.get('code') in ('publish_in_progress', 'publish_outcome_unknown'):
+            raise Conflict(result.get('message') or result.get('error') or 'IP 发布状态冲突')
+        if result.get('error'): raise ProductError(result['error'])
+        if result.get('status') == 'error': raise ProductError(result.get('message') or 'IP 项目操作失败')
         return result
     def tasks():
         nonlocal task_manager
@@ -558,6 +566,14 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     if set(query) != {'project_id'} or len(ids) != 1 or not 1 <= len(ids[0]) <= 64:
                         raise ProductError('云数字人项目编号无效')
                     return self.respond(200, sticker_result(stickers().get_cloud_dh_project(ids[0])))
+                if path == '/api/ip-agent':
+                    query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                    if not query:
+                        return self.respond(200, ip_result(stickers().get_all_ip_agent_projects()))
+                    ids = query.get('project_id', [])
+                    if set(query) != {'project_id'} or len(ids) != 1 or not 1 <= len(ids[0]) <= 80:
+                        raise ProductError('IP 项目编号无效')
+                    return self.respond(200, ip_result(stickers().get_ip_agent_project(ids[0])))
                 if path == '/api/cloud-dh/media':
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                     if set(query) != {'project_id', 'kind'} or any(len(value) != 1 for value in query.values()):
@@ -983,6 +999,40 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             raise ProductError('云数字人取消字段无效')
                         return self.respond(200, sticker_result(
                             stickers().cancel_cloud_dh_generation(value['project_id'])))
+                    if path == '/api/ip-agent/create':
+                        if set(value) != {'name'} or not isinstance(value['name'], str) or not 1 <= len(value['name'].strip()) <= 100:
+                            raise ProductError('IP 项目名称无效')
+                        return self.respond(201, ip_result(stickers().create_ip_agent_project(value['name'])))
+                    if path == '/api/ip-agent/update':
+                        allowed = {'name', 'publish_title', 'publish_tags', 'publish_tags_text',
+                                   'publish_platforms', 'publish_accounts', 'publish_date'}
+                        if (set(value) != {'project_id', 'data'} or not isinstance(value['project_id'], str)
+                                or not isinstance(value['data'], dict) or set(value['data']) - allowed):
+                            raise ProductError('IP 项目保存字段无效')
+                        return self.respond(200, ip_result(stickers().update_ip_agent_project(
+                            value['project_id'], value['data'])))
+                    if path == '/api/ip-agent/delete':
+                        if set(value) != {'project_id'} or not isinstance(value['project_id'], str):
+                            raise ProductError('IP 项目删除字段无效')
+                        return self.respond(200, ip_result(stickers().delete_ip_agent_project(value['project_id'])))
+                    if path == '/api/ip-agent/import-video':
+                        if (set(value) != {'project_id', 'source'}
+                                or not all(isinstance(item, str) and item for item in value.values())):
+                            raise ProductError('IP 成片导入字段无效')
+                        return self.respond(200, ip_result(stickers().import_ip_agent_final_video(
+                            value['project_id'], value['source'])))
+                    if path in ('/api/ip-agent/publish-dry-run', '/api/ip-agent/publish'):
+                        allowed = {'project_id', 'platforms', 'account_names', 'title', 'tags', 'publish_date',
+                                   'thumbnail_path', 'request_id', 'handle_login', 'force_republish',
+                                   'confirm_retry_after_interruption'}
+                        if (not isinstance(value, dict) or set(value) - allowed
+                                or not isinstance(value.get('project_id'), str)
+                                or not isinstance(value.get('platforms'), list)):
+                            raise ProductError('IP 发布字段无效')
+                        payload = {key: item for key, item in value.items() if key != 'project_id'}
+                        payload['dry_run'] = path.endswith('dry-run')
+                        return self.respond(200, ip_result(stickers().publish_ip_agent_video(
+                            value['project_id'], payload)))
                     if path == '/api/avatar-preparation/start':
                         if set(value)!={'source','name','resolution'}:
                             raise AvatarError('视频制作字段无效')

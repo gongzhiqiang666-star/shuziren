@@ -1564,6 +1564,38 @@ class Api(PluginInstallerApi):
         except Exception as error:
             return {"error": f"保存IP项目失败: {error}"}
 
+    def import_ip_agent_final_video(self, project_id, source_path):
+        from uuid import uuid4
+        from .douyin_benchmark import probe_video, resolve_ffprobe
+        from .ip_publish import file_sha256
+        pending = None
+        try:
+            info = self._load_ip_agent_project(project_id)
+            if not info:
+                raise FileNotFoundError("IP项目不存在")
+            source = Path(source_path).expanduser().resolve()
+            if not source.is_file() or source.stat().st_size <= 0:
+                raise FileNotFoundError("待导入成片不存在")
+            project_dir = Path(self._get_ip_agent_project_dir(project_id)).resolve()
+            target = Path(info["final_video_path"]).resolve()
+            if project_dir not in target.parents:
+                raise ValueError("项目成片路径无效")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            pending = target.with_name(f".{target.name}.{uuid4().hex}.pending")
+            shutil.copyfile(source, pending)
+            probe_video(str(pending), resolve_ffprobe(self.runtime_dir))
+            os.replace(pending, target)
+            info.update({"final_video_path": str(target), "final_video_sha256": file_sha256(target),
+                         "status": "ready_to_publish"})
+            project = self._save_ip_agent_project(project_id, info)
+            return {"status": "success", "project": project}
+        except Exception as error:
+            return {"status": "error", "message": f"导入成片失败: {error}"}
+        finally:
+            if pending is not None:
+                try: pending.unlink(missing_ok=True)
+                except OSError: pass
+
     def delete_ip_agent_project(self, project_id):
         try:
             target = self._get_ip_agent_project_dir(project_id)

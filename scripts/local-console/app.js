@@ -42,7 +42,7 @@ async function action(work) {
   $('error').textContent = ''; $('message').textContent = '';
   document.querySelectorAll('button').forEach(b => b.disabled = true);
   try { await work(); } catch(error) { $('error').textContent = error.message || '无法连接本地服务'; }
-  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); renderRecordingButtons(); renderTTSButtons(); renderAvatarVideoButtons(); renderVideoButtons(); renderLiveButtons(); renderTaobao(); renderStickerButtons(); renderCloudButtons(); }
+  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); renderRecordingButtons(); renderTTSButtons(); renderAvatarVideoButtons(); renderVideoButtons(); renderLiveButtons(); renderTaobao(); renderStickerButtons(); renderCloudButtons(); renderIPButtons(); }
 }
 async function load() {
   clearChecks();
@@ -83,7 +83,7 @@ $('shutdown').addEventListener('click', () => action(async () => {
   $('message').textContent = '本地服务已收到退出请求，可以关闭本页。';
   $('settings').hidden = true; $('shutdown').hidden = true;
   $('products-panel').hidden = true;
-  $('sticker-panel').hidden = true; $('cloud-dh-panel').hidden = true;
+  $('sticker-panel').hidden = true; $('cloud-dh-panel').hidden = true; $('ip-agent-panel').hidden = true;
   $('voice-preview').pause(); $('voice-preview').removeAttribute('src'); $('voice-preview').load(); $('voice-panel').hidden=true;
 }));
 let currentProduct = null;
@@ -3052,4 +3052,94 @@ $('cloud-dh-cancel').addEventListener('click', () => cloudAction(async () => {
   const result = await request('/api/cloud-dh/cancel', {project_id:cloudProject.id});
   $('cloud-dh-status').textContent = result.status === 'cancel_requested' ? '已请求取消，等待云任务退出。' : result.message;
 }));
-action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await loadPreparation(); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender);await loadLive();await loadTaobao();await loadStickers();await loadCloudProjects(); });
+let ipProjects = [], ipProject = null, ipBusy = false;
+function ipPlatforms() {
+  return ['douyin','kuaishou','tencent','xiaohongshu'].filter(name => $('ip-platform-' + name).checked);
+}
+function ipTags() { return $('ip-tags').value.split(/[,，#\s]+/).map(value => value.trim()).filter(Boolean); }
+function ipAccounts() {
+  let value;
+  try { value = JSON.parse($('ip-accounts').value || '{}'); }
+  catch (_) { throw new Error('账号映射必须是 JSON 对象'); }
+  if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error('账号映射必须是 JSON 对象');
+  return value;
+}
+function renderIPButtons() {
+  const selected = Boolean(ipProject?.id), running = ipBusy || ipProject?.publish_task?.status === 'running';
+  for (const id of ['ip-list','ip-create','ip-reload','ip-new-name']) $(id).disabled = running;
+  for (const id of ['ip-save','ip-import-video','ip-dry-run','ip-publish','ip-delete']) $(id).disabled = !selected || running;
+}
+function showIPProject(project) {
+  ipProject = project;
+  $('ip-name').value = project?.name || '';
+  $('ip-title').value = project?.publish_title || project?.name || '';
+  const tags = project?.publish_tags || project?.publish_tags_text || '';
+  $('ip-tags').value = Array.isArray(tags) ? tags.join(' ') : tags;
+  const platforms = project?.publish_platforms || ['douyin'];
+  for (const name of ['douyin','kuaishou','tencent','xiaohongshu']) $('ip-platform-' + name).checked = platforms.includes(name);
+  $('ip-accounts').value = JSON.stringify(project?.publish_accounts || {}, null, 2);
+  $('ip-publish-date').value = project?.publish_date || '';
+  $('ip-confirm-interrupted').checked = false;
+  const task = project?.publish_task;
+  const video = project?.final_video_sha256 ? ` · 成片 ${project.final_video_sha256.slice(0,12)}…` : ' · 尚未导入成片';
+  $('ip-status').textContent = project ? `项目状态：${task?.status || project.status || 'draft'}${video}${task?.error ? ' · ' + task.error : ''}` : '';
+  $('ip-result').textContent = task ? JSON.stringify(task.result || task, null, 2) : '';
+  renderIPButtons();
+}
+async function loadIPProject(projectId) {
+  if (!projectId) return showIPProject(null);
+  const {project} = await request('/api/ip-agent?' + new URLSearchParams({project_id:projectId}));
+  showIPProject(project);
+}
+async function loadIPProjects(selectedId) {
+  const {projects} = await request('/api/ip-agent'); ipProjects = projects;
+  const id = selectedId || ipProject?.id || '';
+  $('ip-list').replaceChildren(new Option('请选择项目',''),
+    ...projects.map(project => new Option(`${project.name} · ${project.update_time || ''}`, project.id)));
+  $('ip-list').value = projects.some(project => project.id === id) ? id : '';
+  await loadIPProject($('ip-list').value);
+}
+async function ipAction(work) {
+  $('ip-error').textContent = '';
+  try { await work(); } catch (error) { $('ip-error').textContent = error.message || 'IP 发布操作失败'; }
+  finally { renderIPButtons(); }
+}
+function ipPublishPayload() {
+  return {project_id:ipProject.id, title:$('ip-title').value.trim(), tags:ipTags(),
+    platforms:ipPlatforms(), account_names:ipAccounts(), publish_date:$('ip-publish-date').value.trim() || 0,
+    confirm_retry_after_interruption:$('ip-confirm-interrupted').checked};
+}
+$('ip-list').addEventListener('change', () => ipAction(() => loadIPProject($('ip-list').value)));
+$('ip-reload').addEventListener('click', () => ipAction(() => loadIPProjects()));
+$('ip-create').addEventListener('click', () => ipAction(async () => {
+  const {project} = await request('/api/ip-agent/create', {name:$('ip-new-name').value.trim()});
+  $('ip-new-name').value = ''; await loadIPProjects(project.id);
+}));
+$('ip-save').addEventListener('click', () => ipAction(async () => {
+  const data = {name:$('ip-name').value.trim(), publish_title:$('ip-title').value.trim(),
+    publish_tags:ipTags(), publish_platforms:ipPlatforms(), publish_accounts:ipAccounts(),
+    publish_date:$('ip-publish-date').value.trim() || 0};
+  const {project} = await request('/api/ip-agent/update', {project_id:ipProject.id, data});
+  showIPProject(project); $('ip-status').textContent = '发布设置已保存。';
+}));
+$('ip-import-video').addEventListener('click', () => ipAction(async () => {
+  const source = $('ip-video-source').value.trim(); if (!source) throw new Error('请填写本机 MP4 绝对路径');
+  ipBusy = true; renderIPButtons();
+  try { await request('/api/ip-agent/import-video', {project_id:ipProject.id, source}); }
+  finally { ipBusy = false; }
+  await loadIPProject(ipProject.id);
+}));
+for (const [id,path] of [['ip-dry-run','/api/ip-agent/publish-dry-run'],['ip-publish','/api/ip-agent/publish']]) {
+  $(id).addEventListener('click', () => ipAction(async () => {
+    ipBusy = true; renderIPButtons(); $('ip-status').textContent = path.endsWith('dry-run') ? '正在执行发布预演…' : '正在调用平台发布…';
+    try {
+      const result = await request(path, ipPublishPayload());
+      $('ip-result').textContent = JSON.stringify(result.publish_result || result.publish_plan || result, null, 2);
+    } finally { ipBusy = false; }
+    await loadIPProject(ipProject.id);
+  }));
+}
+$('ip-delete').addEventListener('click', () => ipAction(async () => {
+  await request('/api/ip-agent/delete', {project_id:ipProject.id}); showIPProject(null); await loadIPProjects();
+}));
+action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await loadPreparation(); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender);await loadLive();await loadTaobao();await loadStickers();await loadCloudProjects();await loadIPProjects(); });

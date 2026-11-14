@@ -1642,6 +1642,42 @@ class ConsoleHTTPTests(unittest.TestCase):
             'project_id':project_id,'kind':'foreign'}))[0], 400)
         self.assertEqual(self.call('/api/cloud-dh/cancel', {'project_id':project_id})[1]['status'], 'idle')
 
+    def test_ip_agent_project_and_publish_dry_run_http_chain(self):
+        status, created = self.call('/api/ip-agent/create', {'name': 'IP 发布项目'})
+        self.assertEqual(status, 201, created)
+        project = created['project']
+        project_id = project['id']
+        self.assertEqual(self.call('/api/ip-agent')[1]['projects'][0]['id'], project_id)
+        status, updated = self.call('/api/ip-agent/update', {
+            'project_id': project_id,
+            'data': {'publish_title': '青瓷杯介绍', 'publish_tags': ['茶杯', '青瓷'],
+                     'publish_platforms': ['douyin'], 'publish_accounts': {'douyin': 'shop_1'}},
+        })
+        self.assertEqual(status, 200, updated)
+        source = Path(self.directory.name) / 'publish-source.mp4'
+        source.write_bytes(b'video-fixture')
+        with patch('recovered.douyin_benchmark.resolve_ffprobe', return_value='ffprobe'), \
+                patch('recovered.douyin_benchmark.probe_video'):
+            status, imported = self.call('/api/ip-agent/import-video', {
+                'project_id': project_id, 'source': str(source)})
+        self.assertEqual(status, 200, imported)
+        self.assertEqual(len(imported['project']['final_video_sha256']), 64)
+        with patch('recovered.douyin_benchmark.resolve_ffprobe', return_value='ffprobe'), \
+                patch('recovered.douyin_benchmark.probe_video'):
+            status, plan = self.call('/api/ip-agent/publish-dry-run', {
+                'project_id': project_id, 'platforms': ['douyin'], 'title': '青瓷杯介绍',
+                'tags': ['茶杯', '青瓷'], 'account_names': {'douyin': 'shop_1'},
+            })
+        self.assertEqual(status, 200, plan)
+        self.assertTrue(plan['dry_run'])
+        self.assertEqual(plan['publish_plan']['platforms'], ['douyin'])
+        self.assertEqual(self.call('/api/ip-agent/publish', {
+            'project_id': project_id, 'platforms': 'douyin'})[0], 400)
+        self.assertEqual(self.call('/api/ip-agent/update', {
+            'project_id': project_id, 'data': {'final_video_path': '../foreign.mp4'}})[0], 400)
+        self.assertEqual(self.call('/api/ip-agent/delete', {'project_id': project_id})[0], 200)
+        self.assertEqual(self.call('/api/ip-agent?project_id=' + project_id)[0], 400)
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
