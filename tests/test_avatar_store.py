@@ -1,6 +1,9 @@
 import tempfile
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 import unittest
+from unittest import mock
 
 import cv2
 import numpy as np
@@ -83,6 +86,37 @@ class AvatarTests(unittest.TestCase):
         with self.assertRaises(AvatarError): self.store.import_prepared(self.source, '无人脸')
         for value in ('../source', 'bad', None):
             with self.assertRaises(AvatarError): self.store.get(value)
+
+    def test_delete_rejects_selected_and_removes_unselected_atomically(self):
+        selected = self.store.import_prepared(self.source, '使用中')
+        removable = self.store.import_prepared(self.source, '可删除')
+        self.store.select(selected['id'])
+        with self.assertRaisesRegex(AvatarError, '当前选中'):
+            self.store.delete(selected['id'])
+        result = self.store.delete(removable['id'])
+        self.assertEqual(result, {'id': removable['id'], 'cleanup_pending': False})
+        self.assertFalse((self.store.root/removable['id']).exists())
+        self.assertEqual([item['id'] for item in self.store.list()], [selected['id']])
+
+    def test_delete_database_failure_restores_directory_and_cleanup_retries(self):
+        avatar = self.store.import_prepared(self.source, '事务删除')
+        with closing(sqlite3.connect(self.store.path)) as db, db:
+            db.execute("CREATE TRIGGER reject_avatar_delete BEFORE DELETE ON avatars "
+                       "BEGIN SELECT RAISE(ABORT, '拒绝删除'); END")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.store.delete(avatar['id'])
+        self.assertTrue((self.store.root/avatar['id']).is_dir())
+        self.assertEqual(self.store.get(avatar['id'])['name'], '事务删除')
+        with closing(sqlite3.connect(self.store.path)) as db, db:
+            db.execute('DROP TRIGGER reject_avatar_delete')
+        with mock.patch('scripts.avatar_store.shutil.rmtree', side_effect=OSError('文件占用')):
+            result = self.store.delete(avatar['id'])
+        self.assertTrue(result['cleanup_pending'])
+        tombstones = list(self.store.root.glob('.deleting-*'))
+        self.assertEqual(len(tombstones), 1)
+        reopened = AvatarStore(self.root/'owned')
+        self.assertEqual(reopened.list(), [])
+        self.assertFalse(tombstones[0].exists())
 
 
 if __name__ == '__main__':

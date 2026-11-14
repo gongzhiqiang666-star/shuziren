@@ -3,6 +3,7 @@ from contextlib import closing
 from ast import literal_eval
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import sqlite3
@@ -34,6 +35,15 @@ class AvatarStore:
                 width INTEGER NOT NULL,height INTEGER NOT NULL,manifest_sha256 TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS selection(singleton INTEGER PRIMARY KEY CHECK(singleton=1),
                 avatar_id TEXT NOT NULL REFERENCES avatars(id)); PRAGMA user_version=1;''')
+        self._cleanup_deleted_directories()
+
+    def _cleanup_deleted_directories(self):
+        for target in self.root.glob('.deleting-*'):
+            try:
+                if target.is_dir() and target.resolve().parent == self.root:
+                    shutil.rmtree(target)
+            except OSError:
+                pass
 
     def _directory(self, avatar_id):
         try:
@@ -192,3 +202,27 @@ class AvatarStore:
 
     def sample(self, avatar_id):
         return (self.directory(avatar_id)/'sample.jpg').read_bytes()
+
+    def delete(self, avatar_id):
+        self.get(avatar_id)
+        if self.selected_id() == avatar_id:
+            raise AvatarError('当前选中形象不能删除，请先选择其他形象')
+        target = self._directory(avatar_id)
+        tombstone = self.root / f'.deleting-{avatar_id}-{uuid.uuid4().hex}'
+        if tombstone.resolve().parent != self.root:
+            raise AvatarError('形象删除路径越界')
+        os.replace(target, tombstone)
+        try:
+            with closing(sqlite3.connect(self.path)) as db, db:
+                deleted = db.execute('DELETE FROM avatars WHERE id=?', (avatar_id,)).rowcount
+                if deleted != 1:
+                    raise AvatarError('形象不存在')
+        except Exception:
+            os.replace(tombstone, target)
+            raise
+        cleanup_pending = False
+        try:
+            shutil.rmtree(tombstone)
+        except OSError:
+            cleanup_pending = True
+        return {'id': avatar_id, 'cleanup_pending': cleanup_pending}

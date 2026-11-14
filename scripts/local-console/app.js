@@ -1644,6 +1644,15 @@ async function loadAvatars() {
   $('avatar-list').replaceChildren(empty,...avatarRecords.map(avatar=>{
     const option=document.createElement('option');option.value=avatar.id;option.textContent=avatar.name;return option;
   }));
+  let deleteList=$('avatar-delete-list');
+  if(!deleteList) {
+    deleteList=document.createElement('select');deleteList.id='avatar-delete-list';
+    $('avatar-delete').parentElement.prepend(deleteList);
+  }
+  deleteList.replaceChildren(new Option('请选择未选中的形象',''),
+    ...avatarRecords.filter(avatar=>avatar.id!==result.selected).map(avatar=>new Option(avatar.name,avatar.id)));
+  $('avatar-delete').disabled=!deleteList.value;
+  deleteList.addEventListener('change',()=>{$('avatar-delete').disabled=!deleteList.value;},{once:true});
   $('avatar-list').value=result.selected || '';showAvatar(result.selected);
 }
 async function avatarAction(work) {
@@ -1661,7 +1670,13 @@ $('reload-avatars').addEventListener('click',()=>avatarAction(loadAvatars));
 $('avatar-list').addEventListener('change',()=>avatarAction(async()=>{
   const id=$('avatar-list').value;if(!id) {showAvatar(null);return;}
   showAvatar(null);
-  await request('/api/avatars/select',{avatar_id:id});showAvatar(id);
+  await request('/api/avatars/select',{avatar_id:id});await loadAvatars();
+}));
+$('avatar-delete').addEventListener('click',()=>avatarAction(async()=>{
+  const list=$('avatar-delete-list'),id=list?.value;
+  if(!id) throw new Error('请选择一个未使用的形象');
+  await request('/api/avatars/delete',{avatar_id:id});await loadAvatars();
+  $('avatar-message').textContent='形象已删除。';
 }));
 $('avatar-preview').addEventListener('error',()=>{
   if($('avatar-preview').getAttribute('src')) {$('avatar-preview').hidden=true;$('avatar-error').textContent='形象预览已失效，请重读形象检查素材完整性。';}

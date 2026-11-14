@@ -1564,6 +1564,10 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call('/api/avatars/sample?id=../console.json')[0],400)
         self.assertEqual(self.call('/api/avatars/import',{'source':str(root),'name':'坏请求','extra':1})[0],400)
         self.assertEqual(self.call('/api/avatars/select',{'avatar_id':'invalid'})[0],400)
+        second = self.call('/api/avatars/import', {'source':str(root),'name':'待删除形象'})[1]['avatar']
+        self.assertEqual(self.call('/api/avatars/delete', {'avatar_id':avatar_id})[0], 400)
+        self.assertEqual(self.call('/api/avatars/delete', {'avatar_id':second['id']})[0], 200)
+        self.assertEqual([item['id'] for item in self.call('/api/avatars')[1]['avatars']], [avatar_id])
         (Path(self.directory.name)/'avatars'/avatar_id/'frames/000000.jpg').unlink()
         self.assertEqual(self.call('/api/avatars/sample?id='+avatar_id)[0],400)
 

@@ -1051,6 +1051,10 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                             raise AvatarError('形象选择字段无效')
                         AvatarStore(store.directory).select(value['avatar_id'])
                         return self.respond(200,{'selected':value['avatar_id']})
+                    if path == '/api/avatars/delete':
+                        if set(value)!={'avatar_id'} or not isinstance(value['avatar_id'],str):
+                            raise AvatarError('形象删除字段无效')
+                        return self.respond(200, {'deleted': AvatarStore(store.directory).delete(value['avatar_id'])})
                     if path in {'/api/voices/import','/api/voices/recorded'}:
                         field='source' if path.endswith('/import') else 'audio_base64'
                         if set(value)!={field,'transcript','name'} or not isinstance(value[field],str):
