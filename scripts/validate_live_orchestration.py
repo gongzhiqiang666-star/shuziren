@@ -26,6 +26,7 @@ def main():
     parser.add_argument('--assistant-voice-data', type=Path, help='Data directory containing a selected co-host reference')
     parser.add_argument('--assistant-voice-id', help='Use this reference instead of the selection in that directory')
     parser.add_argument('--legacy-assistant-script', action='store_true')
+    parser.add_argument('--revise-legacy-assistant', action='store_true')
     parser.add_argument('--timed-shifts', action='store_true', help='Exercise timed host shifts after manual takeover')
     parser.add_argument('--shift-count', type=int, default=2, help='Number of timed transitions to verify')
     parser.add_argument('--rotation-language', choices=('zh-CN', 'ms-MY', 'vi-VN'), default='zh-CN')
@@ -47,6 +48,8 @@ def main():
         parser.error('The co-host test fixture uses Chinese scripts')
     if args.assistant_voice_id and not args.assistant_voice_data:
         parser.error('--assistant-voice-id requires --assistant-voice-data')
+    if args.revise_legacy_assistant and not args.legacy_assistant_script:
+        parser.error('--revise-legacy-assistant requires --legacy-assistant-script')
     if args.legacy_assistant_script and (not args.assistant_voice_data or not interactions or args.timed_shifts):
         parser.error('--legacy-assistant-script requires a co-host, interactions and untimed rotation')
     if args.timed_shifts and (not args.assistant_voice_data or not interactions):
@@ -87,6 +90,9 @@ def main():
         imported, = import_v122_products(directory, template)
         second = products.get(imported['product_id'])
         second_script, = imported['script_ids']
+        if args.revise_legacy_assistant:
+            second_text += '以上是助播更新的商品介绍。'
+            second_script = products.add_script(second, second_text, parent_script_id=second_script)
     else:
         second = products.save(title='轮播验收商品', content='本机验收使用', product_index=second_index)
         if args.assistant_voice_data:
@@ -334,7 +340,13 @@ def main():
                         expected_voice = assistant if event['product_id'] == second['id'] else voice
                         if source['voice_id'] != expected_voice:
                             raise RuntimeError('Legacy assistant role did not use the assigned reference')
+                        if args.revise_legacy_assistant and event['product_id'] == second['id']:
+                            if (source['script_id'] != second_script or source['segment']['type'] != 'assistant'
+                                    or source['segment']['content'] != second_text):
+                                raise RuntimeError('Revised co-host script did not match playback provenance')
                     report['legacy_assistant_voice_verified'] = True
+                    if args.revise_legacy_assistant:
+                        report['revised_legacy_assistant_verified'] = True
             report['starts'].append({'cycle': cycle + 1, 'session': session_id, 'frames': stopped['frames']})
             old_session = session_id
             save()
