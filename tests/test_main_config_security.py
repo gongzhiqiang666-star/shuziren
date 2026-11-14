@@ -7,7 +7,8 @@ import yaml
 
 from recovered.main_config import (
     UserConfigError, clear_private_config, extract_private_config,
-    load_effective_config, load_user_config, save_user_config, write_user_config,
+    load_effective_config, load_user_config, resolve_user_config_path,
+    save_user_config, write_user_config,
 )
 
 
@@ -35,6 +36,23 @@ class MainConfigSecurityTests(unittest.TestCase):
                 write_user_config(self.user, {'token': 'new'})
         self.assertEqual(load_user_config(self.user), {'token': 'old'})
         self.assertEqual(list(self.user.parent.glob('*.tmp')), [])
+
+    def test_localappdata_path_is_used_without_touching_delivery_directory(self):
+        local = self.root/'Local App Data'
+        with patch.dict('os.environ', {'LOCALAPPDATA': str(local)}):
+            path = Path(resolve_user_config_path())
+        self.assertEqual(path, local/'HuanjingLive'/'user_config.yaml')
+
+    def test_failed_private_migration_keeps_delivery_config_and_runtime_values(self):
+        runtime = self.root/'runtime'; (runtime/'config').mkdir(parents=True)
+        base = {'environment': 'production', 'service': {'api_key': 'legacy', 'model': 'm'}}
+        delivery = runtime/'config/config.yaml'
+        delivery.write_text(yaml.safe_dump(base), encoding='utf-8')
+        with patch('recovered.main_config.save_user_config', side_effect=PermissionError('read only')):
+            effective = load_effective_config(runtime, self.user)
+        self.assertEqual(effective['service']['api_key'], 'legacy')
+        self.assertEqual(yaml.safe_load(delivery.read_text(encoding='utf-8')), base)
+        self.assertFalse(self.user.exists())
 
     def test_private_aliases_are_extracted_and_cleared_recursively(self):
         config = {'service': {'client_secret': 'one', 'ark-api-key': 'two',

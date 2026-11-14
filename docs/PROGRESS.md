@@ -1,5 +1,7 @@
 # 四期任务进度与验证结果
 
+SYS-004 Windows 用户配置与私密配置迁移补验完成。隔离 `LOCALAPPDATA` 中真实完成旧私密字段迁移、交付配置清空及启动有效值恢复；损坏文件、迁移写入失败、原子替换失败均不覆盖上一份有效数据。6 项专项与恢复五关通过，见 `docs/evidence/a07-user-config-migration.md`。
+
 SYS-003 Windows 执行速度节流本机补验完成。当前进程与受控子进程远程 PID 的原生设置均返回成功；keep-alive 已补齐显式停止、等待、引用释放和重启，远程 PID 空句柄不再进入设置调用。8 项专项与恢复五关通过；Win10/11 多版本及企业策略环境留待最终整机验收，见 `docs/evidence/a07-power-throttling.md`。
 
 SYS-002 GPU/显存探测本机补验完成。RTX 3060 经 nvidia-smi 与随包 Torch 双探针均返回 CUDA 可用和 12.0 GiB；普通 NVIDIA、RTX 5090 识别、命令缺失 3 项回归通过。真实 RTX 50 与无 NVIDIA 物理整机仍待外部环境，见 `docs/evidence/a07-gpu-environment.md`。
