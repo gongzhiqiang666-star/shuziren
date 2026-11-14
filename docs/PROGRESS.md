@@ -1,5 +1,7 @@
 # 四期任务进度与验证结果
 
+SYS-002 GPU/显存探测本机补验完成。RTX 3060 经 nvidia-smi 与随包 Torch 双探针均返回 CUDA 可用和 12.0 GiB；普通 NVIDIA、RTX 5090 识别、命令缺失 3 项回归通过。真实 RTX 50 与无 NVIDIA 物理整机仍待外部环境，见 `docs/evidence/a07-gpu-environment.md`。
+
 A07-05 当前候选 `da440bd` 已完成 458 文件 build/verify/install，ZIP SHA-256 `e12ca0b…e4ee`，隔离预览在 5256 返回 HTTP 200。发现直接脚本入口导入失败而标准模块入口正常；源码已补齐仓库根隔离，仓库外 cwd 专项与恢复五关通过，待构建候选02复验。
 
 A07-05 候选02 `3413e2c` 已闭环直接入口：458 文件 build/verify/install，ZIP SHA-256 `0ed22e…4f36`，安装目录外直接启动在 5257 返回 HTTP 200。5257 为当前最新预览；干净整机、完整媒体、驱动/UAC、长稳和真实平台继续待验。
