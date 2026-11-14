@@ -907,6 +907,18 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(report['video_counters'], counters)
         self.assertIsNone(self.call('/api/live/report?session_id=previous')[1]['video_counters'])
 
+    def test_failed_video_report_exposes_last_counters(self):
+        store = ProductStore(self.directory.name)
+        counters = {'reused_frames': 2, 'queue_length': 4}
+        store.record_live_session('failed-video', 100, started_at=101, ended_at=104,
+                                  status='failed', frames=72, failure_reason='worker exited',
+                                  video_counters=counters)
+        status, report = self.call('/api/live/report?session_id=failed-video')
+        self.assertEqual(status, 200)
+        self.assertEqual(report['session']['status'], 'failed')
+        self.assertEqual(report['session']['frames'], 72)
+        self.assertEqual(report['video_counters'], counters)
+
     def test_live_report_isolates_sessions_and_keeps_missing_metrics_explicit(self):
         store = ProductStore(self.directory.name)
         store.record_live_session('scene', 100, started_at=101, ended_at=110, status='failed', frames=225,
