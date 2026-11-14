@@ -42,7 +42,7 @@ async function action(work) {
   $('error').textContent = ''; $('message').textContent = '';
   document.querySelectorAll('button').forEach(b => b.disabled = true);
   try { await work(); } catch(error) { $('error').textContent = error.message || '无法连接本地服务'; }
-  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); renderRecordingButtons(); renderTTSButtons(); renderAvatarVideoButtons(); renderVideoButtons(); renderLiveButtons(); renderTaobao(); }
+  finally { document.querySelectorAll('button').forEach(b => b.disabled = false); renderRecordingButtons(); renderTTSButtons(); renderAvatarVideoButtons(); renderVideoButtons(); renderLiveButtons(); renderTaobao(); renderStickerButtons(); renderCloudButtons(); }
 }
 async function load() {
   clearChecks();
@@ -83,6 +83,7 @@ $('shutdown').addEventListener('click', () => action(async () => {
   $('message').textContent = '本地服务已收到退出请求，可以关闭本页。';
   $('settings').hidden = true; $('shutdown').hidden = true;
   $('products-panel').hidden = true;
+  $('sticker-panel').hidden = true; $('cloud-dh-panel').hidden = true;
   $('voice-preview').pause(); $('voice-preview').removeAttribute('src'); $('voice-preview').load(); $('voice-panel').hidden=true;
 }));
 let currentProduct = null;
@@ -2893,6 +2894,7 @@ function stickerPayload() {
 }
 function renderStickerButtons() {
   const selected = Boolean(stickerProject?.id);
+  for (const id of ['sticker-list','sticker-create','sticker-reload','sticker-new-name']) $(id).disabled = stickerGenerating;
   $('sticker-save').disabled = !selected || stickerGenerating;
   $('sticker-prompts').disabled = !selected || stickerGenerating;
   $('sticker-generate').disabled = !selected || stickerGenerating;
@@ -2965,4 +2967,89 @@ $('sticker-cancel').addEventListener('click', () => stickerAction(async () => {
   const result = await request('/api/stickers/cancel', {project_id:stickerProject.id});
   $('sticker-status').textContent = result.status === 'cancel_requested' ? '已请求取消，正在等待任务退出。' : result.message;
 }));
-action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await loadPreparation(); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender);await loadLive();await loadTaobao();await loadStickers(); });
+let cloudProjects = [], cloudProject = null, cloudBusy = false;
+function cloudMedia(kind) {
+  return '/api/cloud-dh/media?' + new URLSearchParams({project_id:cloudProject.id, kind});
+}
+function renderCloudButtons() {
+  const selected = Boolean(cloudProject?.id);
+  const running = cloudBusy || cloudProject?.generation_task?.status === 'running';
+  for (const id of ['cloud-dh-list','cloud-dh-create','cloud-dh-reload','cloud-dh-new-name']) $(id).disabled = running;
+  for (const id of ['cloud-dh-save','cloud-dh-import-avatar','cloud-dh-import-audio',
+                    'cloud-dh-generate-avatar','cloud-dh-generate-video']) $(id).disabled = !selected || running;
+  $('cloud-dh-cancel').disabled = !selected || !running;
+}
+function clearCloudMedia(element) {
+  element.removeAttribute('src');
+  if (typeof element.load === 'function') element.load();
+}
+function showCloudProject(project) {
+  cloudProject = project;
+  $('cloud-dh-name').value = project?.name || '';
+  $('cloud-dh-prompt').value = project?.avatar_prompt || '';
+  if (project?.previews?.avatar) $('cloud-dh-avatar-preview').src = cloudMedia('avatar');
+  else clearCloudMedia($('cloud-dh-avatar-preview'));
+  if (project?.previews?.audio) $('cloud-dh-audio-preview').src = cloudMedia('audio');
+  else clearCloudMedia($('cloud-dh-audio-preview'));
+  if (project?.previews?.video) $('cloud-dh-video-preview').src = cloudMedia('video');
+  else clearCloudMedia($('cloud-dh-video-preview'));
+  const task = project?.generation_task;
+  $('cloud-dh-status').textContent = project ? `项目状态：${task?.status || 'idle'}${task?.operation ? ' · ' + task.operation : ''}${task?.error ? ' · ' + task.error : ''}` : '';
+  renderCloudButtons();
+}
+async function loadCloudProject(projectId) {
+  if (!projectId) return showCloudProject(null);
+  const {project} = await request('/api/cloud-dh?' + new URLSearchParams({project_id:projectId}));
+  showCloudProject(project);
+}
+async function loadCloudProjects(selectedId) {
+  const {projects} = await request('/api/cloud-dh'); cloudProjects = projects;
+  const id = selectedId || cloudProject?.id || '';
+  $('cloud-dh-list').replaceChildren(new Option('请选择项目',''),
+    ...projects.map(project => new Option(`${project.name} · ${project.generation_status || 'idle'}`, project.id)));
+  $('cloud-dh-list').value = projects.some(project => project.id === id) ? id : '';
+  await loadCloudProject($('cloud-dh-list').value);
+}
+async function cloudAction(work) {
+  $('cloud-dh-error').textContent = '';
+  try { await work(); } catch (error) { $('cloud-dh-error').textContent = error.message || '云数字人项目操作失败'; }
+  finally { renderCloudButtons(); }
+}
+$('cloud-dh-list').addEventListener('change', () => cloudAction(() => loadCloudProject($('cloud-dh-list').value)));
+$('cloud-dh-reload').addEventListener('click', () => cloudAction(() => loadCloudProjects()));
+$('cloud-dh-create').addEventListener('click', () => cloudAction(async () => {
+  const {project} = await request('/api/cloud-dh/create', {name:$('cloud-dh-new-name').value.trim()});
+  $('cloud-dh-new-name').value = ''; await loadCloudProjects(project.id);
+}));
+$('cloud-dh-save').addEventListener('click', () => cloudAction(async () => {
+  const {project} = await request('/api/cloud-dh/update', {project_id:cloudProject.id,
+    data:{name:$('cloud-dh-name').value.trim(), avatar_prompt:$('cloud-dh-prompt').value.trim()}});
+  showCloudProject(project); $('cloud-dh-status').textContent = '项目已保存并可重开。';
+}));
+for (const [button, path, source] of [
+  ['cloud-dh-import-avatar','/api/cloud-dh/import-avatar','cloud-dh-avatar-source'],
+  ['cloud-dh-import-audio','/api/cloud-dh/import-audio','cloud-dh-audio-source']]) {
+  $(button).addEventListener('click', () => cloudAction(async () => {
+    const localPath = $(source).value.trim(); if (!localPath) throw new Error('请填写本机素材绝对路径');
+    await request(path, {project_id:cloudProject.id, source:localPath});
+    await loadCloudProject(cloudProject.id);
+  }));
+}
+async function generateCloud(path) {
+  const apiKey = $('cloud-dh-api-key').value.trim();
+  if (!apiKey) throw new Error('请填写本次使用的 RunningHub API Key');
+  cloudBusy = true; renderCloudButtons(); $('cloud-dh-status').textContent = '云任务运行中，可随时取消。';
+  try {
+    const payload = {project_id:cloudProject.id, runninghub_api_key:apiKey};
+    if (path.endsWith('avatar')) payload.description = $('cloud-dh-prompt').value.trim();
+    await request(path, payload);
+  } finally { cloudBusy = false; $('cloud-dh-api-key').value = ''; }
+  await loadCloudProject(cloudProject.id);
+}
+$('cloud-dh-generate-avatar').addEventListener('click', () => cloudAction(() => generateCloud('/api/cloud-dh/generate-avatar')));
+$('cloud-dh-generate-video').addEventListener('click', () => cloudAction(() => generateCloud('/api/cloud-dh/generate-video')));
+$('cloud-dh-cancel').addEventListener('click', () => cloudAction(async () => {
+  const result = await request('/api/cloud-dh/cancel', {project_id:cloudProject.id});
+  $('cloud-dh-status').textContent = result.status === 'cancel_requested' ? '已请求取消，等待云任务退出。' : result.message;
+}));
+action(async () => { await load(); await productAction(async () => { await loadProducts(); await loadTask(); }); await loadPreparation(); await voiceAction(loadVoices);await ttsAction(loadTTS);await avatarAction(loadAvatars);await avatarVideoAction(loadAvatarVideo);await renderAction(loadRender);await loadLive();await loadTaobao();await loadStickers();await loadCloudProjects(); });

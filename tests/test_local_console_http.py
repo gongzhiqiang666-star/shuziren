@@ -1742,6 +1742,7 @@ class ConsoleHTTPTests(unittest.TestCase):
             self.assertIn('id="preparation-template-list"', page)
             self.assertIn('应用模板并保留本店事实', page)
             self.assertIn('id="sticker-panel"', page)
+            self.assertIn('id="cloud-dh-panel"', page)
             self.assertIn("frame-ancestors 'none'", response.headers['Content-Security-Policy'])
             self.assertIn("media-src 'self' blob:", response.headers['Content-Security-Policy'])
             self.assertIn("img-src 'self' data:", response.headers['Content-Security-Policy'])
@@ -1750,6 +1751,7 @@ class ConsoleHTTPTests(unittest.TestCase):
             script = response.read().decode()
             self.assertIn("request('/api/preparation-templates'", script)
             self.assertIn("request('/api/preparation-templates/apply'", script)
+            self.assertIn("request('/api/cloud-dh/create'", script)
         self.assertEqual(self.call('/console.json')[0], 404)
 
     def test_shutdown_requires_explicit_request_and_stops_server(self):

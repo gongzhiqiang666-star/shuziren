@@ -4,3 +4,4 @@ textarea,select{width:100%;border:1px solid #a9b6c9;border-radius:7px;padding:12
 
 #render-preview{display:block;max-width:100%;height:auto;margin-top:18px}#render-error{color:#b42318}
 .preview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-top:18px}.preview-grid figure{margin:0}.preview-grid img{display:block;width:100%;aspect-ratio:9/16;object-fit:contain;background:#eef2f7;border:1px solid #d9e0ea;border-radius:7px}.preview-grid figure:last-child img{aspect-ratio:1}.preview-grid figcaption{font-size:13px;color:#5b687d;margin-top:5px}#sticker-error{color:#b42318}
+.cloud-preview{display:grid;gap:14px;margin-top:18px}.cloud-preview img,.cloud-preview video{display:block;max-width:360px;width:100%;max-height:640px;object-fit:contain;background:#eef2f7;border:1px solid #d9e0ea;border-radius:7px}.cloud-preview audio{width:100%}#cloud-dh-error{color:#b42318}
