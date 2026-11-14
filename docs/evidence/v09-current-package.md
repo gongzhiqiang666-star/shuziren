@@ -22,6 +22,8 @@
 
 提交 `8c19f958c2c49535569522244dddae5299322ff8` 的安全更新候选仍为 455 个清单文件，build、verify 和全新 install 均退出 0。ZIP 位于本机忽略目录 `D:\TEMP\candidate-8c19f95.zip`，SHA-256 为 `9deb8d27753a6b08fdada391ba8d0836f24279b4960426f257fbe591508ad07e`。隔离安装版在 `http://127.0.0.1:5253/` 运行，首页和状态接口均返回 HTTP 200；实测状态字段只有 config、listening_port、live_status、data_directory，`token_present=false`。该候选承接核心依赖隔离门禁并包含 V01 状态令牌收口。
 
+提交 `f6437aa63dd87129acb9b9bcd9f9f3a84102afea` 的更新候选包含 455 个清单文件，build、verify、全新 install 均退出 0。ZIP 位于本机忽略目录 `D:\TEMP\candidate-f6437aa.zip`，SHA-256 为 `0beaff34a332ebc68ee28b778ce4e2a42c946756f77c0822da92ded648875995`。隔离安装版在 `http://127.0.0.1:5254/` 运行，首页和状态接口均返回 HTTP 200，状态仍不含 token。该候选新增统一外部验收队列、X10 当前条件记录及 A02 快手 OCR/房间查询错误边界。
+
 本轮证明当前提交可构建、校验、隔离安装、启动并完成本机媒体短回归；干净 Win10/Win11、完整离线依赖、驱动安装/卸载、真实平台和 8 小时仍是最终验收项。
 
 验证日期：2026-11-14  
