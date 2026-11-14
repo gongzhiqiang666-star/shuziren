@@ -30,7 +30,9 @@ class TTSStateTests(unittest.TestCase):
         sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
         self.audio_hash=sha(directory/'ref_audio.wav');self.text_hash=sha(directory/'ref_text.txt')
         with sqlite3.connect(self.voices.path) as db:
-            db.execute('INSERT INTO voices VALUES(?,?,?,?,?,?)',(self.voice_id,'状态测试','测试文字',self.audio_hash,self.text_hash,2))
+            db.execute('''INSERT INTO voices
+                (id,name,transcript,audio_sha256,text_sha256,duration) VALUES(?,?,?,?,?,?)''',
+                (self.voice_id,'状态测试','测试文字',self.audio_hash,self.text_hash,2))
         self.voices.select(self.voice_id)
         self.tasks=TTSTasks(self.root/'no-runtime',self.root)
         self.addCleanup(self.tasks.close)

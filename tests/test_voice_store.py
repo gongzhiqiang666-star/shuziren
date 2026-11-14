@@ -1,6 +1,7 @@
 import math
 import os
 import shutil
+import sqlite3
 from pathlib import Path
 import struct
 import tempfile
@@ -38,6 +39,27 @@ class VoiceStoreTests(unittest.TestCase):
         self.assertEqual(fingerprint(source),before)
         with wave.open(str(self.store.root/a['id']/'ref_audio.wav')) as f:
             self.assertEqual((f.getnchannels(),f.getframerate(),f.getsampwidth()),(1,24000,2))
+
+    def test_authorization_metadata_and_v1_migration(self):
+        voice=self.store.import_audio(self.audio(),'授权测试文本','授权音色',FFMPEG,
+            authorization_type='licensed',authorization_reference='contract-2026-001')
+        self.assertEqual((voice['authorization_type'],voice['authorization_reference']),
+                         ('licensed','contract-2026-001'))
+        with self.assertRaises(VoiceError):
+            self.store.import_audio(self.audio(frequency=550),'文本','音色',FFMPEG,
+                                    authorization_type='invented')
+        legacy_root=self.root/'legacy'/'voices';legacy_root.mkdir(parents=True)
+        with sqlite3.connect(legacy_root/'voices.sqlite3') as db:
+            db.executescript('''CREATE TABLE voices(
+                id TEXT PRIMARY KEY,name TEXT NOT NULL,transcript TEXT NOT NULL,
+                audio_sha256 TEXT NOT NULL,text_sha256 TEXT NOT NULL,duration REAL NOT NULL);
+                CREATE TABLE selection(singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+                voice_id TEXT NOT NULL REFERENCES voices(id)); PRAGMA user_version=1;''')
+        migrated=VoiceStore(self.root/'legacy')
+        with sqlite3.connect(migrated.path) as db:
+            columns={row[1] for row in db.execute('PRAGMA table_info(voices)')}
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],2)
+        self.assertTrue({'authorization_type','authorization_reference'} <= columns)
 
     def test_invalid_long_short_silent_media_leave_no_registered_or_orphan_voice(self):
         bad=self.root/'bad.wav';bad.write_bytes(b'not audio')

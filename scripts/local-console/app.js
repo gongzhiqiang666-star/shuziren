@@ -1517,7 +1517,8 @@ function showVoice(id) {
   const voice=voiceRecords.find(v => v.id===id);
   $('voice-preview').pause();
   if (voice) {
-    $('voice-info').textContent=voice.name+' · '+voice.duration.toFixed(2)+'秒 · 参考文本：'+voice.transcript;
+    const rights={unknown:'授权未登记',self_recorded:'本人录制',consented:'已获本人同意',licensed:'已取得许可'};
+    $('voice-info').textContent=voice.name+' · '+voice.duration.toFixed(2)+'秒 · '+(rights[voice.authorization_type]||'授权信息无效')+(voice.authorization_reference?'（'+voice.authorization_reference+'）':'')+' · 参考文本：'+voice.transcript;
     $('voice-preview').src='/api/voices/audio?id='+encodeURIComponent(voice.id);
   } else { $('voice-info').textContent='尚未选择音色'; $('voice-preview').removeAttribute('src'); }
   $('voice-preview').load();
@@ -1542,7 +1543,7 @@ async function loadVoices() {
   renderShiftFields();
 }
 $('voice-form').addEventListener('submit',event => { event.preventDefault(); voiceAction(async () => {
-  const result=await request('/api/voices/import',{source:$('voice-source').value,transcript:$('voice-transcript').value,name:$('voice-name').value});
+  const result=await request('/api/voices/import',{source:$('voice-source').value,transcript:$('voice-transcript').value,name:$('voice-name').value,authorization_type:$('voice-authorization-type').value,authorization_reference:$('voice-authorization-reference').value});
   await request('/api/voices/select',{voice_id:result.voice.id});await loadVoices();$('voice-message').textContent='音色已导入并选中。';
 }); });
 $('voice-list').addEventListener('change',() => voiceAction(async () => {
@@ -1577,7 +1578,7 @@ $('record-save').addEventListener('click',()=>voiceAction(async()=>{
   const encoded=await new Promise((resolve,reject)=>{
     const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('录音读取失败'));reader.readAsDataURL(blob);
   });
-  const result=await request('/api/voices/recorded',{audio_base64:encoded,name:$('voice-name').value,transcript:$('voice-transcript').value});
+  const result=await request('/api/voices/recorded',{audio_base64:encoded,name:$('voice-name').value,transcript:$('voice-transcript').value,authorization_type:$('voice-authorization-type').value,authorization_reference:$('voice-authorization-reference').value});
   await request('/api/voices/select',{voice_id:result.voice.id});await loadVoices();recorder.discard();$('voice-message').textContent='录音已保存为音色。';
 }));
 window.addEventListener('pagehide',()=>recorder.discard());
@@ -2716,6 +2717,8 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
           speech?.language && `合成语言 ${speech.language}`,
           speech?.voice_audio_sha256 && `参考音频 SHA-256 ${speech.voice_audio_sha256}`,
           speech?.voice_text_sha256 && `参考文本 SHA-256 ${speech.voice_text_sha256}`,
+          speech?.voice_authorization_type && `音色授权 ${({unknown:'未登记',self_recorded:'本人录制',consented:'已获本人同意',licensed:'已取得许可'})[speech.voice_authorization_type]||'记录无效'}`,
+          speech?.voice_authorization_reference && `授权依据 ${speech.voice_authorization_reference}`,
         ].filter(Boolean);
         const review = {source_missing:'缺少原始证据，复用前需核对', product_changed:'商品版本已更新，复用前需核对',
           facts_changed:'商品事实已变化，复用前需核对', version_current:'商品版本及话术事实仍有效'};

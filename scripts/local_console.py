@@ -1057,18 +1057,23 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         return self.respond(200, {'deleted': AvatarStore(store.directory).delete(value['avatar_id'])})
                     if path in {'/api/voices/import','/api/voices/recorded'}:
                         field='source' if path.endswith('/import') else 'audio_base64'
-                        if set(value)!={field,'transcript','name'} or not isinstance(value[field],str):
+                        required={field,'transcript','name'}
+                        if (not required <= set(value) or set(value)-required-{'authorization_type','authorization_reference'}
+                                or not isinstance(value[field],str)):
                             raise VoiceError('音色导入字段无效')
+                        authorization={
+                            'authorization_type':value.get('authorization_type','unknown'),
+                            'authorization_reference':value.get('authorization_reference')}
                         report=preflight(store.load())
                         if not report['runtime_root']: raise VoiceError('请先配置本机运行资源目录')
                         ffmpeg=Path(report['runtime_root'])/'_internal/env/ffmpeg/bin/ffmpeg.exe'
                         voices=VoiceStore(store.directory)
                         if field=='source':
-                            voice=voices.import_audio(value['source'],value['transcript'],value['name'],ffmpeg)
+                            voice=voices.import_audio(value['source'],value['transcript'],value['name'],ffmpeg,**authorization)
                         else:
                             try: audio=base64.b64decode(value[field],validate=True)
                             except binascii.Error: raise VoiceError('录音数据格式无效') from None
-                            voice=voices.import_recording(audio,value['transcript'],value['name'],ffmpeg)
+                            voice=voices.import_recording(audio,value['transcript'],value['name'],ffmpeg,**authorization)
                         return self.respond(201,{'voice':voice})
                     if path == '/api/voices/select':
                         if set(value)!={'voice_id'} or not isinstance(value['voice_id'],str):

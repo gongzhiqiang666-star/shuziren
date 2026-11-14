@@ -26,7 +26,8 @@ class IngressTests(unittest.TestCase):
         self.voices=VoiceStore(self.root);self.voice_id=str(uuid.uuid4());directory=self.voices.root/self.voice_id;directory.mkdir()
         (directory/'ref_audio.wav').write_bytes(self.wav(2400));(directory/'ref_text.txt').write_text('合成夹具',encoding='utf-8')
         self.voice_hashes=[hashlib.sha256((directory/name).read_bytes()).hexdigest() for name in ['ref_audio.wav','ref_text.txt']]
-        with sqlite3.connect(self.voices.path) as db:db.execute('INSERT INTO voices VALUES(?,?,?,?,?,?)',(self.voice_id,'夹具音色','合成夹具',*self.voice_hashes,.1))
+        with sqlite3.connect(self.voices.path) as db:db.execute('''INSERT INTO voices
+            (id,name,transcript,audio_sha256,text_sha256,duration) VALUES(?,?,?,?,?,?)''',(self.voice_id,'夹具音色','合成夹具',*self.voice_hashes,.1))
         self.voices.select(self.voice_id)
         source=self.root/'avatar-source';(source/'frames').mkdir(parents=True);(source/'positions').mkdir()
         cv2.imwrite(str(source/'frames/000000.jpg'),np.zeros((32,24,3),np.uint8))
@@ -87,7 +88,8 @@ class IngressTests(unittest.TestCase):
         audio_hash = hashlib.sha256(audio).hexdigest()
         text_hash = hashlib.sha256(transcript.encode()).hexdigest()
         with sqlite3.connect(self.voices.path) as db:
-            db.execute('INSERT INTO voices VALUES(?,?,?,?,?,?)',
+            db.execute('''INSERT INTO voices
+                (id,name,transcript,audio_sha256,text_sha256,duration) VALUES(?,?,?,?,?,?)''',
                        (alternate, '换班音色', transcript, audio_hash, text_hash, .1))
         self.tts.task.update(kind='rotation', voice_id=alternate, selected_voice_id=self.voice_id,
                              voice_audio_sha256=audio_hash, voice_text_sha256=text_hash)

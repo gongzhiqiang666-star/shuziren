@@ -22,18 +22,27 @@ def fingerprint(path):
 
 
 class VoiceStore:
+    AUTHORIZATION_TYPES=('unknown','self_recorded','consented','licensed')
+
     def __init__(self, directory):
         self.root=(Path(directory)/'voices').resolve()
         self.root.mkdir(parents=True,exist_ok=True)
         self.path=self.root/'voices.sqlite3'
         with closing(sqlite3.connect(self.path)) as db, db:
             version=db.execute('PRAGMA user_version').fetchone()[0]
-            if version not in (0,1): raise VoiceError('不支持的音色数据库版本')
+            if version not in (0,1,2): raise VoiceError('不支持的音色数据库版本')
             db.executescript('''CREATE TABLE IF NOT EXISTS voices(
                 id TEXT PRIMARY KEY,name TEXT NOT NULL,transcript TEXT NOT NULL,
-                audio_sha256 TEXT NOT NULL,text_sha256 TEXT NOT NULL,duration REAL NOT NULL);
+                audio_sha256 TEXT NOT NULL,text_sha256 TEXT NOT NULL,duration REAL NOT NULL,
+                authorization_type TEXT NOT NULL DEFAULT 'unknown', authorization_reference TEXT);
                 CREATE TABLE IF NOT EXISTS selection(singleton INTEGER PRIMARY KEY CHECK(singleton=1),
-                voice_id TEXT NOT NULL REFERENCES voices(id)); PRAGMA user_version=1;''')
+                voice_id TEXT NOT NULL REFERENCES voices(id));''')
+            columns={row[1] for row in db.execute('PRAGMA table_info(voices)')}
+            if 'authorization_type' not in columns:
+                db.execute("ALTER TABLE voices ADD COLUMN authorization_type TEXT NOT NULL DEFAULT 'unknown'")
+            if 'authorization_reference' not in columns:
+                db.execute('ALTER TABLE voices ADD COLUMN authorization_reference TEXT')
+            db.execute('PRAGMA user_version=2')
 
     def _directory(self, voice_id):
         if not isinstance(voice_id,str): raise VoiceError('音色ID无效')
@@ -63,11 +72,18 @@ class VoiceStore:
         except OSError: raise VoiceError('参考音或文本缺失，请重新导入音色') from None
         return record
 
-    def import_audio(self, source, transcript, name, ffmpeg):
+    def import_audio(self, source, transcript, name, ffmpeg, *, authorization_type='unknown',
+                     authorization_reference=None):
         if not isinstance(name,str) or not 1<=len(name.strip())<=100:
             raise VoiceError('音色名称须为1至100字')
         if not isinstance(transcript,str) or not 1<=len(transcript.strip())<=10000:
             raise VoiceError('参考音对应文本须为1至10000字')
+        if authorization_type not in self.AUTHORIZATION_TYPES:
+            raise VoiceError('音色授权类型无效')
+        if authorization_reference is not None and (
+                not isinstance(authorization_reference,str) or len(authorization_reference.strip())>500):
+            raise VoiceError('音色授权依据须不超过500字')
+        authorization_reference=(authorization_reference or '').strip() or None
         source=Path(source)
         if not source.is_absolute() or not source.is_file() or source.stat().st_size>100*1024*1024:
             raise VoiceError('请选择不超过100MiB的本机音频文件绝对路径')
@@ -91,8 +107,10 @@ class VoiceStore:
             if rms<.001: raise VoiceError('参考音无声或音量过低，请选择清晰的人声录音')
             text=directory/'ref_text.txt';text.write_text(transcript.strip(),encoding='utf-8')
             with closing(sqlite3.connect(self.path)) as db, db:
-                db.execute('INSERT INTO voices VALUES(?,?,?,?,?,?)',(voice_id,name.strip(),transcript.strip(),
-                    fingerprint(audio),fingerprint(text),duration))
+                db.execute('''INSERT INTO voices
+                    (id,name,transcript,audio_sha256,text_sha256,duration,authorization_type,authorization_reference)
+                    VALUES(?,?,?,?,?,?,?,?)''',(voice_id,name.strip(),transcript.strip(),
+                    fingerprint(audio),fingerprint(text),duration,authorization_type,authorization_reference))
             registered=True
             return self.get(voice_id)
         except (subprocess.TimeoutExpired,OSError,wave.Error) as error:
@@ -118,13 +136,15 @@ class VoiceStore:
         self.get(voice_id)
         return self._directory(voice_id)/'ref_audio.wav'
 
-    def import_recording(self, data, transcript, name, ffmpeg):
+    def import_recording(self, data, transcript, name, ffmpeg, *, authorization_type='unknown',
+                         authorization_reference=None):
         if not isinstance(data,bytes) or not 1<=len(data)<=524288:
             raise VoiceError('录音为空或超过512KiB，请重新录制')
         # A generated file in the owned directory; never a caller-supplied path.
         with tempfile.NamedTemporaryFile(dir=self.root,prefix='recording-',suffix='.webm',delete=False) as stream:
             temporary=Path(stream.name);stream.write(data)
         try:
-            return self.import_audio(temporary.resolve(),transcript,name,ffmpeg)
+            return self.import_audio(temporary.resolve(),transcript,name,ffmpeg,
+                authorization_type=authorization_type,authorization_reference=authorization_reference)
         finally:
             temporary.unlink(missing_ok=True)

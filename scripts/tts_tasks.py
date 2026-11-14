@@ -186,6 +186,8 @@ class TTSTasks:
         if selected_voice_id is not None and selected_voice_id != voice['id']:
             self.task['selected_voice_id'] = selected_voice_id
         self.task.update(voice_audio_sha256=voice['audio_sha256'],voice_text_sha256=voice['text_sha256'])
+        self.task.update(voice_authorization_type=voice.get('authorization_type','unknown'),
+                         voice_authorization_reference=voice.get('authorization_reference'))
         self.task.update(product_title=product['title'],speed=speed,language=language,use_cache=use_cache,engine=self.engine)
         deadline = product_fact_deadline(product)
         if deadline is not None:

@@ -561,7 +561,8 @@ class ConsoleLive:
                             rotation['task_id'] = task_id
                             rotation['task_voice_id'] = voice_id
                             rotation['task_speech_provenance'] = {
-                                key: state[key] for key in ('engine', 'language', 'voice_audio_sha256', 'voice_text_sha256')
+                                key: state[key] for key in ('engine', 'language', 'voice_audio_sha256', 'voice_text_sha256',
+                                                           'voice_authorization_type','voice_authorization_reference')
                                 if key in state
                             }
                             rotation['task_speech_provenance'].update(

@@ -1882,8 +1882,11 @@ class ConsoleHTTPTests(unittest.TestCase):
         with wave.open(str(source),'wb') as output:
             output.setparams((1,2,24000,0,'NONE','not compressed'))
             output.writeframes((b'\x88\x13\x78\xec')*24000)
-        status,value=self.call('/api/voices/import',{'source':str(source),'transcript':'媒体测试音，不是语音','name':'测试音色'})
+        status,value=self.call('/api/voices/import',{'source':str(source),'transcript':'媒体测试音，不是语音','name':'测试音色',
+            'authorization_type':'licensed','authorization_reference':'fixture-license-1'})
         self.assertEqual(status,201,value)
+        self.assertEqual(value['voice']['authorization_type'],'licensed')
+        self.assertEqual(value['voice']['authorization_reference'],'fixture-license-1')
         voice_id=value['voice']['id']
         self.assertEqual(self.call('/api/voices/select',{'voice_id':voice_id})[0],200)
         self.assertEqual(self.call('/api/voices')[1]['selected'],voice_id)

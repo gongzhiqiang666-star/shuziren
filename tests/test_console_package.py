@@ -368,7 +368,8 @@ class ConsolePackageTests(unittest.TestCase):
                 stream.setframerate(24000)
                 stream.writeframes(bytes(48000))
             with closing(sqlite3.connect(voices.path)) as db, db:
-                db.execute('INSERT INTO voices VALUES (?, ?, ?, ?, ?, ?)',
+                db.execute('''INSERT INTO voices
+                    (id,name,transcript,audio_sha256,text_sha256,duration) VALUES (?, ?, ?, ?, ?, ?)''',
                            (voice_id, '测试音色', '迁移测试音色', fingerprint(audio), fingerprint(transcript), 1))
             voices.select(voice_id)
             (source / 'console.log').write_text('excluded', encoding='utf-8')
