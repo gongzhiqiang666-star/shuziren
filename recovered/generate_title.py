@@ -16,8 +16,15 @@ def generate_title_and_tags(script: str, video_url: str = "") -> dict:
     try:
         json_match = re.search(r"\{[\s\S]*\}", response_str)
         result = json.loads(json_match.group(0) if json_match else response_str)
-        title = str(result.get("title") or "").strip()
+        if not isinstance(result, dict):
+            raise RuntimeError("LLM 标题结果必须是 JSON 对象")
+        raw_title = result.get("title")
+        if not isinstance(raw_title, str):
+            raise RuntimeError("LLM 标题字段必须是文本")
+        title = raw_title.strip()
         tags = result.get("tags") or []
+        if not isinstance(tags, list) or any(not isinstance(tag, str) for tag in tags):
+            raise RuntimeError("LLM 标签字段必须是文本数组")
     except (json.JSONDecodeError, AttributeError):
         title_match = re.search(r'["\']title["\']\s*:\s*["\'](.*?)["\']', response_str)
         tags_match = re.search(r'["\']tags["\']\s*:\s*\[(.*?)\]', response_str,
@@ -29,4 +36,9 @@ def generate_title_and_tags(script: str, video_url: str = "") -> dict:
             tags = [item.strip().replace('"', '').replace("'", '')
                     for item in tags_str.split(',') if item.strip()]
     if not title: raise RuntimeError("LLM 未生成标题")
-    return {"title": title, "tags": [str(tag).lstrip("#").strip() for tag in tags if str(tag).strip()]}
+    normalized_tags = []
+    for tag in tags:
+        value = str(tag).lstrip("#").strip()
+        if value and value not in normalized_tags:
+            normalized_tags.append(value)
+    return {"title": title, "tags": normalized_tags}
