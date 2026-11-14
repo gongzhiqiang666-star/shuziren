@@ -2069,7 +2069,11 @@ class Api(PluginInstallerApi):
                     ("bg_path", "fg_white_path", "fg_alpha_path", "cover_path")]
         existing = [path for path in existing if str(path) not in ("", ".") and path.is_file()]
         if not existing: return
-        history = Path(self._get_live_sticker_history_dir(project_id)) / datetime.now().strftime("%Y%m%d_%H%M%S")
+        root = Path(self._get_live_sticker_history_dir(project_id))
+        stem = datetime.now().strftime("%Y%m%d_%H%M%S"); history = root / stem
+        suffix = 1
+        while history.exists():
+            history = root / f"{stem}_{suffix:02d}"; suffix += 1
         history.mkdir(parents=True, exist_ok=True)
         for path in existing: shutil.copy2(path, history / path.name)
 
@@ -2164,24 +2168,48 @@ class Api(PluginInstallerApi):
     def generate_live_sticker_images(self, data):
         from .live_sticker_image_utils import (compress_sticker_image, image_size_label,
                                                 key_green, resize_cover_square)
+        info = None
         try:
             project_id = data["project_id"]; info = self._load_live_sticker_project(project_id)
+            if not info: raise FileNotFoundError("贴片项目不存在")
             api_key = str(data.get("runninghub_api_key") or "").strip()
             if not api_key: raise ValueError("请填写 RunningHub API Key")
-            self._archive_live_sticker_outputs(project_id, info); outputs = self._get_live_sticker_output_paths(project_id)
+            outputs = self._get_live_sticker_output_paths(project_id)
             config = {"api_key": api_key, **(data.get("image_config") or {})}
-            self._generate_live_sticker_image_file(
-                image_config=config, prompt=data.get("background_prompt") or info["background_prompt"],
-                dest=outputs["bg"])
-            self._generate_live_sticker_image_file(
-                image_config=config, prompt=data.get("foreground_prompt") or info["foreground_prompt"],
-                dest=outputs["fg_white"])
-            key_green(outputs["fg_white"], outputs["fg_alpha"])
-            self._generate_live_sticker_image_file(
-                image_config=config, prompt=data.get("cover_prompt") or info["cover_prompt"],
-                dest=outputs["cover_raw"], aspect_ratio="1:1")
-            resize_cover_square(outputs["cover_raw"], outputs["cover"])
-            compress_sticker_image(outputs["bg"], outputs["bg"])
+            directory = Path(self._get_live_sticker_project_dir(project_id))
+            # Providers can fail or be cancelled after producing only part of a
+            # batch. Build and validate all five assets off to the side so the
+            # last complete project remains usable until the whole batch is ready.
+            with TemporaryDirectory(prefix=".sticker-stage-", dir=directory) as staging_dir:
+                staging = {key: str(Path(staging_dir) / Path(path).name) for key, path in outputs.items()}
+                self._generate_live_sticker_image_file(
+                    image_config=config, prompt=data.get("background_prompt") or info["background_prompt"],
+                    dest=staging["bg"])
+                self._generate_live_sticker_image_file(
+                    image_config=config, prompt=data.get("foreground_prompt") or info["foreground_prompt"],
+                    dest=staging["fg_white"])
+                key_green(staging["fg_white"], staging["fg_alpha"])
+                self._generate_live_sticker_image_file(
+                    image_config=config, prompt=data.get("cover_prompt") or info["cover_prompt"],
+                    dest=staging["cover_raw"], aspect_ratio="1:1")
+                resize_cover_square(staging["cover_raw"], staging["cover"])
+                compress_sticker_image(staging["bg"], staging["bg"])
+                if not all(Path(path).is_file() and Path(path).stat().st_size for path in staging.values()):
+                    raise RuntimeError("贴片生成结果不完整")
+                self._archive_live_sticker_outputs(project_id, info)
+                backup = Path(staging_dir) / "previous"; backup.mkdir()
+                replaced = []
+                try:
+                    for key, target_value in outputs.items():
+                        target = Path(target_value)
+                        if target.is_file(): shutil.copy2(target, backup / target.name)
+                        os.replace(staging[key], target); replaced.append(target)
+                except Exception:
+                    for target in replaced:
+                        previous = backup / target.name
+                        if previous.is_file(): os.replace(previous, target)
+                        else: target.unlink(missing_ok=True)
+                    raise
             info.update({
                 "bg_path": outputs["bg"], "fg_white_path": outputs["fg_white"],
                 "fg_alpha_path": outputs["fg_alpha"], "cover_raw_path": outputs["cover_raw"],
@@ -2192,7 +2220,12 @@ class Api(PluginInstallerApi):
             })
             project = self._save_live_sticker_project(project_id, info)
             return {"status": "success", "project": self._attach_live_sticker_previews(project)}
-        except Exception as error: return {"status": "error", "message": f"生成贴片失败: {error}"}
+        except Exception as error:
+            if info:
+                try: self._save_live_sticker_project(data["project_id"], {
+                    "status": "error", "last_error": str(error)})
+                except Exception: pass
+            return {"status": "error", "message": f"生成贴片失败: {error}"}
 
     def _get_cloud_dh_base_dir(self):
         return str(Path(self.runtime_dir) / "cloud_dh_projects")
