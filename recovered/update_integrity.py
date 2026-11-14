@@ -3,8 +3,11 @@
 import hashlib
 import os
 import shutil
+import stat
 import sys
+import tempfile
 from pathlib import Path
+from urllib.parse import urlparse
 
 from .update_text import TEXT
 
@@ -51,6 +54,34 @@ def get_internal_base_dir(base_dir):
 
 
 VIETNAM_ADMIN_ID = 21
+LEGACY_UPDATE_URL = "http://111.230.31.15:5155/get_latest"
+
+
+def _require_trusted_url(url, purpose):
+    parsed = urlparse(str(url or "").strip())
+    loopback = parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+    if parsed.scheme != "https" and not (parsed.scheme == "http" and loopback):
+        raise ValueError(f"{purpose}必须使用 HTTPS（本机回环地址除外）")
+    return parsed.geturl()
+
+
+def _resolve_update_status_url(config):
+    direct = config.get("update_url")
+    environment = config.get("environment")
+    current = (config.get("environments") or {}).get(environment, {})
+    base = str(current.get("update_url") or direct or LEGACY_UPDATE_URL).rstrip("/")
+    if not base.endswith("/get_latest"):
+        base += "/get_latest"
+    return _require_trusted_url(base, "更新检查地址")
+
+
+def _validate_update_item(item):
+    if not isinstance(item, dict):
+        raise ValueError("更新元数据格式错误")
+    _require_trusted_url(item.get("download_url"), "更新包地址")
+    digest = str(item.get("sha256") or "").strip().lower()
+    if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+        raise ValueError(f"更新 {item.get('version_text') or item.get('version')} 缺少有效的 SHA-256")
 
 
 def is_vietnam_customer_pack():
@@ -87,7 +118,7 @@ def get_update_status(runtime_dir, timeout=10):
         config = yaml.safe_load(file) or {}
     local_version = version_number(config.get("version", "v000"))
 
-    response = requests.get("http://111.230.31.15:5155/get_latest", timeout=timeout)
+    response = requests.get(_resolve_update_status_url(config), timeout=timeout)
     response.raise_for_status()
     versions = response.json()
     if not isinstance(versions, list):
@@ -143,11 +174,13 @@ def run_update_flow(self):
             self.gui.finish(L("already_latest_done"), auto_close_ms=1800)
             return
 
+        for item in updates:
+            _validate_update_item(item)
         self.kill_processes()
         total = len(updates)
         for index, item in enumerate(updates):
             version = item.get("version_text", f"v{item['version']:03d}")
-            self.download_and_extract(item["download_url"], version, index, total)
+            self.download_and_extract(item["download_url"], version, index, total, item.get("sha256"))
             self.update_files(version, index, total)
             self.update_local_version(item["version"])
             shutil.rmtree(self.temp_dir, ignore_errors=True)
@@ -203,7 +236,29 @@ def kill_processes(self):
     time.sleep(1.2)
 
 
-def download_and_extract(self, download_url, version_text, version_index, total_versions):
+def _validated_zip_members(archive):
+    members = []
+    for info in archive.infolist():
+        raw = info.filename.replace("\\", "/")
+        path = Path(raw)
+        mode = info.external_attr >> 16
+        if (not raw or raw.startswith("/") or path.is_absolute() or path.drive or
+                any(part in ("", ".", "..") for part in path.parts) or stat.S_ISLNK(mode)):
+            raise ValueError(f"不安全的更新包路径: {info.filename}")
+        members.append(info)
+    return members
+
+
+def _verify_download_digest(zip_path, expected_sha256, version_text):
+    expected = str(expected_sha256 or "").strip().lower()
+    if len(expected) != 64 or any(character not in "0123456789abcdef" for character in expected):
+        raise ValueError(f"更新 {version_text} 缺少有效的 SHA-256，已拒绝不可信更新包")
+    actual = file_sha256(zip_path)
+    if actual != expected:
+        raise ValueError(f"更新 {version_text} SHA-256 校验失败")
+
+
+def download_and_extract(self, download_url, version_text, version_index, total_versions, expected_sha256=None):
     import zipfile
 
     import requests
@@ -231,16 +286,20 @@ def download_and_extract(self, download_url, version_text, version_index, total_
                         L("downloading", version=version_text),
                     )
 
+    _verify_download_digest(self.zip_path, expected_sha256, version_text)
+
     self._set_progress(
         version_index, total_versions, 0.55, L("extracting", version=version_text)
     )
     with zipfile.ZipFile(self.zip_path, "r") as archive:
-        members = [name for name in archive.namelist() if not name.endswith("/")]
-        if not members:
+        members = _validated_zip_members(archive)
+        files = [info for info in members if not info.is_dir()]
+        if not files:
             raise ValueError(L("empty_package", version=version_text))
-        if not any(name.startswith(("_internal/", "_internal\\")) for name in members):
+        if not any(info.filename.replace("\\", "/").startswith("_internal/") for info in files):
             raise ValueError(L("bad_package", version=version_text))
-        archive.extractall(self.temp_dir)
+        for info in members:
+            archive.extract(info, self.temp_dir)
     self.zip_path.unlink(missing_ok=True)
 
 
@@ -259,26 +318,55 @@ def update_files(self, version_text, version_index, total_versions):
             str(item.relative_to(source)).replace("\\", "/").lower(),
         ),
     )
-    for index, item in enumerate(ordered, start=1):
-        relative = item.relative_to(source)
-        destination = target / relative
-        if item.name.lower() == current_name:
-            continue
-        if item.is_file() and is_update_config_path(relative):
-            continue
-        if item.is_dir():
-            destination.mkdir(exist_ok=True, parents=True)
-        else:
-            destination.parent.mkdir(exist_ok=True, parents=True)
-            shutil.copy2(item, destination)
-            if item.stat().st_size != destination.stat().st_size:
-                raise RuntimeError(L("size_mismatch", path=relative))
-            if file_sha256(item) != file_sha256(destination):
-                raise RuntimeError(L("hash_mismatch", path=relative))
-        self._set_progress(
-            version_index, total_versions, 0.55 + index / total * 0.35,
-            L("applying", version=version_text),
-        )
+    backup_root = Path(tempfile.mkdtemp(prefix="update-backup-", dir=str(target)))
+    replaced = []
+    created = []
+    try:
+        for index, item in enumerate(ordered, start=1):
+            relative = item.relative_to(source)
+            destination = target / relative
+            if item.name.lower() == current_name:
+                continue
+            if item.is_file() and is_update_config_path(relative):
+                continue
+            if item.is_dir():
+                destination.mkdir(exist_ok=True, parents=True)
+            else:
+                destination.parent.mkdir(exist_ok=True, parents=True)
+                if destination.exists():
+                    backup = backup_root / relative
+                    backup.parent.mkdir(exist_ok=True, parents=True)
+                    shutil.copy2(destination, backup)
+                    replaced.append((destination, backup))
+                else:
+                    created.append(destination)
+                staged = destination.with_name(destination.name + ".update-new")
+                shutil.copy2(item, staged)
+                if file_sha256(item) != file_sha256(staged):
+                    staged.unlink(missing_ok=True)
+                    raise RuntimeError(L("hash_mismatch", path=relative))
+                os.replace(staged, destination)
+            self._set_progress(
+                version_index, total_versions, 0.55 + index / total * 0.35,
+                L("applying", version=version_text),
+            )
+    except Exception as error:
+        rollback_errors = []
+        for destination in reversed(created):
+            try:
+                destination.unlink(missing_ok=True)
+            except OSError as rollback_error:
+                rollback_errors.append(str(rollback_error))
+        for destination, backup in reversed(replaced):
+            try:
+                shutil.copy2(backup, destination)
+            except OSError as rollback_error:
+                rollback_errors.append(str(rollback_error))
+        if rollback_errors:
+            raise RuntimeError(f"{error}; 更新回滚不完整: {'; '.join(rollback_errors)}") from error
+        raise
+    finally:
+        shutil.rmtree(backup_root, ignore_errors=True)
 
 
 class Updater:
