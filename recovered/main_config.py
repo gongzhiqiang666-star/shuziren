@@ -3,6 +3,11 @@
 import logging
 import os
 from copy import deepcopy
+import tempfile
+
+
+class UserConfigError(ValueError):
+    pass
 
 
 def resolve_user_config_path():
@@ -16,23 +21,44 @@ def write_user_config(path, config):
     """Write a prepared user configuration using the recovered replacement sequence."""
     import yaml
 
-    path = os.fspath(path)
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    temporary = path + ".tmp"
-    with open(temporary, "w", encoding="utf-8") as stream:
-        yaml.safe_dump(config, stream, allow_unicode=True, sort_keys=False)
-    os.replace(temporary, path)
+    if not isinstance(config, dict):
+        raise UserConfigError("用户配置必须是字典")
+    path = os.path.abspath(os.fspath(path))
+    parent = os.path.dirname(path)
+    os.makedirs(parent, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=os.path.basename(path) + ".", suffix=".tmp", dir=parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            yaml.safe_dump(config, stream, allow_unicode=True, sort_keys=False)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        try:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+        except OSError:
+            pass
 
 
 def load_user_config(path):
     import yaml
 
+    if not os.path.exists(path):
+        return {}
     try:
         with open(path, "r", encoding="utf-8") as stream:
             config = yaml.safe_load(stream)
-    except Exception:
+    except (OSError, UnicodeError, yaml.YAMLError):
+        # YAML parser errors may quote the damaged line, which can contain a
+        # credential. Keep the user-facing failure explicit without chaining
+        # secret-bearing parser diagnostics into application logs.
+        raise UserConfigError("用户配置损坏或无法读取，请先备份后修复") from None
+    if config is None:
         return {}
-    return config if isinstance(config, dict) else {}
+    if not isinstance(config, dict):
+        raise UserConfigError("用户配置根节点必须是字典")
+    return config
 
 
 def save_user_config(path, updates):
@@ -98,14 +124,23 @@ USER_PRIVATE_CONFIG_KEYS = frozenset({
     "access_key", "access_key_id", "access_key_secret", "access_token",
     "api_key", "authorization", "cookie", "group_id", "password",
     "passwd", "refresh_token", "secret", "secret_key", "token",
+    "api_secret", "app_secret", "ark_api_key", "client_secret", "id_token",
+    "minimax_api_key", "private_key", "runninghub_api_key", "session_token",
 })
+
+
+def _is_private_key(key):
+    normalized = str(key).strip().lower().replace("-", "_")
+    return normalized in USER_PRIVATE_CONFIG_KEYS or normalized.endswith((
+        "_api_key", "_secret", "_password", "_passwd", "_token", "_cookie",
+    ))
 
 
 def clear_private_config(value):
     """Blank private fields in an in-memory configuration tree."""
     if isinstance(value, dict):
         for key, item in value.items():
-            if str(key).lower() in USER_PRIVATE_CONFIG_KEYS:
+            if _is_private_key(key):
                 value[key] = ""
             else:
                 clear_private_config(item)
@@ -123,7 +158,7 @@ def extract_private_config(value):
     if isinstance(value, dict):
         extracted = {}
         for key, item in value.items():
-            if str(key).lower() in USER_PRIVATE_CONFIG_KEYS:
+            if _is_private_key(key):
                 if _has_private_value(item):
                     extracted[key] = deepcopy(item)
             else:
