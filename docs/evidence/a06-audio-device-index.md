@@ -51,3 +51,9 @@ Windows 实测选择 VB-Audio CABLE Input 全局编号 4，使用产品播放器
 每个成功任务在独立目录生成 `manifest.json`，记录 schema、源文件名与 SHA-256、16 kHz 规范化音频 SHA-256、ASR 模型根标识、最小/最大分段参数，以及每段的文件名、文本、起止毫秒、时长和 WAV/TXT SHA-256。manifest 先写 pending，flush/fsync 后原子替换；manifest 失败会使整个任务失败并由 API 清理该任务目录。
 
 自动回归累计 3 项，新增两段构造识别结果的 manifest 字段、摘要和 pending 清理验证。真实 FunASR 再跑 22.49 秒 WAV，API 返回 manifest，源摘要为 `3f163b0f…d8007`，规范化音频摘要为 `cd8741c9…2797f`，4 段的 8 个媒体/文本摘要均为 64 位。真实产物只保留本机，不提交媒体。
+
+## Whisper/SRT 临时文件生命周期
+
+音频识别不再在源文件旁创建固定 `{stem}_temp.wav`，改用独立系统临时目录；识别文本写入同目录随机 pending，flush/fsync 后原子替换，失败保留旧 `.txt`。SRT 音轨提取也由固定 stem 文件改为 `mkstemp` 唯一 WAV，FFmpeg 失败立即删除预创建文件。
+
+恢复契约验证两个同名 SRT 输入的临时路径不同、FFmpeg 失败无残留；音频 ASR 成功和失败均清理临时目录与模型，失败时已存在文本保持原值且无 pending。完整恢复基线通过。本项是生命周期验证，真实 Whisper 模型推理另行记录。

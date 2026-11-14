@@ -791,11 +791,12 @@ def verify_asr_temp_audio_lifecycle():
     import recovered.asr_main as asr
     with tempfile.TemporaryDirectory() as directory:
         source=Path(directory)/"sample.mp4";source.write_bytes(b"video")
-        temp_audio=Path(directory)/"sample_temp.wav";cleaned=[]
+        converted_paths=[];cleaned=[]
         originals=(asr.subprocess.run,asr.load_whisper_model,asr.transcribe_with_whisper,
                    asr.whisper_result_to_text,asr.cleanup_whisper_model)
         def convert(command,**_kwargs):
-            Path(command[-1]).write_bytes(b"RIFF");return types.SimpleNamespace(returncode=0)
+            converted_paths.append(Path(command[-1]));Path(command[-1]).write_bytes(b"RIFF")
+            return types.SimpleNamespace(returncode=0)
         try:
             asr.subprocess.run=convert;asr.load_whisper_model=lambda _path:"model"
             asr.transcribe_with_whisper=lambda *_args,**_kwargs:{"text":"识别结果"}
@@ -804,12 +805,15 @@ def verify_asr_temp_audio_lifecycle():
             result=asr.recognize_audio(source,Path(directory)/"weights")
             assert result=={"text":"识别结果","output_path":str(source.with_suffix('.txt'))}
             assert source.with_suffix('.txt').read_text(encoding="utf-8")=="识别结果"
-            assert not temp_audio.exists() and cleaned==["model"]
+            assert converted_paths[0].parent!=source.parent and not converted_paths[0].exists()
+            assert cleaned==["model"]
             asr.transcribe_with_whisper=lambda *_args,**_kwargs:(_ for _ in ()).throw(RuntimeError("asr failed"))
             try:asr.recognize_audio(source,Path(directory)/"weights")
             except RuntimeError as error:assert str(error)=="asr failed"
             else:raise AssertionError("ASR failure must propagate")
-            assert not temp_audio.exists() and cleaned==["model","model"]
+            assert source.with_suffix('.txt').read_text(encoding="utf-8")=="识别结果"
+            assert not converted_paths[1].exists() and cleaned==["model","model"]
+            assert not list(source.parent.glob(".*.pending"))
         finally:
             (asr.subprocess.run,asr.load_whisper_model,asr.transcribe_with_whisper,
              asr.whisper_result_to_text,asr.cleanup_whisper_model)=originals
@@ -3487,6 +3491,25 @@ def verify_get_srt_lifecycle():
         rows=srt._build_subtitles_from_plain_text({},6000)
         assert rows==[(0,1500,"甲，"),(1500,4500,"乙乙乙！"),(4500,6000,"丙丙")]
     finally:srt.whisper_result_to_text=original_text
+    original_which=srt.shutil.which;original_run=srt.subprocess.run
+    extracted=[]
+    def extract_ok(command,**_kwargs):
+        extracted.append(Path(command[-1]));Path(command[-1]).write_bytes(b"wav")
+        return types.SimpleNamespace(returncode=0)
+    try:
+        srt.shutil.which=lambda _name:"ffmpeg";srt.subprocess.run=extract_ok
+        first=srt._extract_audio_for_asr("same.mp4");second=srt._extract_audio_for_asr("same.mp4")
+        assert first!=second and Path(first).is_file() and Path(second).is_file()
+        Path(first).unlink();Path(second).unlink()
+        def extract_fail(command,**_kwargs):
+            extracted.append(Path(command[-1]));raise subprocess.CalledProcessError(1,command)
+        srt.subprocess.run=extract_fail
+        try:srt._extract_audio_for_asr("bad.mp4")
+        except subprocess.CalledProcessError:pass
+        else:raise AssertionError("subtitle audio extraction failure must propagate")
+        assert not extracted[-1].exists()
+    finally:
+        srt.shutil.which=original_which;srt.subprocess.run=original_run
     with tempfile.TemporaryDirectory() as directory:
         root=Path(directory);video=root/"input.mp4";video.write_bytes(b"video")
         audio=root/"temp.wav";events=[]

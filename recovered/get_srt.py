@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -50,10 +51,15 @@ def _extract_audio_for_asr(video_path: str) -> str:
     ffmpeg = shutil.which("ffmpeg") or shutil.which("ffmpeg.exe")
     if not ffmpeg:
         raise RuntimeError("未找到 ffmpeg")
-    output = str(Path(tempfile.gettempdir()) / (Path(video_path).stem + "_subtitle_asr.wav"))
-    subprocess.run([ffmpeg, "-y", "-i", video_path, "-map", "0:a:0", "-vn", "-ac", "1",
-                    "-ar", "16000", "-acodec", "pcm_s16le", output], capture_output=True, check=True)
-    return output
+    descriptor, output = tempfile.mkstemp(prefix="shuziren-subtitle-asr-", suffix=".wav")
+    os.close(descriptor)
+    try:
+        subprocess.run([ffmpeg, "-y", "-i", video_path, "-map", "0:a:0", "-vn", "-ac", "1",
+                        "-ar", "16000", "-acodec", "pcm_s16le", output], capture_output=True, check=True)
+        return output
+    except Exception:
+        Path(output).unlink(missing_ok=True)
+        raise
 
 
 def get_media_duration_ms(video_path: str) -> int:
