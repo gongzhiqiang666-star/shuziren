@@ -1192,6 +1192,9 @@ class ConsoleHTTPTests(unittest.TestCase):
         last_report = {'period_start': '2026-11-04', 'period_end': '2026-11-04'}
         for period in (first_report, last_report):
             self.assertEqual(self.call(route, {**base, **period, 'orders': 1})[0], 200)
+        gap_day = {'period_start': '2026-11-03', 'period_end': '2026-11-03'}
+        for different_basis in ({'source': '人工盘点'}, {'scope': '店铺日统计'}):
+            self.assertEqual(self.call(route, {**base, **gap_day, **different_basis, 'orders': 9})[0], 200)
         for start, end in [('01', '04'), ('02', '02'), ('01', '01'), ('01', '03'), ('05', '05')]:
             with self.subTest(start=start, end=end):
                 query = urlencode({**base, 'period_start': '2026-11-' + start,
@@ -1200,6 +1203,12 @@ class ConsoleHTTPTests(unittest.TestCase):
                 self.assertEqual(status, 400)
                 self.assertIn('覆盖', error['error'])
         self.assertEqual(self.call(route + '/summary?' + urlencode({**base, **first_report}))[0], 200)
+        self.assertEqual(self.call(route, {**base, **gap_day, 'orders': 2, 'stock': 10})[0], 200)
+        query = urlencode({**base, 'period_start': first_report['period_start'],
+                           'period_end': last_report['period_end']})
+        self.assertEqual(self.call(route + '/summary?' + query), (200, {'summary': {
+            'clicks': None, 'orders': 4, 'refunds': None, 'closing_stock': None,
+        }}))
 
     def test_business_metrics_summary_preserves_large_integer_totals(self):
         route = '/api/products/business-metrics'
