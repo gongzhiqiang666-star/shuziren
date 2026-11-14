@@ -6,6 +6,7 @@ import requests
 
 from .live_sticker_prompts import ROOM_TITLE_SYSTEM_PROMPT, build_room_title_user_prompt, parse_room_titles
 from .llm_base_chat import base_chat, get_llm_config
+from .content_grounding import validate_grounded_claims
 
 
 ARK_CHAT_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
@@ -41,21 +42,23 @@ def _chat_ark(api_key: str, product: dict, model: str = ARK_TITLE_MODEL) -> str:
 
 def generate_room_titles(product, *, ark_api_key=""):
     errors = []
-    content = None
-    used_model = ""
-    try:
-        content = base_chat(build_room_title_user_prompt(product), ROOM_TITLE_SYSTEM_PROMPT,
-                            raise_on_failure=True)
-        used_model = "llm_config"
-    except Exception as error:
-        errors.append(f"llm_config: {error}")
-    if content is None:
+
+    def parse_and_validate(content):
+        titles = parse_room_titles(content)
+        for title in titles:
+            validate_grounded_claims(product, title, label="直播间标题")
+        return titles
+
+    providers = (
+        ("llm_config", lambda: base_chat(
+            build_room_title_user_prompt(product), ROOM_TITLE_SYSTEM_PROMPT,
+            raise_on_failure=True)),
+        (f"ark: {ARK_TITLE_MODEL}", lambda: _chat_ark(ark_api_key, product)),
+    )
+    for used_model, provider in providers:
         try:
-            content = _chat_ark(ark_api_key, product)
-            used_model = f"ark: {ARK_TITLE_MODEL}"
+            titles = parse_and_validate(provider())
+            return {"room_titles": titles, "room_title": titles[0], "title_model": used_model}
         except Exception as error:
-            errors.append(f"ark: {error}")
-    if content is None:
-        raise ValueError("生成直播间标题失败: " + " | ".join(errors))
-    titles = parse_room_titles(content)
-    return {"room_titles": titles, "room_title": titles[0], "title_model": used_model}
+            errors.append(f"{used_model}: {error}")
+    raise ValueError("生成直播间标题失败: " + " | ".join(errors))
