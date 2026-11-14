@@ -49,7 +49,7 @@
 | CNT-011 | IP 视频发布 | `publish_ip_agent_video` | `main.py`, `ip_publish.py` | 静态验证通过 | 四平台白名单；视频 SHA-256 与 FFprobe、标题/标签/封面/账号/定时边界；支持无副作用 `dry_run`，稳定请求号防止成功任务重复发布，显式 `force_republish` 才重发，并持久化计划/结果审计。5 项专项测试通过，未对外发布。真实账号登录、草稿/立即/定时发布及失败重试待授权平台验证，见 `evidence/v02-ip-publish.md` |
 | CNT-012 | 直播贴片项目管理 | main CRUD/helper wrapper/body 与 26 字段 YAML、五类固定输出、历史归档及旧项目迁移证据，见 `rea-output/main-live-sticker-project-notes.md` | `main.py` | 静态验证通过 | Windows 原 `.pyd` 响应差分、真实旧项目、连续生成归档、文件占用/权限错误和前端预览 |
 | CNT-013 | 贴片提示词、房间标题和图片生成 | 对应 `live_sticker_*` 原生模块 | `live_sticker_prompts.py`, `live_sticker_titles.py`, `runninghub_image.py` | 静态验证通过 | 真实 LLM/图片服务、失败重试和图片比例 |
-| CNT-014 | 云端数字人项目与音视频生成 | `cloud_dh` 项目 API | `main.py`, `runninghub_talk.py`, `cloud_dh_prompts.py` | 开发中 | 真实 API、上传、轮询、超时、产物归档 |
+| CNT-014 | 云端数字人项目与音视频生成 | `cloud_dh` 项目 API | `main.py`, `runninghub_talk.py`, `cloud_dh_prompts.py` | 开发中 | RunningHub 无 URL 完成态、轮询边界、HTTPS/大小/MP4 下载校验、临时写入原子发布及“新片完整后才归档旧片”通过 4 项测试和完整契约，见 `evidence/v02-cloud-dh-transaction.md`。经授权真实 API 的图片生成、上传、队列轮询、超时和成片归档仍待验 |
 | CNT-015 | 短视频配音、合成、列表和删除 | `generate_audio_for_short_video/create_short_video` | `short_video_audio_synthesis.py`, `generate_lip_sync_video.py` | 静态验证通过 | Windows FFmpeg、各语言 TTS、真实长视频和失败清理 |
 | CNT-016 | 字幕生成和烧录 | `add_subtitles_to_video.pyd`、SRT 链 | `add_subtitles_to_video.py`, `get_srt.py` | 静态验证通过 | 中文字体、长文本、时间轴、硬件编码和成片校验 |
 

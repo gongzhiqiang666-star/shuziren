@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import time
+import os
 from pathlib import Path
+from urllib.parse import urlparse
+import uuid
 
 import requests
 
@@ -18,6 +21,7 @@ RH_BASE = "https://www.runninghub.cn"
 # overridden because RunningHub workflow IDs can be copied/replaced by users.
 DIGITAL_HUMAN_WEBAPP_ID = "1937084629518794754"
 RETRY_DELAYS = (1, 2, 3)
+MAX_DOWNLOAD_BYTES = 2 * 1024**3
 
 
 def _as_path(path):
@@ -108,7 +112,8 @@ def query_talk_task(*, api_key: str, task_id: str):
     if direct:
         urls.insert(0, direct)
     failed = raw in {"FAILED", "FAIL", "ERROR", "CANCELLED"}
-    success = bool(urls) or raw in {"SUCCESS", "SUCCEEDED", "COMPLETED", "FINISHED"}
+    # A completed status without an output URL is not downloadable success yet.
+    success = bool(urls)
     status = "failed" if failed else "success" if success else "running" if raw in {"RUNNING", "PROCESSING"} else "queued"
     return {
         "task_id": str(task_id), "status": status,
@@ -120,17 +125,43 @@ def query_talk_task(*, api_key: str, task_id: str):
 
 
 def download_file(url: str, dest, timeout: int = 300) -> Path:
+    parsed = urlparse(str(url))
+    if parsed.scheme.lower() != "https" or not parsed.netloc:
+        raise ValueError("RunningHub 输出必须使用 HTTPS 下载地址")
     target = _as_path(dest)
     target.parent.mkdir(parents=True, exist_ok=True)
-    response = requests.get(url, timeout=timeout)
-    response.raise_for_status()
-    target.write_bytes(response.content)
-    return target
+    temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.partial")
+    total = 0
+    try:
+        with requests.get(url, timeout=timeout, stream=True) as response:
+            response.raise_for_status()
+            declared = int(response.headers.get("Content-Length") or 0)
+            if declared > MAX_DOWNLOAD_BYTES:
+                raise RuntimeError("RunningHub 输出超过允许大小")
+            with temporary.open("wb") as output:
+                for chunk in response.iter_content(1024 * 1024):
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > MAX_DOWNLOAD_BYTES:
+                        raise RuntimeError("RunningHub 输出超过允许大小")
+                    output.write(chunk)
+                output.flush(); os.fsync(output.fileno())
+        if total < 12:
+            raise RuntimeError("RunningHub 输出为空或过短")
+        if b"ftyp" not in temporary.read_bytes()[:32]:
+            raise RuntimeError("RunningHub 输出不是有效 MP4 容器")
+        os.replace(temporary, target)
+        return target
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def generate_talk_video(*, api_key: str, image_path, audio_path, dest,
                         audio_duration: float | None = None, poll_interval: int = 10,
                         poll_timeout: int = 2400):
+    if not 0 <= poll_interval <= 300 or not 1 <= poll_timeout <= 86400:
+        raise ValueError("轮询间隔或超时无效")
     image_remote = upload_file(api_key=api_key, file_path=image_path)
     audio_remote = upload_file(api_key=api_key, file_path=audio_path)
     duration = float(audio_duration) if audio_duration is not None else get_audio_duration(str(audio_path))

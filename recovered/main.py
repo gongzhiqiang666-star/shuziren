@@ -2240,6 +2240,8 @@ class Api(PluginInstallerApi):
             target = Path(self._get_cloud_dh_history_dir(project_id)) / datetime.now().strftime("%Y%m%d_%H%M%S")
             target.mkdir(parents=True, exist_ok=True)
             for path in existing: shutil.copy2(path, target / path.name)
+            return str(target)
+        return ""
 
     def _attach_cloud_dh_previews(self, project):
         import base64
@@ -2329,10 +2331,21 @@ class Api(PluginInstallerApi):
             outputs = self._get_cloud_dh_output_paths(project_id)
             if not Path(outputs["avatar"]).is_file(): raise FileNotFoundError("请先生成或选择数字人形象")
             if not Path(outputs["audio"]).is_file(): raise FileNotFoundError("请先选择口播音频")
-            result = generate_talk_video(api_key=self._resolve_cloud_dh_api_key(data), image_path=outputs["avatar"],
-                                         audio_path=outputs["audio"], dest=outputs["video"],
-                                         poll_interval=int(data.get("poll_interval", 10)), poll_timeout=int(data.get("poll_timeout", 2400)))
-            info["last_task"] = result; info = self._save_cloud_dh_project(project_id, info)
+            target = Path(outputs["video"])
+            staged = target.with_name(".数字人口播.pending.mp4")
+            staged.unlink(missing_ok=True)
+            try:
+                result = generate_talk_video(api_key=self._resolve_cloud_dh_api_key(data), image_path=outputs["avatar"],
+                                             audio_path=outputs["audio"], dest=staged,
+                                             poll_interval=int(data.get("poll_interval", 10)), poll_timeout=int(data.get("poll_timeout", 2400)))
+                archive = self._archive_cloud_dh_outputs(project_id, info) if target.is_file() else ""
+                os.replace(staged, target)
+            finally:
+                staged.unlink(missing_ok=True)
+            result["video_path"] = str(target)
+            info["last_task"] = result
+            if archive: info["last_archive"] = archive
+            info = self._save_cloud_dh_project(project_id, info)
             return {"status": "success", "result": result, "project": self._attach_cloud_dh_previews(info)}
         except Exception as error: return {"status": "error", "message": f"生成数字人口播失败: {error}"}
 
