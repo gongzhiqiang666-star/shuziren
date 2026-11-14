@@ -117,7 +117,7 @@ class RtmpFaceReader(VideoFaceReader):
             self.width, self.height, self.fps = properties
             self._start_decoder()
         timeout = _env_float("DH_LIVE_INITIAL_FRAME_WAIT_TIMEOUT", 10.0)
-        if not self._wait_for_initial_frame(timeout, cancel):
+        if not self._wait_for_initial_frame_cancelable(timeout, cancel):
             self.stop_capture()
             if cancel is not None and cancel.is_set():
                 raise RuntimeError("RTMP 重连已取消")
@@ -137,7 +137,10 @@ class RtmpFaceReader(VideoFaceReader):
         self.preprocess_thread = threading.Thread(target=self._preprocess_thread, name="rtmp-face-preprocess", daemon=True)
         self.stderr_thread.start(); self.capture_thread.start(); self.preprocess_thread.start()
 
-    def _wait_for_initial_frame(self, timeout, cancel=None):
+    def _wait_for_initial_frame(self, timeout):
+        return self._wait_for_initial_frame_cancelable(timeout, None)
+
+    def _wait_for_initial_frame_cancelable(self, timeout, cancel):
         deadline = time.monotonic() + timeout
         while not self.stop_event.is_set() and time.monotonic() < deadline:
             if cancel is not None and cancel.is_set():

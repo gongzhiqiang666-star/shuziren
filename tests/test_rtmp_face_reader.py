@@ -135,3 +135,13 @@ class RtmpFirstFrameTests(unittest.TestCase):
         reader.capture_thread.is_alive.return_value = True
         with patch('recovered.image_rtmp_face_reader.time.sleep', side_effect=lambda _: reader.first_frame.set()):
             self.assertTrue(reader._wait_for_initial_frame(.5))
+
+    def test_internal_reconnect_wait_still_honors_cancellation(self):
+        reader = RtmpFaceReader.__new__(RtmpFaceReader)
+        reader.stop_event = threading.Event()
+        reader.first_frame = threading.Event()
+        reader.capture_thread = Mock()
+        reader.capture_thread.is_alive.return_value = True
+        cancel = threading.Event()
+        cancel.set()
+        self.assertFalse(reader._wait_for_initial_frame_cancelable(10, cancel))
