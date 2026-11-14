@@ -1004,3 +1004,5 @@ G05-01 音色授权追溯子项完成。文件导入和麦克风录音可登记�
 V09 从 `6afe811` 构建最新本机候选包，454个清单文件完成构建、校验和隔离安装，ZIP SHA-256为`1f6ac7a7c82f03ccbff8964722018173b8a8f9b07d93d225941510a34c49a59e`。隔离版在5249端口返回HTTP 200并包含音色授权入口；同提交全仓471项通过、14项条件跳过、0失败，新音色真实FFmpeg专项另行通过。见 `docs/evidence/v09-current-package.md`。
 
 G05-01 TTS模型身份子项完成。IndexTTS、ZipVoice、OmniVoice均可构建/复核逐文件哈希及许可状态清单，TTS提交和完成口播冻结模型集合、清单及许可快照；缺清单明确显示未登记，损坏清单拒绝启动。专项2/2、TTS状态12/12和前端语法通过。自有独立IndexTTS 10/10文件真实复核一致，集合摘要`c67dcac…37db527`；可靠许可依据缺失，保持unverified。ZipVoice/OmniVoice只在授权参考包，未修改原包，待进入自有媒体包后补建。证据见 `docs/evidence/g05-model-identity.md`。
+
+V09 从 `ba54f8b` 构建模型身份更新候选，455个文件完成构建、校验和隔离安装，ZIP SHA-256为`3ec20d913a49ffc8c4e6fd52447868ba5fa9152dbfd83c67fb6cd41f30e41e14`。5250端口返回HTTP 200，包内模型身份工具及前端授权/模型显示均存在。见 `docs/evidence/v09-current-package.md`。
