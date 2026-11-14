@@ -809,14 +809,28 @@ class Api(PluginInstallerApi):
             return self._stop_live_locked()
 
     def _stop_live_locked(self):
+        errors = []
         for attribute, message in (
             ("_face_hand_live_manager", "人脸人手直播停止失败"),
             ("_record_live_manager", "本地转播/录播运行时停止失败"),
             ("_digital_live_manager", "本地智播停止失败"),
         ):
             manager = getattr(self, attribute, None)
-            if manager is not None and manager.is_broadcasting and not manager.stop_live():
-                return {"status": "error", "message": getattr(manager, "last_error", None) or message}
+            if manager is None or not manager.is_broadcasting:
+                continue
+            try:
+                stopped = manager.stop_live()
+            except Exception as error:
+                stopped = False
+                errors.append(str(error) or message)
+            if not stopped and not errors:
+                errors.append(getattr(manager, "last_error", None) or message)
+            elif not stopped and errors:
+                current = getattr(manager, "last_error", None) or message
+                if current not in errors:
+                    errors.append(current)
+        if errors:
+            return {"status": "error", "message": errors[0]}
         return {"status": "success"}
 
     def _start_live_locked(self, data):
