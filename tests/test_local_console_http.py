@@ -1749,6 +1749,7 @@ class ConsoleHTTPTests(unittest.TestCase):
             status, value = self.call('/api/state')
             self.assertEqual(status, 200)
             self.assertEqual(value['live_status'], '未启动')
+            self.assertNotIn('token', value)
             self.assertEqual(self.call('/api/preparation-templates'), (200, {'templates': []}))
         self.assertEqual(list(Path(self.directory.name).iterdir()), [])
 

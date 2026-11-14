@@ -342,7 +342,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                 if path == "/api/state":
                     with lock:
                         config = store.load()
-                    return self.respond(200, {"config": config, "token": token,
+                    return self.respond(200, {"config": config,
                                               "listening_port": self.server.server_port,
                                               "live_status": live_label(), "data_directory": str(store.directory.resolve())})
                 if path == '/api/live/state':
