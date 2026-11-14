@@ -120,7 +120,10 @@ function showProduct(product) {
   const metrics = $('business-metrics');
   const wasHidden = metrics.hidden;
   metrics.hidden = !product;
-  if (wasHidden && product && location.hash === '#business-metrics') metrics.scrollIntoView();
+  if (location.hash === '#business-metrics') {
+    if (!product) location.replace('#products-panel');
+    else if (wasHidden) metrics.scrollIntoView();
+  }
   $('business-metrics-form').reset();
   $('business-import-form').reset();
   $('settlement-review-form').reset();
