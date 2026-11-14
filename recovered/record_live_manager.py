@@ -56,28 +56,30 @@ def _mix_real_shot_audio(original, narration, start_time, end_time):
 
 def stop_live(self) -> bool:
     """Stop the playback and ingest resources held by the manager."""
-    try:
-        if self.video_player:
-            self.video_player.stop()
-            self.video_player = None
-        if self.stream_ingest:
-            self.stream_ingest.stop()
-            self.stream_ingest = None
-        if self.is_broadcasting:
+    errors = []
+    if self.announcement_session.get("is_active"):
+        try:
             self.cancel_announcement()
-            self.is_broadcasting = False
-        return True
-    except Exception as error:
-        self.last_error = f"停止录播直播时发生错误: {error}"
-        self.video_player = None
-        if self.stream_ingest:
-            try:
-                self.stream_ingest.stop()
-            except Exception:
-                pass
-            self.stream_ingest = None
-        self.is_broadcasting = False
+        except Exception as error:
+            errors.append(error)
+            self._cleanup_session()
+    player, self.video_player = self.video_player, None
+    if player is not None:
+        try:
+            player.stop()
+        except Exception as error:
+            errors.append(error)
+    ingest, self.stream_ingest = self.stream_ingest, None
+    if ingest is not None:
+        try:
+            ingest.stop()
+        except Exception as error:
+            errors.append(error)
+    self.is_broadcasting = False
+    if errors:
+        self.last_error = f"停止录播直播时发生错误: {errors[0]}"
         return False
+    return True
 
 
 class RecordLiveManager:
