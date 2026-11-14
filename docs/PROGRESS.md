@@ -1,5 +1,7 @@
 # 四期任务进度与验证结果
 
+SYS-006 Token 与身份/OEM资源本机补验完成。恰好 16 KiB 字符 Token 原样持久化，超限及失败无副作用；授权 Windows 包真实管理员 ID 与 177,479 字节 PNG 背景读取成功，缺 OEM 配置安全返回空对象。Token 3 项、资源 3 项通过；旧 OEM 和远端登录登记外部待验，见 `docs/evidence/a07-token-persistence.md`。
+
 SYS-005 Windows 主窗口生命周期补验完成。随包 pywebview 两次创建真实“AI数字人直播”窗口，句柄非零且响应正常；Windows 系统关窗请求后均在 5 秒内退出并恰调用一次 shutdown。Computer Use 原生管道仍因 `os error 2` 不可用，页面内点击按要求记录后跳过，不阻塞后续任务，见 `docs/evidence/v01-webview-lifecycle.md`。
 
 SYS-004 Windows 用户配置与私密配置迁移补验完成。隔离 `LOCALAPPDATA` 中真实完成旧私密字段迁移、交付配置清空及启动有效值恢复；损坏文件、迁移写入失败、原子替换失败均不覆盖上一份有效数据。6 项专项与恢复五关通过，见 `docs/evidence/a07-user-config-migration.md`。

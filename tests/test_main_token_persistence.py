@@ -47,6 +47,16 @@ class MainTokenPersistenceTests(unittest.TestCase):
             self.assertEqual(load_user_config(user)["token"], "old")
             self.assertNotIn("secret-must-not-appear", str(result))
 
+    def test_exact_16kib_character_boundary_is_persisted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            user = Path(directory) / "user_config.yaml"
+            api = self.api()
+            token = "界" * Api._TOKEN_MAX_CHARS
+            with patch.object(api, "_resolve_user_config_path", return_value=str(user)):
+                self.assertEqual(api.save_token(token)["status"], "success")
+            self.assertEqual(load_user_config(user)["token"], token)
+            self.assertEqual(api.get_token()["token"], token)
+
 
 if __name__ == "__main__":
     unittest.main()
