@@ -21,3 +21,14 @@
 - 完整报告：`logs/validation/a07-media-software-report-02.json`（本机产物，不提交环境或模型）。
 
 下一步是在新目录重建依赖闭合的媒体环境，执行本门禁后再逐引擎跑 IndexTTS、ZipVoice、OmniVoice、视频直驱、虚拟设备与成片回归。旧环境保持不变作为结果对照。
+
+## 2026-11-14 离线重建条件复核
+
+本机 pip 缓存目录存在，但没有检出上述 37 个直接包及缺失依赖所需的可复用 wheel；因此当前不能用 `--no-index` 在新目录重建完整 CUDA 媒体环境。未从旧环境复制 `site-packages`，也未在旧 CUDA 环境中卸载或升级包。
+
+现有 11 条 `pip check` 结果分为两类：
+
+- 新环境必须补齐并重新锁定的实际依赖：FunASR 的 tensorboardx、Pandas 的 tzdata、PyCUDA 的 mako/pytools、Ultralytics 的 seaborn/ultralytics-thop；ddddocr 与 `opencv-python-headless` 还需确定是否进入默认主环境，避免和当前 `opencv-python` 同时提供 `cv2`。
+- 不应无条件混入默认媒体环境的冲突工具：JAX/JAXlib 要求 NumPy 至少 1.25，py3langid 要求 NumPy 至少 2.0，Streamlit 要求 protobuf 小于 6；当前模型基线分别固定 NumPy 1.24.0 和 protobuf 6.32.1。
+
+重开条件是准备 Windows AMD64/CPython 3.10/CUDA 11.8 的受控 wheelhouse（含 PyTorch 官方 CUDA wheel 和全部传递依赖）。随后在全新目录按“核心媒体环境＋按需工具环境”拆分安装，分别 `pip check`，再逐引擎真实回归。不能为了让旧环境变绿而改变已经实测的 NumPy/protobuf/CUDA 组合。
