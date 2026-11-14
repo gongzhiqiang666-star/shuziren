@@ -8,6 +8,23 @@ from scripts.product_store import Conflict, ProductStore
 
 
 class LiveRotationTests(unittest.TestCase):
+    def test_video_insert_cleanup_error_preserves_scene_failure_record(self):
+        with tempfile.TemporaryDirectory() as directory:
+            live = ConsoleLive(Mock(), directory)
+            live.tts.runtime = directory
+            live.status = {'id': 'scene', 'status': 'preparing', 'mode': 'local_video',
+                           'requested_at': 100, 'frames': 0}
+            live.video_insert_snapshot = 'insert.wav'
+            with (patch('scripts.console_live.subprocess.Popen', side_effect=OSError('worker unavailable')),
+                  patch('scripts.console_live.Path.unlink', side_effect=PermissionError('file in use')),
+                  self.assertLogs(level='ERROR')):
+                live._run_video('scene', 1, 'input.mp4', 'cuda')
+            self.assertEqual(live.status['status'], 'failed')
+            self.assertIsNone(live.video_insert_snapshot)
+            recorded = live.tts.products.record_live_session.call_args.kwargs
+            self.assertEqual(recorded['status'], 'failed')
+            self.assertEqual(recorded['failure_reason'], 'worker unavailable')
+
     def test_failed_preparation_application_keeps_pending_rotation_audio(self):
         with tempfile.TemporaryDirectory() as directory:
             tts = Mock()
