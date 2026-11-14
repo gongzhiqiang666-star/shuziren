@@ -13,6 +13,24 @@ from scripts.product_store import Conflict, ProductError, ProductStore, product_
 
 
 class ProductStoreTests(unittest.TestCase):
+    def test_preparation_application_distinguishes_review_edits(self):
+        product = self.product()
+        script = self.store.add_script(product, '商品话术')
+        self.store.select_script(product['id'], script)
+        self.store.save_live_preparation(product_ids=[product['id']])
+        revision = self.store.build_live_preparation()['revision']
+        self.store.record_live_session('scene', 100)
+        self.store.save_live_preparation_review(revision, '初次审核')
+        first = self.store.live_preparation_rotation(revision, include_improvements=True)
+        self.store.record_preparation_application('scene', first, verify_items=True)
+        self.store.save_live_preparation_review(revision, '修订审核')
+        with self.assertRaisesRegex(Conflict, '审阅稿已变化'):
+            self.store.record_preparation_application('scene', first, verify_items=True)
+        second = self.store.live_preparation_rotation(revision, include_improvements=True)
+        self.assertNotEqual(first['review_digest'], second['review_digest'])
+        self.store.record_preparation_application('scene', second, verify_items=True)
+        self.assertEqual(self.store.live_preparation_applications('scene'), [first, second])
+
     def test_preparation_application_rechecks_selected_script_before_recording(self):
         product = self.product()
         product_id = product['id']

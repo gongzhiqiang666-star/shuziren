@@ -1967,6 +1967,7 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
     }
     for (const application of preparation_applications) {
       lines.push(`已载入准备包 ${application.revision}`);
+      if (application.review_digest) lines.push(`审阅稿指纹 ${application.review_digest}`);
       for (const task of application.after_sales_tasks ?? []) {
         const title = application.items.find(item => item.product_id === task.product_id)?.title ?? task.product_id;
         const category = afterSalesCategories[task.category] ?? task.category;

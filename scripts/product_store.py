@@ -436,6 +436,7 @@ class ProductStore:
                           'script_id': script_id})
         rotation = {'revision': revision, 'items': items}
         if include_improvements:
+            rotation['review_digest'] = hashlib.sha256(package['review'].encode('utf-8')).hexdigest()
             rotation['improvements'] = package['improvements']
             rotation['after_sales_tasks'] = package['after_sales_tasks']
         return rotation
@@ -444,6 +445,12 @@ class ProductStore:
         with self.connect() as db:
             if verify_items:
                 db.execute('BEGIN IMMEDIATE')
+                if 'review_digest' in preparation:
+                    review = db.execute('SELECT review FROM live_preparation_review WHERE revision=?',
+                                        (preparation['revision'],)).fetchone()
+                    if (review is None or hashlib.sha256(review['review'].encode('utf-8')).hexdigest()
+                            != preparation['review_digest']):
+                        raise Conflict('准备包审阅稿已变化，请重新预览')
                 for item in preparation['items']:
                     product = db.execute('SELECT version FROM products WHERE id=?',
                                          (item['product_id'],)).fetchone()
