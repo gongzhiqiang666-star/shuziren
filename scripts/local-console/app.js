@@ -1154,11 +1154,15 @@ const preparationPreview = $('preparation-preview');
 const preparationReviewSave = $('preparation-review-save');
 let preparationRevision;
 let preparedRotation = null;
+let savedPreparationReview = null;
 $('preparation-apply').addEventListener('click', async event => {
   const button = event.currentTarget;
   button.disabled = true;
   $('preparation-error').textContent = '';
   try {
+    if ($('preparation-package').value !== savedPreparationReview) {
+      throw new Error('请先保存当前审阅稿，再载入轮播');
+    }
     const {revision, items} = await request(preparationRoute + '/rotation', {revision:preparationRevision});
     const missing = items.filter(item => !item.script_id);
     if (missing.length) throw new Error('请先选用话术：' + missing.map(item => item.title).join('、'));
@@ -1180,7 +1184,10 @@ preparationReviewSave.addEventListener('click', async () => {
   preparationReviewSave.disabled = true;
   $('preparation-error').textContent = '';
   try {
-    await request(preparationRoute + '/review', {revision:preparationRevision, review:$('preparation-package').value});
+    const revision = preparationRevision;
+    const review = $('preparation-package').value;
+    await request(preparationRoute + '/review', {revision, review});
+    if (preparationRevision === revision) savedPreparationReview = review;
     $('preparation-status').textContent = '审阅稿已保存';
   } catch (error) {
     $('preparation-error').textContent = error.message;
@@ -1245,6 +1252,7 @@ preparationPreview.addEventListener('click', async () => {
       }));
     }
     preparationRevision = revision;
+    savedPreparationReview = review;
     $('preparation-package').value = review ?? lines.join('\n');
     $('preparation-package-panel').hidden = false;
   } catch (error) {
@@ -1380,6 +1388,7 @@ preparationForm.addEventListener('submit', async event => {
     updatePreparationPreview(savedDraft);
     $('preparation-package-panel').hidden = true;
     $('preparation-package').value = '';
+    savedPreparationReview = null;
     $('preparation-status').textContent = missing.length ? '草稿已保存，以下条件待补' : '草稿已保存，条件已填齐';
   } catch (error) {
     $('preparation-error').textContent = error.message;
