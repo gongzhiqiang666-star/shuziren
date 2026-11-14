@@ -1773,20 +1773,91 @@ class Api(PluginInstallerApi):
         except Exception as error: return {"status": "error", "message": f"成片后期处理失败: {error}"}
 
     def one_click_create_ip_agent_video(self, project_id, data):
-        steps = []
-        for name, operation in (("audio", self.generate_audio_for_ip_agent_project),
-                                ("video", self.create_ip_agent_video),
-                                ("subtitles", self.add_subtitles_to_ip_agent_video),
-                                ("finishing", self.apply_ip_agent_finishing),
-                                ("publish_meta", self.generate_ip_agent_publish_meta)):
-            result = operation(project_id, data); steps.append({"step": name, "result": result})
-            if result.get("status") != "success":
-                return {"status": "error", "message": result.get("message"), "steps": steps}
-        try:
-            info = self._load_ip_agent_project(project_id); info["one_click_last_result"] = steps
-            self._save_ip_agent_project(project_id, info)
-        except Exception: pass
-        return {"status": "success", "steps": steps, "project": self.get_ip_agent_project(project_id).get("project")}
+        from datetime import datetime
+        from .ip_pipeline import (PIPELINE_VERSION, StepFileCheckpoint,
+                                  completed_step_ready, pipeline_fingerprint,
+                                  project_pipeline_lock, result_summary)
+
+        if not isinstance(data, dict):
+            return {"status": "error", "message": "一键成片参数格式错误", "steps": []}
+        operations = (("audio", self.generate_audio_for_ip_agent_project),
+                      ("video", self.create_ip_agent_video),
+                      ("subtitles", self.add_subtitles_to_ip_agent_video),
+                      ("finishing", self.apply_ip_agent_finishing),
+                      ("publish_meta", self.generate_ip_agent_publish_meta))
+        with project_pipeline_lock(project_id):
+            try:
+                project = self._load_ip_agent_project(project_id)
+                if not project:
+                    raise FileNotFoundError("IP项目不存在")
+                fingerprint = pipeline_fingerprint(project_id, data, project)
+                previous = project.get("one_click_pipeline") or {}
+                completed = list(previous.get("completed_steps") or []) if (
+                    previous.get("version") == PIPELINE_VERSION and
+                    previous.get("fingerprint") == fingerprint
+                ) else []
+                completed = [name for name in completed if name in dict(operations) and completed_step_ready(name, project)]
+                if previous.get("status") == "complete" and len(completed) == len(operations):
+                    return {"status": "success", "already_complete": True,
+                            "steps": previous.get("steps") or [], "project": project}
+                state = {
+                    "version": PIPELINE_VERSION, "fingerprint": fingerprint,
+                    "status": "running", "current_step": "", "completed_steps": completed,
+                    "steps": list(previous.get("steps") or []) if completed else [],
+                    "started_at": previous.get("started_at") or datetime.now().isoformat(timespec="seconds"),
+                    "updated_at": datetime.now().isoformat(timespec="seconds"),
+                }
+                project["one_click_pipeline"] = state
+                project["one_click_last_result"] = state["steps"]
+                self._save_ip_agent_project(project_id, project)
+            except Exception as error:
+                return {"status": "error", "message": str(error), "steps": []}
+
+            for name, operation in operations:
+                project = self._load_ip_agent_project(project_id)
+                if name in completed and completed_step_ready(name, project):
+                    continue
+                state["current_step"] = name
+                state["updated_at"] = datetime.now().isoformat(timespec="seconds")
+                project["one_click_pipeline"] = state
+                self._save_ip_agent_project(project_id, project)
+                checkpoint = StepFileCheckpoint(project, name)
+                try:
+                    result = operation(project_id, data)
+                except Exception as error:
+                    result = {"status": "error", "message": str(error)}
+                summary = {"step": name, "result": result_summary(result)}
+                state["steps"] = [item for item in state["steps"] if item.get("step") != name] + [summary]
+                if result.get("status") != "success":
+                    rollback_errors = checkpoint.rollback()
+                    state.update({"status": "failed", "current_step": name,
+                                  "updated_at": datetime.now().isoformat(timespec="seconds")})
+                    project = self._load_ip_agent_project(project_id)
+                    project["one_click_pipeline"] = state
+                    project["one_click_last_result"] = state["steps"]
+                    self._save_ip_agent_project(project_id, project)
+                    message = result.get("message") or result.get("error") or f"{name} 步骤失败"
+                    if rollback_errors:
+                        message += "；文件回滚不完整: " + "; ".join(rollback_errors)
+                    return {"status": "error", "message": message, "failed_step": name,
+                            "resumable": not rollback_errors, "steps": state["steps"]}
+                checkpoint.close()
+                completed.append(name)
+                state["completed_steps"] = completed.copy()
+                state["current_step"] = ""
+                state["updated_at"] = datetime.now().isoformat(timespec="seconds")
+                project = self._load_ip_agent_project(project_id)
+                project["one_click_pipeline"] = state
+                project["one_click_last_result"] = state["steps"]
+                self._save_ip_agent_project(project_id, project)
+            state.update({"status": "complete", "current_step": "",
+                          "completed_at": datetime.now().isoformat(timespec="seconds"),
+                          "updated_at": datetime.now().isoformat(timespec="seconds")})
+            project = self._load_ip_agent_project(project_id)
+            project["one_click_pipeline"] = state
+            project["one_click_last_result"] = state["steps"]
+            project = self._save_ip_agent_project(project_id, project)
+            return {"status": "success", "steps": state["steps"], "project": project}
 
     def publish_ip_agent_video(self, project_id, data):
         import asyncio

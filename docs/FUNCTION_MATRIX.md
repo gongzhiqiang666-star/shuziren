@@ -45,7 +45,7 @@
 | CNT-007 | IP 文案爆款拆解与多版本改写 | `rewrite_ip_script` 主体和常量表 | `main.py` | 静态验证通过 | Windows 原 `.pyd` 输出差分和真实 LLM 输出 |
 | CNT-008 | 抖音/IP 对标视频提取 | `extract_douyin_benchmark` | `main.py`, `douyin_benchmark.py` | 静态验证通过 | 仅接受抖音官方 HTTPS 分享链接，下载产物必须位于工具目录、非空且为允许的视频扩展名，ASR 前用 FFprobe 验证真实视频轨；项目 benchmark 目录事务替换。4 项专项测试通过，本机 1 秒 H.264/AAC 媒体实测视频轨与时长有效。真实抖音登录/验证码/风控、失效短链及下载器升级待平台验证，见 `evidence/v02-douyin-benchmark.md` |
 | CNT-009 | IP 发布标题、简介、标签生成 | `generate_ip_agent_publish_meta` wrapper/body `0x180142690/0x180142a40` | `main.py`, `generate_title.py` | 静态验证通过 | Windows 原 `.pyd` 差分和真实 LLM 输出质量 |
-| CNT-010 | IP 一键成片流水线 | 音频→视频→字幕→精加工→发布 API | `main.py`, `ip_agent_post_process.py` | 开发中 | 全链真实媒体、断点恢复、失败清理和结果一致性 |
+| CNT-010 | IP 一键成片流水线 | 音频→视频→字幕→精加工→发布 API | `main.py`, `ip_pipeline.py`, `ip_agent_post_process.py` | 开发中 | 同请求稳定指纹、项目级串行、逐步持久检查点、产物存在性复核、失败文件回滚、恢复续跑和完成幂等已通过 3 项专项测试及完整契约，见 `evidence/v02-ip-pipeline-checkpoint.md`。仍需真实 TTS→口型→字幕→后期全链故障注入、进程崩溃恢复、临时文件清理和成片一致性后才能提升状态 |
 | CNT-011 | IP 视频发布 | `publish_ip_agent_video` | `main.py`, `ip_publish.py` | 静态验证通过 | 四平台白名单；视频 SHA-256 与 FFprobe、标题/标签/封面/账号/定时边界；支持无副作用 `dry_run`，稳定请求号防止成功任务重复发布，显式 `force_republish` 才重发，并持久化计划/结果审计。5 项专项测试通过，未对外发布。真实账号登录、草稿/立即/定时发布及失败重试待授权平台验证，见 `evidence/v02-ip-publish.md` |
 | CNT-012 | 直播贴片项目管理 | main CRUD/helper wrapper/body 与 26 字段 YAML、五类固定输出、历史归档及旧项目迁移证据，见 `rea-output/main-live-sticker-project-notes.md` | `main.py` | 静态验证通过 | Windows 原 `.pyd` 响应差分、真实旧项目、连续生成归档、文件占用/权限错误和前端预览 |
 | CNT-013 | 贴片提示词、房间标题和图片生成 | 对应 `live_sticker_*` 原生模块 | `live_sticker_prompts.py`, `live_sticker_titles.py`, `runninghub_image.py` | 静态验证通过 | 真实 LLM/图片服务、失败重试和图片比例 |
