@@ -14,6 +14,8 @@ import psutil
 from scripts.avatar_render import verify_media
 from scripts.avatar_store import AvatarStore
 from scripts.continuous_av_sink import ContinuousAVSink
+
+
 from scripts.live_av_device_sink import AVDeviceSink
 from scripts.received_voice_audit import CounterDeviceSink,DeviceCapture,audit_device_deadlines,audit_received_voice
 from scripts.continuous_session import ContinuousSession
@@ -28,6 +30,24 @@ from scripts.validate_render_tasks import wait
 from scripts.voice_store import VoiceStore
 
 
+def summarize_pipe_timing(rows):
+    groups = {'within_5ms': [], 'over_5ms': []}
+    for row in rows:
+        timing = row.get('sink_timing') or {}
+        if not row.get('submit_started_ns') or 'pipe_write_ns' not in timing:
+            continue
+        pipe = timing['pipe_write_ns']
+        mux = timing['video_mux_ns'] + timing['audio_mux_ns']
+        group = 'over_5ms' if row['late_ns'] > 5_000_000 else 'within_5ms'
+        groups[group].append((pipe, mux - pipe))
+    return {
+        name: {
+            'frames': len(samples),
+            'pipe_write_p50_ms': float(np.median([sample[0] for sample in samples])) / 1e6 if samples else None,
+            'mux_excluding_write_p50_ms': float(np.median([sample[1] for sample in samples])) / 1e6 if samples else None,
+        }
+        for name, samples in groups.items()
+    }
 def load_first_output_corpus(path):
     raw=path.read_bytes()
     corpus=json.loads(raw)
@@ -315,6 +335,9 @@ def main():
         subprocess.run([str(ffmpeg),'-nostdin','-y','-v','error','-i',str(root/'live.ts'),'-map','0:v:0','-map','0:a:0','-c','copy',str(root/'audit.mp4')],capture_output=True,check=True,timeout=60)
         media=verify_media(reference_path,root/'audit.mp4',ffmpeg)
         if media['frames']!=args.seconds*25 or sink.samples!=args.seconds*24000:raise RuntimeError('Continuous frame/sample count mismatch')
+        if args.trace_pipe:
+            with (root / 'presented.jsonl').open(encoding='utf-8') as rows:
+                report['pipe_timing'] = summarize_pipe_timing(json.loads(row) for row in rows)
         report.update(status='passed',phase='completed',media=media,expected_sources=expected,completed_speech=done,frames_written=session.frames_written,
             encoder_pid=sink.process.pid,encoder_closed=sink.process.poll() is not None,avatar_closed=client.process.poll() is not None,
             observed_frame_queue_peak=receiver.peak,startup_preroll_frames=8,
