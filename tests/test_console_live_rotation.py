@@ -8,6 +8,28 @@ from scripts.product_store import Conflict, ProductStore
 
 
 class LiveRotationTests(unittest.TestCase):
+    def test_failed_preparation_application_keeps_pending_rotation_audio(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tts = Mock()
+            tts.products.get.return_value = {'title': '测试商品', 'version': 1}
+            tts.products.selected_script.return_value = 'script'
+            tts.products.scripts.return_value = [{'id': 'script', 'text': '主讲。'}]
+            live = ConsoleLive(tts, directory)
+            live.status = {'id': 'scene', 'status': 'running'}
+            live.session = Mock()
+            live.session.control_state.return_value = {}
+            live.configure_rotation('scene', ['current'])
+            current_rotation = live.rotation
+            current_rotation['task_id'] = 'pending-audio'
+            tts.products.record_preparation_application.side_effect = Conflict('准备包已变化')
+
+            with self.assertRaisesRegex(Conflict, '准备包已变化'):
+                live.configure_rotation('scene', ['replacement'], preparation={'id': 'package'})
+
+            self.assertIs(live.rotation, current_rotation)
+            self.assertEqual(live.status['rotation_products'], ['current'])
+            live.session.discard_pending.assert_not_called()
+
     def test_stop_cancels_rtmp_worker_after_start(self):
         with tempfile.TemporaryDirectory() as directory:
             live = ConsoleLive(Mock(), directory)

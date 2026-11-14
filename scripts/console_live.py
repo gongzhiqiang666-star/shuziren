@@ -488,10 +488,10 @@ class ConsoleLive:
                 if any(segment['type'] in {'assistant', 'pause'} for segment in segments):
                     item['segments'] = segments
                 items.append(item)
-            if self.rotation and self.rotation['task_id']:
-                self.session.discard_pending(self.rotation['task_id'])
             if preparation is not None:
                 self.tts.products.record_preparation_application(session_id, preparation)
+            if self.rotation and self.rotation['task_id']:
+                self.session.discard_pending(self.rotation['task_id'])
             self.rotation = {'items': items, 'index': 0, 'segment': 0, 'task_id': None} if items else None
             self.status.update(rotation_products=list(product_ids), rotation_completed=0, rotation_error=None)
             self.status.pop('rotation_fault', None)
