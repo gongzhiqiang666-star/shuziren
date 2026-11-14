@@ -820,6 +820,8 @@ class Api(PluginInstallerApi):
                 continue
             try:
                 stopped = manager.stop_live()
+                if stopped is None and not manager.is_broadcasting:
+                    stopped = True
             except Exception as error:
                 stopped = False
                 errors.append(str(error) or message)

@@ -17,6 +17,7 @@ from .image_face_reader_runtime import RealtimeFacePipeline
 from .image_frame_synthesizer_runtime import FrameSynthesizer
 from .origin_tape import OriginTape, TapeFrame
 from . import image_infer_audio as shared
+from .output_mode import normalize_output_mode
 
 
 def _decode_audio(path, sample_rate):
@@ -36,7 +37,7 @@ class VideoStreamManager:
         self.wenet_conf_path=str(wenet_conf_path);self.wenet_model_path=str(wenet_model_path);self.wenet_model=wenet_model_path
         self.model_path=str(model_path);self.video_path_for_driving=str(video_path_for_driving);self.window_width=int(window_width)
         self.window_height=int(window_height);self.buffer_threshold=int(buffer_threshold);self.device=device
-        self.synthesis_window_seconds=float(synthesis_window_seconds);self.image_output_mode=image_output_mode
+        self.synthesis_window_seconds=float(synthesis_window_seconds);self.image_output_mode=normalize_output_mode(image_output_mode)
         self.is_interrupt=bool(is_interrupt);self.detect_max_faces=max(1,int(detect_max_faces));self.enable_occluder=bool(enable_occluder)
         self.occluder_model_path=occluder_model_path;self.face_model_dir=face_model_dir;self.player=None
         self.feature_sample_rate=16000;self.output_sample_rate=shared.resolve_output_sample_rate(output_sample_rate);self.fps=25

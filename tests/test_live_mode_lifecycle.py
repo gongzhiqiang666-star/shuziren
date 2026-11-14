@@ -49,6 +49,17 @@ class LiveModeLifecycleTests(unittest.TestCase):
         self.assertEqual(result["message"], "face close crashed")
         self.assertEqual((face.stops, record.stops, digital.stops), (1, 1, 1))
 
+    def test_void_stop_is_success_when_manager_is_released(self):
+        api = Api.__new__(Api)
+        face = _Manager(result=None)
+        api._face_hand_live_manager = face
+        api._record_live_manager = _Manager(active=False)
+        api._digital_live_manager = _Manager(active=False)
+
+        self.assertEqual(api._stop_live_locked(), {"status": "success"})
+        self.assertEqual(face.stops, 1)
+        self.assertFalse(face.is_broadcasting)
+
     def test_twenty_cross_mode_transitions_leave_no_active_runtime(self):
         api = Api.__new__(Api)
         managers = {

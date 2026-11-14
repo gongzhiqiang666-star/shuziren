@@ -17,6 +17,7 @@ from .image_realtime_face_reader import RealtimeFaceReader
 from .image_rtmp_face_reader import RtmpFaceReader
 from .image_v2_video_face_reader import VideoFaceReader
 from . import image_infer_audio as runtime
+from .output_mode import normalize_output_mode
 
 
 class VideoStreamManager:
@@ -32,7 +33,7 @@ class VideoStreamManager:
         self.data_dir = str(data_dir); self.wenet_conf_path = str(wenet_conf_path); self.wenet_model_path = str(wenet_model_path)
         self.wenet_model = wenet_model_path; self.window_width = int(window_width); self.window_height = int(window_height)
         self.buffer_threshold = int(buffer_threshold); self.device = device; self.synthesis_window_seconds = float(synthesis_window_seconds)
-        self.image_output_mode = image_output_mode; self.is_interrupt = bool(is_interrupt); self.input_mode = input_mode
+        self.image_output_mode = normalize_output_mode(image_output_mode); self.is_interrupt = bool(is_interrupt); self.input_mode = input_mode
         self.camera_index = int(camera_index); self.camera_resolution = camera_resolution
         self.video_path_for_driving = video_path_for_driving; self.rtmp_url_for_driving = rtmp_url_for_driving
         self.enable_action_generalization = bool(enable_action_generalization); self.detect_max_faces = max(1, int(detect_max_faces))

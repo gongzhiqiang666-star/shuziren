@@ -4,6 +4,8 @@ from unittest.mock import Mock, patch
 from recovered.face_hand_player import FaceHandVideoStreamManager
 from recovered.output_mode import normalize_output_mode
 from recovered.video_player import Player
+from recovered.image_infer_v2_manager import VideoStreamManager as V2VideoStreamManager
+from recovered.image_infer_origin_manager import VideoStreamManager as OriginVideoStreamManager
 
 
 class OutputModeTests(unittest.TestCase):
@@ -48,6 +50,14 @@ class OutputModeTests(unittest.TestCase):
         worker.wait_until_ready.assert_called_once_with(timeout_seconds=0.75)
         self.assertIs(player._audio_output, audio)
         play_thread.start.assert_called_once_with()
+
+    def test_digital_backends_reject_unknown_output_before_loading_models(self):
+        with self.assertRaisesRegex(ValueError, "不支持的视频输出模式"):
+            V2VideoStreamManager("data", "wenet-conf", "wenet", "model",
+                                 image_output_mode="silent-no-output")
+        with self.assertRaisesRegex(ValueError, "不支持的视频输出模式"):
+            OriginVideoStreamManager("wenet-conf", "wenet", "model", "video.mp4",
+                                     image_output_mode="silent-no-output")
 
 
 if __name__ == "__main__":
