@@ -16,7 +16,7 @@ def main():
     parser=argparse.ArgumentParser();parser.add_argument('--ffmpeg',required=True,type=Path)
     parser.add_argument('--report-directory',required=True,type=Path);args=parser.parse_args()
     root=args.report_directory/('run-'+uuid.uuid4().hex);root.mkdir(parents=True)
-    sink=ContinuousAVSink(args.ffmpeg,root/'sink.ts',720,1280)
+    sink=ContinuousAVSink(args.ffmpeg,root/'sink.ts',720,1280,trace_pipe=True)
     image=np.zeros((1280,720,3),np.uint8);rows=[]
     submit_costs = deque(maxlen=64)
     try:
@@ -39,7 +39,7 @@ def main():
         if not sink.closed:sink.abort()
     report={key:{'p50_ms':float(np.percentile([r[key] for r in rows],50))/1e6,
         'p95_ms':float(np.percentile([r[key] for r in rows],95))/1e6} for key in
-        ['prepare_ns','video_mux_ns','audio_mux_ns','submit_ns','submit_lead_ns','late_ns','early_ns']}
+        ['prepare_ns','video_mux_ns','audio_mux_ns','pipe_write_ns','submit_ns','submit_lead_ns','late_ns','early_ns']}
     report['late_over_5ms_ratio'] = sum(row['late_ns'] > 5_000_000 for row in rows) / len(rows)
     (root/'trace.json').write_text(json.dumps(rows),encoding='utf-8')
     (root/'result.json').write_text(json.dumps(report,indent=2),encoding='utf-8');print(root);print(json.dumps(report))

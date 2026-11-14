@@ -10,8 +10,24 @@ import av
 import numpy as np
 
 
+class TimedPipeWriter:
+    def __init__(self, pipe):
+        self.pipe = pipe
+        self.write_ns = 0
+
+    def write(self, data):
+        started = time.perf_counter_ns()
+        try:
+            return self.pipe.write(data)
+        finally:
+            self.write_ns += time.perf_counter_ns() - started
+
+    def flush(self):
+        self.pipe.flush()
+
+
 class ContinuousAVSink:
-    def __init__(self,ffmpeg,output,width,height):
+    def __init__(self,ffmpeg,output,width,height,*,trace_pipe=False):
         self.output=Path(output).resolve()
         if self.output.exists():raise ValueError('Continuous output must be a new file')
         self.output.parent.mkdir(parents=True,exist_ok=True)
@@ -23,7 +39,8 @@ class ContinuousAVSink:
             '-flush_packets','1','-muxdelay','0','-muxpreload','0','-f','mpegts',str(self.output)]
         try:
             self.process=subprocess.Popen(command,stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=self.log)
-            self.container=av.open(self.process.stdin,'w',format='nut')
+            self.pipe_trace = TimedPipeWriter(self.process.stdin) if trace_pipe else None
+            self.container=av.open(self.pipe_trace or self.process.stdin,'w',format='nut')
             self.video=self.container.add_stream('rawvideo',rate=25);self.video.width=width;self.video.height=height;self.video.pix_fmt='bgr24'
             self.audio=self.container.add_stream('pcm_s16le',rate=24000);self.audio.layout='mono';self.audio.format='s16'
         except BaseException:
@@ -45,13 +62,18 @@ class ContinuousAVSink:
         audio=av.AudioFrame.from_ndarray(np.frombuffer(pcm,dtype='<i2').reshape(1,-1),format='s16',layout='mono')
         audio.sample_rate=24000;audio.pts=self.samples;audio.time_base=Fraction(1,24000)
         prepared=time.perf_counter_ns()
+        if self.pipe_trace is not None:
+            self.pipe_trace.write_ns = 0
         try:
             self.container.mux(self.video.encode(video));video_written=time.perf_counter_ns()
             self.container.mux(self.audio.encode(audio))
         except BaseException:self.abort();raise
         self.frames+=1;self.samples+=960;self.pcm_hash.update(pcm)
-        return {'prepare_ns':prepared-started,'video_mux_ns':video_written-prepared,
+        timing = {'prepare_ns':prepared-started,'video_mux_ns':video_written-prepared,
             'audio_mux_ns':time.perf_counter_ns()-video_written}
+        if self.pipe_trace is not None:
+            timing['pipe_write_ns'] = self.pipe_trace.write_ns
+        return timing
 
     def close(self):
         with self.lock:return self._close()

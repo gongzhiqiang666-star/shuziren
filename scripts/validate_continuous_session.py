@@ -56,6 +56,7 @@ def main():
     parser.add_argument('--smooth-device-clock',action='store_true')
     parser.add_argument('--device-buffer-frames',type=int,choices=(2,4,8),default=2)
     parser.add_argument('--camera-i420',action='store_true')
+    parser.add_argument('--trace-pipe', action='store_true', help='Measure NVENC input pipe writes per frame')
     parser.add_argument('--idle-frames',type=int,choices=(4,8),default=8)
     parser.add_argument('--speech-interval-seconds',type=int,
                         help='Add a distinct uncached utterance at each interval, reserving the last 20 seconds for completion')
@@ -131,7 +132,7 @@ def main():
         client.request('start',session_id=speech_session.id);report['avatar_prepare']=client.request('prepare');save()
         receiver=FrameReceiver(speech_session.id,avatar['width'],avatar['height']);client.request('attach_frames',channel=receiver.descriptor())
         if sink is None:
-            sink=ContinuousAVSink(ffmpeg,root/'live.ts',avatar['width'],avatar['height'])
+            sink=ContinuousAVSink(ffmpeg,root/'live.ts',avatar['width'],avatar['height'],trace_pipe=args.trace_pipe)
         trace=(root/'presented.jsonl').open('w',encoding='utf-8')
         first_queued_ns={}
         def on_present(row):
