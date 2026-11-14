@@ -1355,21 +1355,30 @@ class Api(PluginInstallerApi):
     def _default_ip_agent_project_info(self, project_id, name):
         from datetime import datetime
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        result_dir = Path(self._get_ip_agent_project_dir(project_id)) / "result"
+        audio_path = str(result_dir / "口播音频.wav")
+        video_path = str(result_dir / "数字人口播.mp4")
+        subtitle_path = str(result_dir / "口播字幕.srt")
+        subtitle_video_path = str(result_dir / "字幕成片.mp4")
+        final_video_path = str(result_dir / "最终成片.mp4")
         return {
             "id": project_id, "name": name, "create_time": now, "update_time": now,
             "benchmark_url": "", "benchmark_video_path": "", "benchmark_transcript_path": "",
             "original_script": "", "rewrite_prompt": "", "rewritten_script": "",
             "script_analysis": {}, "rewrite_versions": [], "highlight_keywords": [],
             "selected_language": "zh-CN", "selected_voice_id": "", "selected_model_id": "",
-            "voice_speed": 1.0, "preview_audio_path": "", "result_video_path": "",
-            "subtitle_srt_path": "", "subtitle_style_preset": DEFAULT_SUBTITLE_STYLE_PRESET,
+            "voice_speed": 1.0, "preview_audio_path": audio_path, "result_video_path": video_path,
+            "audio_path": audio_path, "video_path": video_path,
+            "subtitle_srt_path": subtitle_path, "subtitle_path": subtitle_path,
+            "subtitle_style_preset": DEFAULT_SUBTITLE_STYLE_PRESET,
             "subtitle_highlight_enabled": True, "subtitle_highlight_color": "",
             "subtitle_animation": "fade", "subtitle_font_id": "", "subtitle_font_name": "",
-            "subtitle_font_file": "", "subtitled_video_path": "",
+            "subtitle_font_file": "", "subtitled_video_path": subtitle_video_path,
+            "subtitle_video_path": subtitle_video_path,
             "result_video_preview_path": "", "subtitled_video_preview_path": "",
             "bgm_enabled": False, "bgm_music_id": "", "bgm_title": "", "bgm_url": "",
             "bgm_local_path": "", "bgm_volume": 0.16, "cover_template": "impact_yellow",
-            "cover_title": "", "cover_path": "", "final_video_path": "",
+            "cover_title": "", "cover_path": "", "final_video_path": final_video_path,
             "final_video_preview_path": "", "publish_title": "", "publish_tags_text": "",
             "publish_platforms": ["douyin"], "publish_accounts": {}, "publish_last_result": {},
             "one_click_last_result": {},
@@ -1718,7 +1727,8 @@ class Api(PluginInstallerApi):
                                               project_root=str(self.runtime_dir), use_cache=bool(data.get("use_cache", True)))
             target = Path(info["audio_path"]); target.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(result["audio_path"], target)
             info.update({"rewritten_script": text, "voice_id": voice_id, "voice_infer_version": result["voice_infer_version"],
-                         "language": result["language"], "status": "audio_ready"})
+                         "language": result["language"], "audio_path": str(target),
+                         "preview_audio_path": str(target), "status": "audio_ready"})
             return {"status": "success", "audio_path": str(target), "project": self._save_ip_agent_project(project_id, info)}
         except Exception as error: return {"status": "error", "message": f"生成驱动音频失败: {error}"}
 
@@ -1732,7 +1742,8 @@ class Api(PluginInstallerApi):
             result = create_short_video(payload, {**self.config, "project_root": str(self.runtime_dir)})
             if not result.get("success"): raise RuntimeError(result.get("error") or "数字人口型生成失败")
             target = Path(info["video_path"]); shutil.copy2(result["video_path"], target)
-            info["status"] = "video_ready"; info = self._save_ip_agent_project(project_id, info)
+            info.update({"video_path": str(target), "result_video_path": str(target), "status": "video_ready"})
+            info = self._save_ip_agent_project(project_id, info)
             return {"status": "success", "video_path": str(target), "project": info}
         except Exception as error: return {"status": "error", "message": f"生成 IP 数字人视频失败: {error}"}
 
@@ -1752,7 +1763,9 @@ class Api(PluginInstallerApi):
                        "margin_v", "margin_l", "margin_r", "max_chars_per_line", "highlight_words", "highlight_color",
                        "animation", "fonts_dir") if data.get(key) is not None}
             output = add_subtitles_to_video(str(video), str(srt), output_path=info["subtitle_video_path"], **options)
-            info.update({"subtitle_path": str(srt), "subtitle_video_path": output, "status": "subtitle_ready"})
+            info.update({"subtitle_path": str(srt), "subtitle_srt_path": str(srt),
+                         "subtitle_video_path": output, "subtitled_video_path": output,
+                         "status": "subtitle_ready"})
             return {"status": "success", "video_path": output, "subtitle_path": str(srt),
                     "project": self._save_ip_agent_project(project_id, info)}
         except Exception as error: return {"status": "error", "message": f"添加字幕失败: {error}"}

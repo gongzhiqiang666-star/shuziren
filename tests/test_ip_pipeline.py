@@ -52,6 +52,21 @@ class PipelineApi(Api):
 
 
 class IpPipelineTests(unittest.TestCase):
+    def test_real_project_schema_has_owned_pipeline_outputs_and_legacy_aliases(self):
+        with tempfile.TemporaryDirectory() as root:
+            api = Api.__new__(Api)
+            api._get_ip_agent_base_dir = lambda: str(Path(root) / "projects")
+            project = api.create_ip_agent_project("真实流水线")["project"]
+            project_root = Path(api._get_ip_agent_project_dir(project["id"])).resolve()
+            pairs = (("audio_path", "preview_audio_path"),
+                     ("video_path", "result_video_path"),
+                     ("subtitle_path", "subtitle_srt_path"),
+                     ("subtitle_video_path", "subtitled_video_path"))
+            for current, legacy in pairs:
+                self.assertEqual(project[current], project[legacy])
+                self.assertEqual(Path(project[current]).resolve().parents[1], project_root)
+            self.assertEqual(Path(project["final_video_path"]).resolve().parents[1], project_root)
+
     def test_project_lock_serializes_other_process_and_recovers_after_exit(self):
         project_id = "cross-process-test"
         code = (

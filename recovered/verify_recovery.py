@@ -3696,7 +3696,7 @@ def verify_ip_agent_project_schema_contract():
     assert api._get_ip_agent_project_dir("project-1")==str(HERE/"assets"/"ip_agent_projects"/"project-1")
     assert Path(api._get_ip_agent_project_info_path("project-1")).parts[-2:] == ("project-1", "project_info.yaml")
     info=api._default_ip_agent_project_info("project-1","演示项目")
-    assert len(info)==47
+    assert len(info)==51
     assert list(info)[:10]==["id","name","create_time","update_time","benchmark_url",
                             "benchmark_video_path","benchmark_transcript_path","original_script",
                             "rewrite_prompt","rewritten_script"]
@@ -3706,7 +3706,13 @@ def verify_ip_agent_project_schema_contract():
     assert info["subtitle_style_preset"]=="classic_white"
     assert info["subtitle_highlight_enabled"] is True and info["subtitle_animation"]=="fade"
     assert info["publish_platforms"]==["douyin"] and info["publish_accounts"]=={}
-    assert "created_at" not in info and "audio_path" not in info and "status" not in info
+    assert "created_at" not in info and "status" not in info
+    result_dir=Path(api._get_ip_agent_project_dir("project-1"))/"result"
+    assert info["audio_path"]==info["preview_audio_path"]==str(result_dir/"口播音频.wav")
+    assert info["video_path"]==info["result_video_path"]==str(result_dir/"数字人口播.mp4")
+    assert info["subtitle_path"]==info["subtitle_srt_path"]==str(result_dir/"口播字幕.srt")
+    assert info["subtitle_video_path"]==info["subtitled_video_path"]==str(result_dir/"字幕成片.mp4")
+    assert info["final_video_path"]==str(result_dir/"最终成片.mp4")
     with tempfile.TemporaryDirectory() as directory:
         root=Path(directory);project=root/"project-1";sample=project/"result"/"sample.jpg"
         api._get_ip_agent_project_dir=lambda _project_id:str(project)
