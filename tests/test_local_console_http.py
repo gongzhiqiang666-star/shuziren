@@ -1017,6 +1017,11 @@ class ConsoleHTTPTests(unittest.TestCase):
                          ('current-reply', current['version']))
         snapshot = {'revision': 'accepted-package', 'items': [], 'improvements': [adopted_reply]}
         store.record_preparation_application('other', snapshot)
+        script_id = store.add_script(current, '已核对商品规格。')
+        store.select_script(current['id'], script_id)
+        revision = store.build_live_preparation()['revision']
+        store.save_live_preparation_review(revision, '已检查改进任务')
+        pending = store.live_preparation_rotation(revision, include_improvements=True)
         store.record_reply_playback('scene', 'current-reply', 112)
         updated_review = self.call('/api/live/review?session_id=scene')[1]
         self.assertNotIn('current-reply', [reply['task_id'] for reply in
@@ -1024,6 +1029,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         saved_tasks = self.call(task_route + '?session_id=scene')[1]['tasks']
         self.assertIn(adopted_reply, saved_tasks)
         self.assertEqual(self.call(task_route, {**reply_task, 'adopted': False})[0], 200)
+        with self.assertRaisesRegex(Conflict, '运营改进任务已变化'):
+            store.record_preparation_application('scene', pending, verify_items=True)
         self.assertEqual(self.call(package_route)[1]['improvements'], [])
         self.assertEqual(self.call('/api/live/report?session_id=other')[1]['preparation_applications'],
                          [snapshot])
