@@ -34,6 +34,7 @@ from .output_resolution import resolve_portrait_size
 from .record_live_manager import RecordLiveManager
 from .video_player import _open_media_source
 from .win_power_throttling import ensure_high_performance
+from .srs_runtime import start_bundled_srs, srs_process_status
 
 
 def _configure_cmd_window_content():
@@ -1189,6 +1190,7 @@ class Api(PluginInstallerApi):
         current = (self.config.get("environments") or {}).get(environment, {})
         server = str(current.get("server_url") or self.config.get("server_url") or "").rstrip("/")
         return {"status": "success", "environment": environment, "server_url": server,
+                "local_service": srs_process_status(getattr(self, "srs_process", None)),
                 "push_url": self.config.get("push_url") or self.config.get("rtmp_push_url") or "rtmp://127.0.0.1/live/stream",
                 "play_url": self.config.get("play_url") or self.config.get("rtmp_play_url") or "http://127.0.0.1:8080/live/stream.flv"}
 
@@ -2383,20 +2385,7 @@ def main():
     return _main()
 
 def _start_srs(runtime_dir):
-    if sys.platform != "win32":
-        return None
-    script = Path(runtime_dir).resolve() / "assets" / "srs" / "srs-live.bat"
-    if not script.is_file():
-        print("警告: 未找到SRS服务器启动脚本 (srs-live.bat)，推流功能将不可用。")
-        return None
-    try:
-        return subprocess.Popen(
-            [str(script)], cwd=str(script.parent),
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-    except OSError as error:
-        print(f"启动SRS服务器失败: {error}")
-        return None
+    return start_bundled_srs(runtime_dir)
 
 
 if __name__ == "__main__":

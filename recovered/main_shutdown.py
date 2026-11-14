@@ -1,21 +1,11 @@
 """SRS process cleanup recovered from main.pyd at 0x180010d30."""
 
 import os
-import subprocess
-import sys
+from .srs_runtime import stop_srs_process
 
 
 def _shutdown_srs(proc):
-    if not proc:
-        return
-    if sys.platform == "win32":
-        subprocess.run(
-            ["taskkill", "/F", "/IM", "srs.exe"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    elif proc.poll() is None:
-        proc.terminate()
+    stop_srs_process(proc)
 
 
 api_for_exit = None
