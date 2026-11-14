@@ -1,6 +1,7 @@
 """Read JSON messages from the local barrage bridge."""
 
 import json
+import socket
 from pathlib import Path
 import subprocess
 import sys
@@ -73,8 +74,8 @@ class DanmuBridge:
 
 
 class _SubprocessDanmuBridge(DanmuBridge):
-    def __init__(self, module, *arguments):
-        super().__init__()
+    def __init__(self, module, *arguments, bridge_url="ws://127.0.0.1:8888"):
+        super().__init__(bridge_url)
         self.module = module
         self.arguments = arguments
         self._process = None
@@ -143,3 +144,23 @@ class OCRDanmuBridge(_SubprocessDanmuBridge):
 class KuaishouDanmuBridge(_SubprocessDanmuBridge):
     def __init__(self, live_url):
         super().__init__("kuaishou_v2.ws_server_kuaishou", live_url)
+
+
+def _reserve_loopback_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+class PinduoduoDanmuBridge(_SubprocessDanmuBridge):
+    def __init__(self, live_url, *, port=None):
+        from .assets.ws_danmu_capture.pdd.pinduoduo_danmu import normalize_pdd_live_url
+
+        self.live_url = normalize_pdd_live_url(live_url)
+        selected_port = int(port or _reserve_loopback_port())
+        super().__init__("assets.ws_danmu_capture.pdd.pdd_ws_wrapper", "--port", str(selected_port),
+                         bridge_url=f"ws://127.0.0.1:{selected_port}")
+
+    def start(self):
+        super().start()
+        self._socket.send(json.dumps({"url": self.live_url}, ensure_ascii=False))

@@ -15,16 +15,46 @@ try:
 except ImportError:
     def MessageToDict(message, preserving_proto_field_name=True):
         return {name: getattr(message, name) for name in getattr(message, "FIELD_NAMES", ())}
-import assets.ws_danmu_capture.pdd.pinduoduo_pb2
+try:
+    from . import pinduoduo_pb2
+except ImportError:
+    import assets.ws_danmu_capture.pdd.pinduoduo_pb2 as pinduoduo_pb2
 import time
 import websockets
+import inspect
+from pathlib import Path
+from urllib.parse import urlparse
+
+
+def normalize_pdd_live_url(value):
+    parsed = urlparse(str(value or "").strip())
+    hostname = (parsed.hostname or "").lower().rstrip(".")
+    approved = ("pinduoduo.com", "yangkeduo.com")
+    if (parsed.scheme != "https" or parsed.username or parsed.password or
+            not any(hostname == domain or hostname.endswith("." + domain) for domain in approved)):
+        raise ValueError("仅支持拼多多官方 HTTPS 直播链接")
+    return parsed.geturl()
+
+
+MAX_FRAME_BYTES = 8 * 1024 * 1024
+
+
+def _gzip_decompress_limited(data, limit=MAX_FRAME_BYTES):
+    decompressor = zlib.decompressobj(zlib.MAX_WBITS | 16)
+    output = decompressor.decompress(data, limit + 1)
+    if len(output) > limit or decompressor.unconsumed_tail:
+        raise ValueError("拼多多弹幕压缩帧超过大小限制")
+    output += decompressor.flush()
+    if len(output) > limit:
+        raise ValueError("拼多多弹幕解压结果超过大小限制")
+    return output
 
 
 class PinduoduoDanmu:
     def __init__(self):
         # 确保cookies文件路径是相对于当前脚本目录的
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        self.cookies_path = os.path.join(script_dir, "pdd_cookies.json")
+        default_root = Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".shuziren") / "Shuziren"
+        self.cookies_path = os.fspath((default_root / "pdd_cookies.json").resolve())
         self.browser = None
         self._is_running = False
         self.clients = set()
@@ -34,11 +64,15 @@ class PinduoduoDanmu:
         """向所有连接的客户端广播消息"""
         if self.clients:
             # 使用websockets.broadcast来简化向多个客户端发送消息的过程
-            await websockets.broadcast(self.clients, json.dumps(message, ensure_ascii=False))
+            result = websockets.broadcast(self.clients, json.dumps(message, ensure_ascii=False))
+            if inspect.isawaitable(result):
+                await result
 
     async def on_frame_received(self, payload):
         """处理接收到的WebSocket帧"""
         try:
+            if len(payload) > MAX_FRAME_BYTES:
+                raise ValueError("拼多多弹幕帧超过大小限制")
             # 将WebSocket二进制数据转换为十六进制字符串
             hex_string = payload.hex()
             
@@ -47,7 +81,9 @@ class PinduoduoDanmu:
             if len(bytes_data) >= 16:
                 body_len = struct.unpack('>I', bytes_data[12:16])[0]
                 body_end = 16 + body_len
-                data = bytes_data[16:body_end] if body_end <= len(bytes_data) else bytes_data[16:]
+                if body_len > MAX_FRAME_BYTES or body_end > len(bytes_data):
+                    raise ValueError("拼多多弹幕帧长度无效")
+                data = bytes_data[16:body_end]
             else:
                 data = bytes_data  # 数据过短时直接使用全部数据
 
@@ -56,11 +92,11 @@ class PinduoduoDanmu:
                 if data[i] == 0x1f and data[i + 1] == 0x8b:
                     try:
                         # 解压gzip数据
-                        decompressed = zlib.decompress(data[i:], zlib.MAX_WBITS | 16)
+                        decompressed = _gzip_decompress_limited(data[i:])
                         
                         # 尝试解析为Protobuf消息
                         try:
-                            message = assets.ws_danmu_capture.pdd.pinduoduo_pb2.Command()
+                            message = pinduoduo_pb2.Command()
                             message.ParseFromString(decompressed)
                             
                             # 检查Protobuf消息中是否包含body字段, body里才是真正的弹幕信息
@@ -321,6 +357,7 @@ class PinduoduoDanmu:
         """保存浏览器cookies到文件"""
         try:
             cookies = await context.cookies()
+            Path(self.cookies_path).parent.mkdir(parents=True, exist_ok=True)
             with open(self.cookies_path, 'w', encoding='utf-8') as f:
                 json.dump(cookies, f, ensure_ascii=False, indent=2)
             print(f"Cookies已保存到: {self.cookies_path}")
@@ -419,7 +456,7 @@ class PinduoduoDanmu:
                 try:
                     data = json.loads(message)
                     if 'url' in data:
-                        live_url = data['url']
+                        live_url = normalize_pdd_live_url(data['url'])
                         if self.playwright_task is None or self.playwright_task.done():
                             print(f"收到URL，启动Playwright: {live_url}")
                             # 设置为非无头模式启动，方便扫码登录

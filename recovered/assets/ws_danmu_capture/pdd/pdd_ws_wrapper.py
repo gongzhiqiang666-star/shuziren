@@ -1,6 +1,7 @@
 import sys
 import os
 import asyncio
+import argparse
 
 # 将项目根目录添加到sys.path中，以便能够正确地从assets.ws_danmu_capture.pdd导入模块
 # 脚本路径: assets/ws_danmu_capture/pdd/pdd_ws_wrapper.py
@@ -15,11 +16,19 @@ def main():
     """主函数，用于启动弹幕服务器"""
     print("正在启动拼多多弹幕捕获 WebSocket 服务器包装器...")
     
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, default=8888)
+    parser.add_argument("--cookies")
+    options = parser.parse_args()
+    if not 1 <= options.port <= 65535:
+        raise ValueError("无效的本地弹幕端口")
     danmu_client = PinduoduoDanmu()
+    if options.cookies:
+        danmu_client.cookies_path = os.fspath(os.path.abspath(os.path.expanduser(options.cookies)))
     
     try:
         # 运行 PinduoduoDanmu 实例中的 WebSocket 服务器
-        asyncio.run(danmu_client.main_server())
+        asyncio.run(danmu_client.main_server(port=options.port))
     except KeyboardInterrupt:
         print("拼多多弹幕服务器被手动终止。")
     except Exception as e:

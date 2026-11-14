@@ -6,7 +6,7 @@ from queue import Queue
 from threading import Event, Lock, Thread, current_thread
 from time import monotonic
 
-from .danmu_bridge import DanmuBridge, KuaishouDanmuBridge, OCRDanmuBridge
+from .danmu_bridge import DanmuBridge, KuaishouDanmuBridge, OCRDanmuBridge, PinduoduoDanmuBridge
 from .cosyvoice import synthesize_speech_cosyvoice
 from .minimax import synthesize_speech_minimax
 from .digital_image_runtime import create_image_runtime
@@ -167,6 +167,8 @@ class DigitalLiveManager:
                 capture = OCRDanmuBridge(platform_type)
             elif platform_type == "kuaishou":
                 capture = KuaishouDanmuBridge(live_url)
+            elif platform_type in ("pinduoduo", "pdd"):
+                capture = PinduoduoDanmuBridge(live_url)
             elif platform_type == "taobao":
                 from .taobao_control_capture import TaobaoControlDanmuCapture
                 from .taobao_live_control import taobao_storage_path

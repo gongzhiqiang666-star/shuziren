@@ -107,7 +107,9 @@ class BarrageCapture:
     def _result(kind, nickname="", content=""):
         kind = str(kind or "comment").lower()
         aliases = {"chat": "comment", "message": "comment", "member": "enter",
-                   "join": "enter", "joined": "enter", "like_count": "like"}
+                   "join": "enter", "joined": "enter", "like_count": "like",
+                   "弹幕": "comment", "进入直播间": "enter", "关注": "follow",
+                   "点赞": "like", "礼物": "gift"}
         return {"type": aliases.get(kind, kind), "nickname": str(nickname or ""),
                 "content": str(content or "")}
 
