@@ -8,6 +8,7 @@ import time
 from collections import deque
 
 from .llm_base_chat import base_chat
+from .content_grounding import validate_grounded_claims
 
 
 LIVE_SCRIPT_OPTIMIZATION_PROMPT = "你是直播话术优化助手。保留原意和事实，改写成自然、简短、口语化的直播表达，只输出改写结果。"
@@ -68,12 +69,20 @@ def generalize_sentences(script: str, variations: int = 3) -> str:
         original = all_variants[0]
         new_variants = []
         for _ in range(variations):
-            limiter.wait_if_needed()
-            variant = str(optimize_script(original) or "").strip()
-            match = re.search(r"\[(.*?)\]", variant, re.S)
-            if match:
-                variant = match.group(1).split("|")[0].strip()
-            if variant and variant not in all_variants and variant not in new_variants:
-                new_variants.append(variant)
+            for attempt in range(2):
+                limiter.wait_if_needed()
+                variant = str(optimize_script(original) or "").strip()
+                match = re.search(r"\[(.*?)\]", variant, re.S)
+                if match:
+                    variant = match.group(1).split("|")[0].strip()
+                try:
+                    validate_grounded_claims(original, variant, label="泛化话术")
+                except RuntimeError:
+                    if attempt == 0:
+                        continue
+                    raise
+                if variant and variant not in all_variants and variant not in new_variants:
+                    new_variants.append(variant)
+                break
         generalized.append("[" + "|".join(all_variants + new_variants) + "]")
     return "\n".join(generalized)

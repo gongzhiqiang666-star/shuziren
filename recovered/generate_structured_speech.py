@@ -10,11 +10,10 @@ from .language_prompts import (DEFAULT_LANGUAGE_CODE, extract_language_code,
                                get_language_template, language_forbids_han,
                                normalize_language_code, strip_language_marker)
 from .llm_base_chat import base_chat
+from .content_grounding import validate_grounded_claims
 
 
 _HAN_TEXT_RE = re.compile(r"[\u3400-\u9fff\uf900-\ufaff]")
-_NUMBER_RE = re.compile(r"(?<![\d.])\d+(?:\.\d+)?(?![\d.])")
-_CURRENCY_RE = re.compile(r"(?:[¥￥$€£]|元|块钱|美元|欧元|英镑)", re.I)
 _SCRIPT_RETRY_BASE_SECONDS = .5
 
 
@@ -24,17 +23,6 @@ def _contains_han_text(text: str) -> bool:
 
 def _count_script_chars(text: str) -> int:
     return len(re.sub(r"\s+", "", str(text or "")))
-
-
-def _validate_grounded_claims(product_info, script):
-    source = (json.dumps(product_info, ensure_ascii=False, sort_keys=True)
-              if not isinstance(product_info, str) else product_info)
-    source_numbers = set(_NUMBER_RE.findall(source))
-    invented_numbers = sorted(set(_NUMBER_RE.findall(str(script))) - source_numbers)
-    if invented_numbers:
-        raise RuntimeError("生成的话术包含商品资料中不存在的数字: " + ", ".join(invented_numbers))
-    if not _CURRENCY_RE.search(source) and _CURRENCY_RE.search(str(script)):
-        raise RuntimeError("生成的话术包含商品资料中不存在的价格")
 
 
 def _postprocess_script(full_script: str, language_code: str) -> str:
@@ -113,7 +101,7 @@ def generate_structured_speech_with_config(product_info, special_instructions=""
             processed = _postprocess_script(full_script, language_code)
             if not processed or _count_script_chars(processed) < 10:
                 raise RuntimeError("生成的话术为空或过短")
-            _validate_grounded_claims(product_info, processed)
+            validate_grounded_claims(product_info, processed, label="生成的话术")
             return processed
         except Exception as error:
             last_error = error

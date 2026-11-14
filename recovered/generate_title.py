@@ -6,6 +6,7 @@ import json
 import re
 
 from .llm_base_chat import base_chat
+from .content_grounding import validate_grounded_claims
 
 
 def generate_title_and_tags(script: str, video_url: str = "") -> dict:
@@ -41,4 +42,5 @@ def generate_title_and_tags(script: str, video_url: str = "") -> dict:
         value = str(tag).lstrip("#").strip()
         if value and value not in normalized_tags:
             normalized_tags.append(value)
+    validate_grounded_claims(script, "\n".join([title] + normalized_tags), label="标题或标签")
     return {"title": title, "tags": normalized_tags}
