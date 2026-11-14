@@ -82,6 +82,8 @@ class Api(PluginInstallerApi):
         self._live_sticker_cancel_events = {}
         self._cloud_dh_generation_lock = RLock()
         self._cloud_dh_cancel_events = {}
+        self._ip_publish_lock = RLock()
+        self._ip_publish_active = set()
         self._shutdown_complete = False
         self._live_action_assistant_process = None
         self._audio_editor_process = None
@@ -1453,6 +1455,26 @@ class Api(PluginInstallerApi):
         info = self._read_yaml_file(self._get_ip_agent_project_info_path(project_id))
         if not info:
             return None
+        task = info.get("publish_task") or {}
+        active = getattr(self, "_ip_publish_active", set())
+        if task.get("status") == "running" and str(project_id) not in active:
+            recovered_at = datetime.now().isoformat(timespec="seconds")
+            task = {**task, "status": "interrupted", "updated_at": recovered_at,
+                    "completed_at": recovered_at,
+                    "error": "应用退出时发布结果未知，请先到平台核对后再决定是否重试"}
+            history = list(info.get("publish_attempts") or [])
+            replaced = False
+            for index in range(len(history) - 1, -1, -1):
+                if (history[index].get("request_id") == task.get("request_id")
+                        and history[index].get("started_at") == task.get("started_at")):
+                    history[index] = task
+                    replaced = True
+                    break
+            if not replaced:
+                history.append(task)
+            info.update({"publish_task": task, "publish_attempts": history[-100:],
+                         "status": "publish_interrupted"})
+            self._write_yaml_file(self._get_ip_agent_project_info_path(project_id), info)
         info["id"] = project_id
         info["path"] = os.path.abspath(project_dir)
         cover_path = str(info.get("cover_path") or "").strip()
@@ -1976,6 +1998,13 @@ class Api(PluginInstallerApi):
                     and isinstance(previous, dict) and previous.get("success")):
                 return {"status": "success", "already_published": True,
                         "publish_result": previous, "publish_plan": public_plan}
+            previous_task = info.get("publish_task") or {}
+            if (previous_task.get("status") == "interrupted"
+                    and previous_task.get("request_id") == plan["request_id"]
+                    and not data.get("confirm_retry_after_interruption")):
+                return {"status": "error", "code": "publish_outcome_unknown",
+                        "message": "上次发布被中断，结果未知；请先到平台核对，再确认是否重试",
+                        "publish_task": previous_task, "publish_plan": public_plan}
             started_at = datetime.now().isoformat(timespec="seconds")
             attempt = {"request_id": plan["request_id"], "status": "running", "started_at": started_at,
                        "updated_at": started_at, "plan": public_plan}

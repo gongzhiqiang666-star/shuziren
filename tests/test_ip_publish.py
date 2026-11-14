@@ -223,6 +223,50 @@ class IpPublishTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "无效"):
                     api._get_ip_agent_project_dir(identifier)
 
+    def test_restart_marks_running_publish_unknown_and_requires_confirmed_retry(self):
+        with tempfile.TemporaryDirectory() as root:
+            projects = Path(root) / "projects"
+            writer = Api.__new__(Api)
+            writer._get_ip_agent_base_dir = lambda: str(projects)
+            project = writer.create_ip_agent_project("中断项目")["project"]
+            project_id = project["id"]
+            video = Path(writer._get_ip_agent_project_dir(project_id)) / "result" / "最终成片.mp4"
+            video.parent.mkdir(parents=True, exist_ok=True)
+            video.write_bytes(b"video")
+            plan = build_publish_plan(video, "中断项目", [], ["douyin"])
+            running = {"request_id": plan["request_id"], "status": "running",
+                       "started_at": "2026-11-14T10:00:00", "updated_at": "2026-11-14T10:00:00",
+                       "plan": {key: value for key, value in plan.items() if key != "publish_date_value"}}
+            writer._save_ip_agent_project(project_id, {"publish_task": running, "publish_attempts": [running]})
+
+            restarted = Api.__new__(Api)
+            restarted.runtime_dir = Path(root)
+            restarted._get_ip_agent_base_dir = lambda: str(projects)
+            recovered = restarted.get_ip_agent_project(project_id)["project"]
+            self.assertEqual(recovered["publish_task"]["status"], "interrupted")
+            self.assertEqual(recovered["status"], "publish_interrupted")
+            self.assertIn("结果未知", recovered["publish_task"]["error"])
+
+            with mock.patch("recovered.douyin_benchmark.resolve_ffprobe", return_value="ffprobe"), \
+                    mock.patch("recovered.douyin_benchmark.probe_video"):
+                blocked = restarted.publish_ip_agent_video(project_id, {"platforms": ["douyin"]})
+            self.assertEqual(blocked.get("code"), "publish_outcome_unknown")
+
+            async def succeed_upload(**kwargs):
+                return {"success": True, "results": {"douyin": {"success": True}}}
+
+            modules, _module = self._uploader_modules(succeed_upload)
+            with mock.patch.dict("sys.modules", modules), \
+                    mock.patch("recovered.douyin_benchmark.resolve_ffprobe", return_value="ffprobe"), \
+                    mock.patch("recovered.douyin_benchmark.probe_video"):
+                retried = restarted.publish_ip_agent_video(project_id, {
+                    "platforms": ["douyin"], "confirm_retry_after_interruption": True})
+            self.assertEqual(retried["status"], "success")
+            final = restarted.get_ip_agent_project(project_id)["project"]
+            self.assertEqual(final["publish_task"]["status"], "success")
+            self.assertEqual([item["status"] for item in final["publish_attempts"]],
+                             ["interrupted", "success"])
+
 
 if __name__ == "__main__":
     unittest.main()
