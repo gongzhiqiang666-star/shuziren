@@ -34,7 +34,7 @@ from .minimax import clone_voice_minimax
 from .output_resolution import resolve_portrait_size
 from .record_live_manager import RecordLiveManager
 from .video_player import _open_media_source
-from .win_power_throttling import ensure_high_performance
+from .win_power_throttling import ensure_high_performance, _stop_keep_alive
 from .srs_runtime import start_bundled_srs, srs_process_status
 
 
@@ -599,6 +599,11 @@ class Api(PluginInstallerApi):
                 _shutdown_srs(process)
             except Exception as error:
                 errors.append(f"srs_process: {error}")
+            try:
+                if not _stop_keep_alive():
+                    errors.append("win_power_throttling: keep-alive thread did not stop")
+            except Exception as error:
+                errors.append(f"win_power_throttling: {error}")
             self._shutdown_complete = True
             return {"status": "partial" if errors else "success", "errors": errors}
 

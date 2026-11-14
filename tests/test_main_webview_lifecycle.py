@@ -103,7 +103,8 @@ class MainWebviewLifecycleTests(unittest.TestCase):
         api._live_action_assistant_process = FakeProcess()
         api._audio_editor_process = FakeProcess()
         api.srs_process = object()
-        with mock.patch("recovered.main._shutdown_srs") as stop_srs:
+        with mock.patch("recovered.main._shutdown_srs") as stop_srs, \
+                mock.patch("recovered.main._stop_keep_alive", return_value=True) as stop_power:
             first = api.shutdown()
             second = api.shutdown()
         self.assertEqual(first["status"], "partial")
@@ -111,6 +112,7 @@ class MainWebviewLifecycleTests(unittest.TestCase):
         self.assertEqual(good.calls, 1)
         self.assertEqual(idle.calls, 0)
         stop_srs.assert_called_once()
+        stop_power.assert_called_once_with()
         self.assertTrue(second["already_stopped"])
 
 

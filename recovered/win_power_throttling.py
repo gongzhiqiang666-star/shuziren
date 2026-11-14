@@ -44,6 +44,8 @@ def disable_execution_speed_throttling(pid=None) -> bool:
             kernel32.OpenProcess.restype = wintypes.HANDLE
             handle = kernel32.OpenProcess(PROCESS_SET_INFORMATION, False, int(pid))
             close_handle = True
+            if not handle:
+                return False
         return _set_process_power_throttling(handle)
     except Exception:
         return False
@@ -74,6 +76,24 @@ def _start_keep_alive(interval_seconds):
                 daemon=True,
             )
             _KEEP_ALIVE_THREAD.start()
+
+
+def _stop_keep_alive(timeout_seconds=2.0):
+    """Stop and release the process-wide refresh worker, if one exists."""
+    global _KEEP_ALIVE_THREAD
+    with _KEEP_ALIVE_LOCK:
+        thread = _KEEP_ALIVE_THREAD
+        if thread is None:
+            return True
+        _KEEP_ALIVE_STOP.set()
+    if thread is not __import__("threading").current_thread():
+        thread.join(timeout=max(0.0, float(timeout_seconds)))
+    stopped = not thread.is_alive()
+    if stopped:
+        with _KEEP_ALIVE_LOCK:
+            if _KEEP_ALIVE_THREAD is thread:
+                _KEEP_ALIVE_THREAD = None
+    return stopped
 
 
 def ensure_high_performance(keep_alive=True, interval_seconds=30.0):
