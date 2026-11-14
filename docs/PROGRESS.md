@@ -982,3 +982,5 @@ A07-03 版本切换前数据备份子项完成。非首次deploy/rollback在健�
 A07-03 受控数据恢复子项完成。restore-data按固定编号验证备份全集/摘要/SQLite，修改前再做当前安全备份；复制到同卷暂存后第二次复核，再原子替换data，失败恢复旧目录且不切active版本。累计17/17通过：恢复目标内容、恢复前安全备份及active不变均核对，篡改备份无副作用。继续数据架构门禁和组合验证。
 
 A07-03 数据架构门禁子项完成。包清单、安装根状态、发行版、备份与恢复统一绑定data_schema；同架构正常，未实现迁移器时跨架构deploy/rollback在健康检查前拒绝，run和restore同样拒绝。累计18/18通过，schema2数据配schema1程序/备份的三条拒绝路径均保持当前文件不变。继续真实deploy→rollback→restore组合验证。
+
+A07-03 本机组合主链通过。真实提交7d6a674与7123699分别构建完整ZIP，在全新目录完成首次deploy、真实HTTP健康检查、写入配置/商品/话术/选择、升级备份、rollback备份、修改数据及restore。恢复后端口/商品/话术选择回到升级前，active仍是回滚基线；恢复前修改存在第三份安全备份。证据logs/validation/a07-release-lifecycle-01及 `evidence/a07-release-lifecycle-real.md`。A07-03主链闭环，转A07-04短时故障验收，8小时长稳继续后置。
