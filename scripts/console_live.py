@@ -565,6 +565,8 @@ class ConsoleLive:
                                                            'voice_authorization_type','voice_authorization_reference')
                                 if key in state
                             }
+                            if 'model_identity' in state:
+                                rotation['task_speech_provenance']['model_identity']=state['model_identity']
                             rotation['task_speech_provenance'].update(
                                 generated_audio_sha256=utterance.original_sha256,
                                 played_pcm_sha256=utterance.pcm_sha256,

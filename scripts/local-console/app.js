@@ -2711,6 +2711,7 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         if (source.has_saved_draft) draftButton.textContent = '打开已保存的短视频文案';
         const snapshot = source.product_snapshot;
         const speech = source.speech_provenance;
+        const model = speech?.model_identity;
         const speechDetails = [
           source.voice_id ? `原口播音色 ${source.voice_id}` : '原口播音色未记录',
           speech?.engine && `语音引擎 ${speech.engine}`,
@@ -2719,6 +2720,8 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
           speech?.voice_text_sha256 && `参考文本 SHA-256 ${speech.voice_text_sha256}`,
           speech?.voice_authorization_type && `音色授权 ${({unknown:'未登记',self_recorded:'本人录制',consented:'已获本人同意',licensed:'已取得许可'})[speech.voice_authorization_type]||'记录无效'}`,
           speech?.voice_authorization_reference && `授权依据 ${speech.voice_authorization_reference}`,
+          model && `模型身份 ${model.status==='registered' ? model.engine+' / '+model.aggregate_sha256 : model.engine+' / 未登记清单'}`,
+          model?.license && `模型许可 ${model.license.status}${model.license.reference?'（'+model.license.reference+'）':''}`,
         ].filter(Boolean);
         const review = {source_missing:'缺少原始证据，复用前需核对', product_changed:'商品版本已更新，复用前需核对',
           facts_changed:'商品事实已变化，复用前需核对', version_current:'商品版本及话术事实仍有效'};

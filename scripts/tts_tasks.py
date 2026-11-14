@@ -10,6 +10,7 @@ import uuid
 
 from scripts.product_store import Conflict, ProductError, ProductStore, playback_segments, product_fact_deadline
 from scripts.media_runtime import runtime_python
+from scripts.model_identity import load as load_model_identity
 from scripts.voice_store import VoiceStore
 
 
@@ -22,6 +23,7 @@ class TTSTasks:
                        'omnivoice':'recovered-omnivoice'}[engine]
         self.model_root=Path(model_root).resolve() if model_root is not None else None
         self.runtime=Path(runtime_root).resolve();self.data=Path(data_directory).resolve()
+        self.model_identity=self._model_identity()
         self.products=ProductStore(self.data);self.voices=VoiceStore(self.data)
         self.path=self.data/'tts-task.json'
         self.lock=threading.RLock();self.process=None;self.monitor=None;self.log=None;self.closed=False;self.worker_usable=False
@@ -32,6 +34,13 @@ class TTSTasks:
                 raise ProductError('TTS任务记录损坏')
             if self.task['status']=='running':
                 self.task.update(status='interrupted',error='服务已中断，请重新合成');self._save()
+
+    def _model_identity(self):
+        identity=load_model_identity(self.runtime,self.engine)
+        return ({'status':'registered','engine':identity['engine'],'provider':identity['provider'],
+                 'aggregate_sha256':identity['aggregate_sha256'],
+                 'manifest_sha256':identity['manifest_sha256'],'license':identity['license']}
+                if identity else {'status':'unregistered','engine':self.engine,'provider':self.provider})
 
     def _save(self):
         temporary=self.path.with_suffix('.tmp')
@@ -189,6 +198,8 @@ class TTSTasks:
         self.task.update(voice_authorization_type=voice.get('authorization_type','unknown'),
                          voice_authorization_reference=voice.get('authorization_reference'))
         self.task.update(product_title=product['title'],speed=speed,language=language,use_cache=use_cache,engine=self.engine)
+        self.model_identity=self._model_identity()
+        self.task['model_identity']=json.loads(json.dumps(self.model_identity))
         deadline = product_fact_deadline(product)
         if deadline is not None:
             self.task['fact_deadline'] = deadline

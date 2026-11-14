@@ -48,6 +48,15 @@ python -m scripts.media_runtime fingerprint --root "<媒体目录>" --inventory 
 python -m scripts.media_runtime verify --root "<迁移后的媒体目录>" --inventory "<原清单文件>"
 ```
 
+每个实际启用的 TTS 引擎还须生成模型身份清单。该清单逐文件记录大小和 SHA-256，聚合摘要及许可状态会冻结到 TTS 任务和历史口播来源。只有取得并审查可靠许可依据后才能把状态设为 `open_source`、`commercial` 或 `proprietary`；未知来源保持 `unverified`，不得因模型可以运行而推断许可。清单保存在媒体目录的 `_internal/assets/model-identities`，不进入源码仓库。发布前必须执行 `verify`，运行时只读取并冻结已验证清单，不用路径或修改时间冒充版本。
+
+```powershell
+python -m scripts.model_identity build --runtime-root "<媒体运行目录>" --engine indextts --license-status unverified
+python -m scripts.model_identity verify --runtime-root "<媒体运行目录>" --engine indextts
+```
+
+`--engine` 还可选 `zipvoice` 或 `omnivoice`。许可依据可通过 `--license-reference "<许可证文件或内部审查编号>"` 登记；不要把合同、凭据或个人资料直接写入公开清单。
+
 维护者从已提交版本运行 `python -m scripts.console_package build --output <zip路径>`。使用 `verify --archive <zip路径>` 核对清单，再以 `install --archive <zip路径> --destination <新目录>` 安装。校验用于发现文件损坏，来源仍需通过可信交付渠道确认。
 
 ## 版本管理
