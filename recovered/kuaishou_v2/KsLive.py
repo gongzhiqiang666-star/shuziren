@@ -69,7 +69,7 @@ class KuaishouLiveClient:
                 timestamp = int(time() * 1000)
                 await ws.send(encode_heartbeat(timestamp))
                 print(f"[心跳][{self.room_id}] 心跳包已发送，时间: {timestamp}")
-                await asyncio.sleep(HEARTBEAT_INTERVAL)
+                await asyncio.sleep(self.heartbeat_interval_ms / 1000)
         except ConnectionClosed as error:
             print(f"[心跳][{self.room_id}] 连接问题: {error}")
         except Exception as error:
@@ -142,9 +142,21 @@ class KuaishouLiveClient:
         heartbeat_task = asyncio.create_task(self._send_heartbeat(ws))
         message_task = asyncio.create_task(self._on_message(ws))
         try:
-            await asyncio.gather(heartbeat_task, message_task)
+            done, pending = await asyncio.wait(
+                (heartbeat_task, message_task),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in done:
+                task.result()
         except Exception as error:
             print(f"[任务错误][{self.room_id}] 意外错误: {error}")
+        finally:
+            for task in (heartbeat_task, message_task):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(
+                heartbeat_task, message_task, return_exceptions=True
+            )
     async def _on_message(self, ws):
         async for socket_message in ws:
             try:
