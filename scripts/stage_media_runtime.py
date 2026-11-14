@@ -87,7 +87,7 @@ def stage(reference, destination, *, include_zipvoice=False, include_omnivoice=F
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(original, target)
     (destination / MANIFEST_NAME).write_text(json.dumps({**INDEPENDENT, 'python': LEGACY_PYTHON}, indent=2), encoding='utf-8')
-    report = inspect_runtime(destination)
+    report = inspect_runtime(destination, include_origin_video=include_origin_video)
     probe = subprocess.run([str(runtime_python(destination)), '-I', '-c',
         'import sys,json; print(json.dumps({"version":list(sys.version_info[:3]),"prefix":sys.prefix}))'],
         check=True, capture_output=True, text=True, timeout=30, cwd=destination)
