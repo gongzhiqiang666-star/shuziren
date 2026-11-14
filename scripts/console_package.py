@@ -146,10 +146,12 @@ def check_release(root, commit):
     return release, manifest
 
 
-def console_command(data, port, python=None):
+def console_command(data, port, python=None, *, shop_id=None):
     command = [str(python or sys.executable), '-B', '-X', 'utf8', '-m', 'scripts.local_console', '--data-directory', str(data)]
     if port is not None:
         command.extend(('--port', str(port)))
+    if shop_id is not None:
+        command.extend(('--shop-id', shop_id))
     return command
 
 
@@ -273,7 +275,8 @@ def run_release(root, port, with_media=False, shop_id=None):
                 raise ValueError('Invalid managed instance lock directory')
             instance.enter_context(InstanceLock(lease))
             python = configured_media(data)[1] if with_media else None
-        return subprocess.call(console_command(data, port, python), cwd=release, env=console_environment())
+        return subprocess.call(console_command(root / 'data', port, python, shop_id=shop_id),
+                               cwd=release, env=console_environment())
 
 
 def main():

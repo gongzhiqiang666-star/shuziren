@@ -129,7 +129,7 @@ def live_advice(session, repeated_questions=()):
     return advice
 
 
-def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=None):
+def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=None, shop_id=None):
     token = secrets.token_urlsafe(32)
     lock = threading.RLock()
     product_lock = threading.Lock()
@@ -449,7 +449,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         return self.respond(503, {'error': '无法读取音频设备：' + str(error)})
                     return self.respond(200, {'devices': devices})
                 if path == "/api/session":
-                    return self.respond(200, {"token": token, "tts_engine": tts_engine})
+                    return self.respond(200, {"token": token, "tts_engine": tts_engine, "shop_id": shop_id})
                 if path == '/api/voices':
                     voices=VoiceStore(store.directory)
                     return self.respond(200,{'voices':voices.list(),'selected':voices.selected()})
@@ -1145,7 +1145,7 @@ def main(argv=None):
     try:
         instance.__enter__()
         server = create_server(store, args.port, tts_engine=args.tts_engine,
-                               tts_model_root=args.tts_model_root)
+                               tts_model_root=args.tts_model_root, shop_id=args.shop_id)
     except OSError as error:
         instance.__exit__()
         logging.error("启动失败：%s", error)

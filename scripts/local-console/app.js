@@ -31,7 +31,8 @@ async function load() {
   catch(error) { $('live-status').textContent = '状态读取失败'; throw error; }
   $('runtime-root').value = state.config.runtime_root; $('port').value = state.config.port;
   $('live-status').textContent = state.live_status;
-  $('data-directory').textContent = '配置目录：' + state.data_directory;
+  $('data-directory').textContent = (session.shop_id ? '店铺 ' + session.shop_id + ' · ' : '') + '配置目录：' + state.data_directory;
+  document.title = session.shop_id ? '数字人工作台 · ' + session.shop_id : '数字人工作台';
 }
 $('settings').addEventListener('submit', event => {event.preventDefault(); action(async () => {
   const result = await request('/api/config', config()); await load(); $('message').textContent = result.message;
