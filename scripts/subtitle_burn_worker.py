@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import subprocess
 import traceback
 
 from recovered.add_subtitles_to_video import add_subtitles_to_video, _get_video_resolution
@@ -36,7 +37,15 @@ def main():
             animation='fade',
         )).resolve()
         media = verify_media(args.audio, output, ffmpeg_dir / 'ffmpeg.exe')
-        response = {'ok': True, 'result': {'output': str(output), 'output_sha256': digest(output), **media}}
+        cover = output.with_name('cover.jpg')
+        moment = min(1.0, max(0.0, media['video_duration'] / 2))
+        subprocess.run([str(ffmpeg_dir / 'ffmpeg.exe'), '-nostdin', '-v', 'error', '-y', '-ss', str(moment),
+                        '-i', str(output), '-frames:v', '1', '-update', '1', str(cover)],
+                       capture_output=True, check=True, timeout=60)
+        if not cover.is_file() or cover.stat().st_size < 1000 or cover.read_bytes()[:2] != b'\xff\xd8':
+            raise RuntimeError('封面抽帧校验失败')
+        response = {'ok': True, 'result': {'output': str(output), 'output_sha256': digest(output),
+                    'cover': str(cover.resolve()), 'cover_sha256': digest(cover), **media}}
     except Exception as error:
         traceback.print_exc()
         response = {'ok': False, 'error': str(error), 'error_type': type(error).__name__}

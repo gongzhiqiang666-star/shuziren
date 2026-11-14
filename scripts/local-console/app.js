@@ -1703,6 +1703,10 @@ renderAvatarVideoButtons();
 
 function clearRenderPreview() {
   $('render-subtitle').hidden = true;
+  const download = document.getElementById('render-download');
+  if(download) {download.hidden=true;download.removeAttribute('href');}
+  const cover = document.getElementById('render-cover-download');
+  if(cover) {cover.hidden=true;cover.removeAttribute('href');}
   $('render-preview').pause();$('render-preview').removeAttribute('src');$('render-preview').load();renderPreviewTask=null;
 }
 function renderVideoButtons() {
@@ -1725,6 +1729,20 @@ async function loadRender() {
   if(matches) {
     const samples = renderState.result?.input_audio_samples;
     $('render-subtitle').hidden = !Number.isSafeInteger(samples) || samples <= 0 || (renderState.source_kind!=='live_content' && Boolean(ttsState.kind));
+    let download = document.getElementById('render-download');
+    if(!download) {
+      download=document.createElement('a');download.id='render-download';download.textContent='下载数字人成片';
+      download.download='数字人成片.mp4';$('render-subtitle').before(download);
+    }
+    download.href='/api/render/video?task_id='+encodeURIComponent(renderState.id);download.hidden=false;
+    let cover = document.getElementById('render-cover-download');
+    if(renderState.result?.cover_sha256) {
+      if(!cover) {
+        cover=document.createElement('a');cover.id='render-cover-download';cover.textContent='下载短视频封面';
+        cover.download='数字人封面.jpg';$('render-subtitle').before(cover);
+      }
+      cover.href='/api/render/cover?task_id='+encodeURIComponent(renderState.id);cover.hidden=false;
+    } else if(cover) cover.hidden=true;
     if(renderPreviewTask!==renderState.id) {$('render-preview').src='/api/render/video?task_id='+encodeURIComponent(renderState.id);$('render-preview').load();renderPreviewTask=renderState.id;}
   } else if(renderPreviewTask) clearRenderPreview();
   renderVideoButtons();

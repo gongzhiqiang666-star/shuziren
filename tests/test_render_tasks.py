@@ -154,5 +154,15 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(_escape_ass_text(r'第一行\N第二行\危险{覆盖}'),
                          r'第一行\N第二行\textbackslash危险\{覆盖\}')
 
+    def test_owned_cover_is_hash_checked_before_download(self):
+        task, work, result = self.pending()
+        self.finish(task, work, result)
+        cover = work/'cover.jpg'; cover.write_bytes(b'\xff\xd8cover fixture')
+        self.tasks.task['result'].update(cover=str(cover.resolve()), cover_sha256=digest(cover))
+        self.tasks._save()
+        self.assertEqual(self.tasks.cover_path(task['id']), cover.resolve())
+        cover.write_bytes(b'\xff\xd8tampered')
+        with self.assertRaises(Conflict): self.tasks.cover_path(task['id'])
+
 
 if __name__=='__main__':unittest.main()

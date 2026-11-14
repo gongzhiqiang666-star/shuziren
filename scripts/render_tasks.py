@@ -171,6 +171,7 @@ class RenderTasks:
                     published = self._burn_live_content(work, result)
                     result.update(published_output=published['output'],
                                   published_output_sha256=published['output_sha256'],
+                                  cover=published['cover'], cover_sha256=published['cover_sha256'],
                                   published_full_decode_passed=published['full_decode_passed'],
                                   subtitles_burned=True)
                 self.task.update(status='succeeded',result=result);self._save();accepted=True
@@ -192,6 +193,7 @@ class RenderTasks:
                 if not accepted:
                     (work/'output.mp4').unlink(missing_ok=True)
                     (work/'published.mp4').unlink(missing_ok=True)
+                    (work/'cover.jpg').unlink(missing_ok=True)
             with self.lock:
                 if self.process is process:self.process=None
 
@@ -237,11 +239,29 @@ class RenderTasks:
         try: response = json.loads(completed.stdout.decode('utf-8'))
         except (UnicodeDecodeError, ValueError): raise ProductError('字幕烧录工作进程返回无效') from None
         published = response.get('result', {})
+        cover = (work/'cover.jpg').resolve()
         if (completed.returncode or response.get('ok') is not True or Path(published.get('output', '')).resolve() != output
+                or Path(published.get('cover', '')).resolve() != cover
                 or published.get('audio_complete') is not True or published.get('full_decode_passed') is not True
                 or not output.is_file() or digest(output) != published.get('output_sha256')):
             raise ProductError('字幕烧录成片校验失败')
+        if not cover.is_file() or digest(cover) != published.get('cover_sha256'):
+            raise ProductError('短视频封面校验失败')
         return published
+
+    def cover_path(self, task_id):
+        with self.lock:
+            state = self.state()
+            if not state or state['id'] != task_id or state['status'] != 'succeeded':
+                raise Conflict('视频任务未完成或已失效')
+            path = Path(state['result'].get('cover', '')).resolve()
+            expected = (self.jobs/state['id']/'cover.jpg').resolve()
+            if path != expected or not path.is_relative_to(self.jobs):
+                raise ProductError('封面文件路径越界')
+            try: valid = digest(path) == state['result']['cover_sha256']
+            except (OSError, KeyError): valid = False
+            if not valid: raise Conflict('封面文件缺失或已变化，请重新生成')
+            return path
 
     def subtitle(self, task_id):
         with self.lock:

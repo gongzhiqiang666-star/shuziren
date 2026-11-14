@@ -52,8 +52,9 @@ def main():
     subtitle = tasks.subtitle(task['id'])
     (root / 'avatar-subtitles.srt').write_text(subtitle, encoding='utf-8')
     shutil.copy2(video, root / 'live-content-avatar.mp4')
+    shutil.copy2(tasks.cover_path(task['id']), root / 'live-content-cover.jpg')
     report = {'ok': True, 'task': task, 'video': str(root / 'live-content-avatar.mp4'),
-              'subtitle': str(root / 'avatar-subtitles.srt')}
+              'subtitle': str(root / 'avatar-subtitles.srt'), 'cover': str(root / 'live-content-cover.jpg')}
     (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False))
 

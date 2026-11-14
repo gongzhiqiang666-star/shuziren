@@ -535,7 +535,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     task=(render_manager.state() if render_manager is not None else
                           renders().state() if preflight(store.load())['runtime_root'] else None)
                     return self.respond(200,{'task':task})
-                if path in {'/api/render/video', '/api/render/subtitle'}:
+                if path in {'/api/render/video', '/api/render/subtitle', '/api/render/cover'}:
                     ids=parse_qs(urlsplit(self.path).query).get('task_id',[])
                     if len(ids)!=1: raise ProductError('请选择有效视频任务')
                     manager=render_manager if render_manager is not None else renders()
@@ -544,6 +544,8 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         return self.respond(200, subtitle, 'application/x-subrip; charset=utf-8',
                                             attachment='avatar-subtitles.srt')
                     from scripts.media_http import serve_file
+                    if path == '/api/render/cover':
+                        return serve_file(self,manager.cover_path(ids[0]),'image/jpeg')
                     return serve_file(self,manager.video_path(ids[0]),'video/mp4')
                 if path == '/api/tts/audio':
                     ids=parse_qs(urlsplit(self.path).query).get('task_id',[])
