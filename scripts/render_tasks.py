@@ -167,6 +167,12 @@ class RenderTasks:
                     raise ProductError('视频结果路径或输入音频不符')
                 if not result.get('full_decode_passed') or result.get('audio_complete') is not True or digest(path)!=result['output_sha256']:
                     raise ProductError('视频产物校验失败')
+                if self.task.get('source_kind') == 'live_content':
+                    published = self._burn_live_content(work, result)
+                    result.update(published_output=published['output'],
+                                  published_output_sha256=published['output_sha256'],
+                                  published_full_decode_passed=published['full_decode_passed'],
+                                  subtitles_burned=True)
                 self.task.update(status='succeeded',result=result);self._save();accepted=True
         except Exception as error:
             with self.lock:
@@ -183,7 +189,9 @@ class RenderTasks:
             if work.resolve().parent==self.jobs:
                 (work/'audio.wav').unlink(missing_ok=True)
                 (work/'output_temp.mp4').unlink(missing_ok=True)
-                if not accepted:(work/'output.mp4').unlink(missing_ok=True)
+                if not accepted:
+                    (work/'output.mp4').unlink(missing_ok=True)
+                    (work/'published.mp4').unlink(missing_ok=True)
             with self.lock:
                 if self.process is process:self.process=None
 
@@ -192,16 +200,48 @@ class RenderTasks:
             state=self.state()
             if not state or state['id']!=task_id or state['status']!='succeeded':
                 raise Conflict('视频任务未完成或已失效')
-            path=Path(state['result']['output']).resolve()
-            if path!=(self.jobs/state['id']/'output.mp4').resolve() or not path.is_relative_to(self.jobs):
+            published = state['result'].get('published_output')
+            path=Path(published or state['result']['output']).resolve()
+            expected = self.jobs/state['id']/('published.mp4' if published else 'output.mp4')
+            if path!=expected.resolve() or not path.is_relative_to(self.jobs):
                 raise ProductError('视频文件路径越界')
-            try:valid=digest(path)==state['result']['output_sha256']
+            expected_hash = state['result'].get('published_output_sha256', state['result']['output_sha256'])
+            try:valid=digest(path)==expected_hash
             except OSError:valid=False
             if not valid:
                 self.task.update(status='failed',error='视频文件缺失或已变化，请重新生成')
                 self.task.pop('result',None);self._save()
                 raise Conflict('视频文件已变化，请重新生成')
             return path
+
+    @staticmethod
+    def _subtitle_text(caption, samples):
+        if not isinstance(caption, str) or not caption.strip() or type(samples) is not int or samples <= 0:
+            raise Conflict('该视频缺少字幕所需的话术或采样数')
+        seconds, fraction = divmod((samples + 23) // 24, 1000)
+        minutes, seconds = divmod(seconds, 60)
+        hours, minutes = divmod(minutes, 60)
+        caption = '\n'.join(line for line in caption.splitlines() if line.strip())
+        return f'1\n00:00:00,000 --> {hours:02}:{minutes:02}:{seconds:02},{fraction:03}\n{caption}\n'
+
+    def _burn_live_content(self, work, result):
+        subtitle = work/'subtitle.srt'
+        subtitle.write_text(self._subtitle_text(self.task.get('caption'), result.get('input_audio_samples')),
+                            encoding='utf-8')
+        output = (work/'published.mp4').resolve()
+        python = runtime_python(self.runtime)
+        completed = subprocess.run([str(python), '-X', 'utf8', '-m', 'scripts.subtitle_burn_worker',
+            '--runtime-root', str(self.runtime), '--video', result['output'], '--subtitle', str(subtitle),
+            '--audio', str(work/'audio.wav'), '--output', str(output)], cwd=Path(__file__).resolve().parents[1],
+            capture_output=True, timeout=300, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        try: response = json.loads(completed.stdout.decode('utf-8'))
+        except (UnicodeDecodeError, ValueError): raise ProductError('字幕烧录工作进程返回无效') from None
+        published = response.get('result', {})
+        if (completed.returncode or response.get('ok') is not True or Path(published.get('output', '')).resolve() != output
+                or published.get('audio_complete') is not True or published.get('full_decode_passed') is not True
+                or not output.is_file() or digest(output) != published.get('output_sha256')):
+            raise ProductError('字幕烧录成片校验失败')
+        return published
 
     def subtitle(self, task_id):
         with self.lock:
@@ -216,14 +256,8 @@ class RenderTasks:
                     raise Conflict('该视频缺少可核对的完整话术来源')
                 script = next((row for row in self.tts.products.scripts(task['product_id'])
                                if row['id'] == task['script_id']), None)
-            samples = task['result'].get('input_audio_samples')
-            if script is None or type(samples) is not int or samples <= 0:
-                raise Conflict('该视频缺少字幕所需的话术或采样数')
-            seconds, fraction = divmod((samples + 23) // 24, 1000)
-            minutes, seconds = divmod(seconds, 60)
-            hours, minutes = divmod(minutes, 60)
-            caption = '\n'.join(line for line in script['text'].splitlines() if line.strip())
-            return f'1\n00:00:00,000 --> {hours:02}:{minutes:02}:{seconds:02},{fraction:03}\n{caption}\n'
+            return self._subtitle_text(script['text'] if script else None,
+                                       task['result'].get('input_audio_samples'))
 
     def cancel(self,task_id):
         with self.lock:

@@ -117,7 +117,10 @@ def _parse_srt_blocks(content: str) -> List[Tuple[str, str, str]]:
 
 
 def _escape_ass_text(text: str) -> str:
-    return str(text).replace("\\", r"\textbackslash").replace("{", r"\{").replace("}", r"\}")
+    # Preserve the ASS line-break control emitted by the SRT wrapper while
+    # still neutralizing user-provided backslashes and override braces.
+    return r"\N".join(part.replace("\\", r"\textbackslash").replace("{", r"\{").replace("}", r"\}")
+                      for part in str(text).split(r"\N"))
 
 
 def _highlight_ass_text(text: str, words: Iterable[str], highlight_color: str,

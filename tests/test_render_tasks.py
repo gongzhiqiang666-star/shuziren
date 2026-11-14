@@ -13,6 +13,7 @@ import numpy as np
 from scripts.avatar_store import AvatarStore,digest
 from scripts.product_store import ProductStore,Conflict,ProductError
 from scripts.render_tasks import RenderTasks
+from recovered.add_subtitles_to_video import _escape_ass_text
 
 
 class RenderTests(unittest.TestCase):
@@ -148,6 +149,10 @@ class RenderTests(unittest.TestCase):
                                  version=self.product['version'], product_id=self.product['id'])
         with self.assertRaises(Conflict):
             self.tasks._content_inputs('scene', 'spoken', self.avatar['id'])
+
+    def test_ass_caption_preserves_generated_line_break_but_escapes_user_controls(self):
+        self.assertEqual(_escape_ass_text(r'第一行\N第二行\危险{覆盖}'),
+                         r'第一行\N第二行\textbackslash危险\{覆盖\}')
 
 
 if __name__=='__main__':unittest.main()
