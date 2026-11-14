@@ -12,25 +12,12 @@ from .minimax import synthesize_speech_minimax
 from .digital_image_runtime import create_image_runtime
 from .llm_reply import generate_text_reply
 from .local_voice import synthesize_local_audio
+from .live_platform import normalize_live_platform
 from .text_processing import contains_blocked, is_user_blocked, match_keywords, parse_qa_info, parse_qa_info_from_text, strip_prohibited_words
 
 
 _NON_OCR_PLATFORMS = {"douyin", "kuaishou", "meituan", "shipinhao", "tiktok", "pinduoduo", "taobao", "shopee"}
 _BRIDGE_EVENT_TYPES = {1: "danmu", 2: "like", 3: "enter", 4: "follow", 5: "gift", 8: "share"}
-_PLATFORM_ALIASES = {
-    "pdd": "pinduoduo",
-    "shoppe": "shopee",
-    "xiapi": "shopee",
-    "xiaopi": "shopee",
-    "wechat": "shipinhao",
-    "video_account": "shipinhao",
-}
-
-
-def _normalize_live_platform(value):
-    platform = str(value or "douyin").strip().lower()
-    return _PLATFORM_ALIASES.get(platform, platform)
-
 class DigitalLiveManager:
     def __init__(self, config, runtime_dir):
         self.config = config
@@ -227,7 +214,7 @@ class DigitalLiveManager:
     def start_danmu(self, live_url, platform_type="douyin", on_message=None):
         if not self.is_broadcasting:
             return False
-        platform_type = _normalize_live_platform(platform_type)
+        platform_type = normalize_live_platform(platform_type)
         with self._danmu_lock:
             if self._danmu_worker is not None and self._danmu_worker.is_alive():
                 return False

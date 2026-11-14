@@ -8,6 +8,7 @@ from time import monotonic, sleep, time
 import traceback
 
 from .local_voice import synthesize_local_audio
+from .live_platform import normalize_live_platform
 from .face_hand_player import FaceHandVideoStreamManager
 from .face_hand_video_group import load_face_hand_video_group
 from .output_resolution import resolve_portrait_size
@@ -633,10 +634,19 @@ class FaceHandLiveManager:
     def start_danmu(self):
         if self._danmu_capturer: return False
         try:
-            platform=self._live_config.get("live_platform","douyin"); url=self._live_config.get("live_url")
+            platform=normalize_live_platform(self._live_config.get("live_platform","douyin")); url=self._live_config.get("live_url")
             if platform=="taobao" and self._taobao_controller:
                 from .taobao_control_capture import TaobaoControlDanmuCapture
                 capture=TaobaoControlDanmuCapture._configured(controller=self._taobao_controller)
+            elif platform=="kuaishou":
+                from .danmu_bridge import KuaishouDanmuBridge
+                capture=KuaishouDanmuBridge(url)
+            elif platform=="pinduoduo":
+                from .danmu_bridge import PinduoduoDanmuBridge
+                capture=PinduoduoDanmuBridge(url)
+            elif platform=="shopee":
+                from .shopee_control_capture import ShopeeControlDanmuCapture
+                capture=ShopeeControlDanmuCapture()
             else:
                 from .ws_capture import BarrageCapture
                 capture=BarrageCapture(platform,url)
