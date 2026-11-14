@@ -350,6 +350,7 @@ class ConsoleLive:
                         Path(staged).unlink(missing_ok=True)
                     except OSError:
                         logging.exception('清理本地视频插播文件失败')
+                self.status.update(seek_pending=False, insert_pending=False)
                 self.status.update(status='failed' if error else 'stopped', error=error, ended_at=time.time())
                 self._record_session()
 

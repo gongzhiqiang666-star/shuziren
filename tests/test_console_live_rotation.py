@@ -13,7 +13,7 @@ class LiveRotationTests(unittest.TestCase):
             live = ConsoleLive(Mock(), directory)
             live.tts.runtime = directory
             live.status = {'id': 'scene', 'status': 'preparing', 'mode': 'local_video',
-                           'requested_at': 100, 'frames': 0}
+                           'requested_at': 100, 'frames': 0, 'insert_pending': True}
             live.video_insert_snapshot = 'insert.wav'
             with (patch('scripts.console_live.subprocess.Popen', side_effect=OSError('worker unavailable')),
                   patch('scripts.console_live.Path.unlink', side_effect=PermissionError('file in use')),
@@ -21,6 +21,7 @@ class LiveRotationTests(unittest.TestCase):
                 live._run_video('scene', 1, 'input.mp4', 'cuda')
             self.assertEqual(live.status['status'], 'failed')
             self.assertIsNone(live.video_insert_snapshot)
+            self.assertFalse(live.status['insert_pending'])
             recorded = live.tts.products.record_live_session.call_args.kwargs
             self.assertEqual(recorded['status'], 'failed')
             self.assertEqual(recorded['failure_reason'], 'worker unavailable')
