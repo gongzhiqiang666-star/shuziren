@@ -22,10 +22,16 @@ class CompositeFrameProcessor:
         return result
 
     def stop(self) -> None:
+        errors = []
         for processor in reversed(self.processors):
             stop = getattr(processor, "stop", None)
             if callable(stop):
-                stop()
+                try:
+                    stop()
+                except Exception as error:
+                    errors.append(error)
+        if errors:
+            raise RuntimeError(f"画面去重资源停止失败: {errors[0]}") from errors[0]
 
 
 class MirrorProcessor:
@@ -192,6 +198,7 @@ class OverlayProcessor:
             ok, frame = self.capture.read()
             if not ok:
                 self.capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                self._stop_event.wait(self.frame_interval)
                 continue
             with self._target_size_lock:
                 target = self._target_size
@@ -260,6 +267,8 @@ class DeduplicationFrameProcessor(CompositeFrameProcessor):
             processors.append(RotationProcessor(rotation_cfg.get("angle_range", (-1.0, 1.0)), rotation_cfg.get("interval_range", (1.0, 3.0)), rotation_cfg.get("duration", 0.5)))
         overlay_cfg = config.get("overlay") or {}
         overlay_path = overlay_cfg.get("video_path") or overlay_cfg.get("path")
+        if overlay_cfg.get("enabled") and not overlay_path:
+            raise ValueError("启用叠加去重时必须配置 overlay video_path")
         if overlay_cfg.get("enabled") and overlay_path:
             processors.append(OverlayProcessor(str(overlay_path), overlay_cfg.get("alpha", 0.03)))
         super().__init__(processors)
