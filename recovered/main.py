@@ -1704,6 +1704,7 @@ class Api(PluginInstallerApi):
     def rewrite_ip_script(self, data):
         from .llm_base_chat import base_chat
         from .ip_agent_post_process import infer_keywords_from_text
+        from .content_grounding import validate_grounded_claims
         try:
             data = data or {}
             original = str(data.get("text") or "").strip()
@@ -1751,9 +1752,11 @@ class Api(PluginInstallerApi):
                     text = str(item or "").strip()
                     name = f"改写版本{index + 1}"
                 if text:
+                    validate_grounded_claims(original, text, label=f"IP改写版本“{name}”")
                     normalized.append({"name": name, "text": text})
             fallback_text = str(parsed.get("rewritten_text") or parsed.get("text") or "").strip()
             if not normalized and fallback_text:
+                validate_grounded_claims(original, fallback_text, label="IP改写成片稿")
                 normalized.append({"name": "成片稿", "text": fallback_text})
             if not normalized:
                 return {"error": "改写失败，未获得有效内容"}

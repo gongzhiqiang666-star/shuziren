@@ -1,5 +1,7 @@
 # 四期任务进度与验证结果
 
+CNT-007 IP 多版本改写事实门禁完成。每个版本和 fallback 成片稿逐一校验；任一版本编造数字/价格则整次失败且不落盘，全部保真时分析/版本/关键词完整保留。3 项专项及恢复五关通过，真实爆款质量继续待 DeepSeek 人审，见 `docs/evidence/a07-ip-rewrite-grounding.md`。
+
 CNT-006 IP 项目存储事务完成。项目 YAML 改为刷盘后原子替换，进程内读改写串行；24 路并发差异更新全保留，替换失败保留旧字节，损坏项目读写均拒绝且不静默重置。存储 3 项、发布/删除链 13 项通过，真实旧样本后置，见 `docs/evidence/a07-ip-project-storage.md`。
 
 CNT-005 Windows 违禁词边界补验完成。原 147 项词表不变；执行层跳过空词注册，内置/用户英文词大小写不敏感，重叠增补词最长优先。空词、`QQ/qq`、`sale/SALE` 和“优惠/优惠券”3 项通过，矩阵提升为 Windows 验证通过，见 `docs/evidence/a07-forbidden-words.md`。
