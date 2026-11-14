@@ -1,5 +1,7 @@
 # 四期任务进度与验证结果
 
+SYS-005 Windows 主窗口生命周期补验完成。随包 pywebview 两次创建真实“AI数字人直播”窗口，句柄非零且响应正常；Windows 系统关窗请求后均在 5 秒内退出并恰调用一次 shutdown。Computer Use 原生管道仍因 `os error 2` 不可用，页面内点击按要求记录后跳过，不阻塞后续任务，见 `docs/evidence/v01-webview-lifecycle.md`。
+
 SYS-004 Windows 用户配置与私密配置迁移补验完成。隔离 `LOCALAPPDATA` 中真实完成旧私密字段迁移、交付配置清空及启动有效值恢复；损坏文件、迁移写入失败、原子替换失败均不覆盖上一份有效数据。6 项专项与恢复五关通过，见 `docs/evidence/a07-user-config-migration.md`。
 
 SYS-003 Windows 执行速度节流本机补验完成。当前进程与受控子进程远程 PID 的原生设置均返回成功；keep-alive 已补齐显式停止、等待、引用释放和重启，远程 PID 空句柄不再进入设置调用。8 项专项与恢复五关通过；Win10/11 多版本及企业策略环境留待最终整机验收，见 `docs/evidence/a07-power-throttling.md`。

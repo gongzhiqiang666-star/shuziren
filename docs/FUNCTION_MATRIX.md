@@ -23,7 +23,7 @@
 | SYS-002 | GPU/显存探测及运行环境初始化 | `main._initialize_environment` | `main_environment.py`, `gpu_probe.py` | 静态验证通过 | 本机 RTX 3060 的 nvidia-smi 与 Torch 双探针均返回12.0GiB并一致；普通NVIDIA、RTX50识别及命令缺失3项回归通过。真实RTX50、无NVIDIA物理整机和驱动故障仍待验，见 `evidence/a07-gpu-environment.md` |
 | SYS-003 | 关闭 Windows 执行速度节流 | `win_power_throttling.pyd` Ghidra 证据 | `win_power_throttling.py` | Windows 验证通过 | 本机当前进程与受控子进程远程 PID 设置成功；keep-alive 启停、释放、重启、空句柄和退出错误语义 8 项专项及恢复五关通过，见 `evidence/a07-power-throttling.md`。Win10/11 多版本、低权限跨账号和企业组策略环境留待最终整机兼容验收 |
 | SYS-004 | 系统配置、用户配置合并与私密配置迁移 | `main.pyd` 配置调用链 | `main_config.py` | Windows 验证通过 | 隔离 `%LOCALAPPDATA%` 完成旧私密字段迁移、交付配置清理和运行值恢复；损坏配置、迁移失败、原子替换失败均不覆盖或丢失上一份有效数据，6 项专项及恢复五关通过，见 `evidence/a07-user-config-migration.md`。物理断电、企业目录重定向和杀毒占用留待最终整机兼容验收 |
-| SYS-005 | pywebview 主窗口及前后端 JS API | `main.main/_main/run_webview` | `main_webview.py`, `main.py`, `main_shutdown.py` | 静态验证通过 | 开发/生产 URL、时间戳、JS API 绑定、窗口参数、信号和关窗回调自动验证通过；关窗统一回收三类直播、场控、音频编辑器和本实例 SRS，单项失败不跳过其余资源。Windows Computer Use 原生管道当前不可用，真实 WebView2 页面点击、进程级关窗和异常窗口仍待补验，见 `evidence/v01-webview-lifecycle.md` |
+| SYS-005 | pywebview 主窗口及前后端 JS API | `main.main/_main/run_webview` | `main_webview.py`, `main.py`, `main_shutdown.py` | Windows 验证通过 | 本机 pywebview 真实创建“AI数字人直播”窗口，句柄非零且响应正常；系统关窗后 5 秒内退出并恰调用一次 shutdown。开发/生产 URL、JS API 绑定、窗口参数、信号和多资源故障隔离自动验证通过。Computer Use 原生管道仍缺失，页面内点击、任务管理器及异常窗口待补验，见 `evidence/v01-webview-lifecycle.md` |
 | SYS-006 | 登录 Token、管理员/OEM 信息与背景资源 | Token `0x1800644b0/0x180064620`, `0x180064dd0/0x180065090`, `0x180065880/0x1800659f0`; 管理员/OEM/背景/版本原生主体 | `main.py` | 静态验证通过 | Token精确保存/清除、16KiB边界及失败无副作用2项通过；管理员/OEM/背景资源路径与大小3项通过，见 `evidence/a07-token-persistence.md`。Windows原`.pyd`、真实旧OEM包和前端登录流差分待外部样本 |
 | SYS-007 | 本地资源枚举、预览与删除 | main wrapper/body `get_local_resources` `0x1800b9320/0x1800b9490`、`delete_model` `0x1800b7980/0x1800b7c40`、`delete_voice` `0x1800b8650/0x1800b8910`；CloneManager 枚举/信息写入/预览主体见 `rea-output/main-local-resources-notes.md` | `main.py`, `clone_manager.py` | 静态验证通过 | Windows 原 `.pyd` 响应差分、旧生产资源样本、文件占用/权限错误和删除后前端刷新 |
 | SYS-008 | 文件/目录选择及打开目录 | `open_file_dialog/open_directory` wrapper/body `0x1800393c0/0x180039610`、`0x18003cb70/0x18003ce30`，见 `rea-output/main-file-dialog-notes.md` | `main.py` | 静态验证通过 | Windows 原 `.pyd` 响应差分、真实对话框、中文/长路径、Shell 关联程序及权限错误 |
@@ -97,10 +97,10 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 56 |
+| 静态验证通过 | 55 |
 | 开发中 | 0 |
 | 已分析 | 0 |
-| Windows 验证通过 | 2 |
+| Windows 验证通过 | 3 |
 | 端到端验证通过 | 0 |
 | 合计 | 58 |
 
