@@ -1937,7 +1937,8 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       ...observed_product_switches.map(item => `${item.completed_at} · 口播商品变化 ${item.previous_product_id} → ${item.product_id} · 任务 ${item.task_id}`),
     ];
     if (video_counters) {
-      lines.push(`播放器复用 ${video_counters.reused_frames} 帧 · 停止时队列剩余 ${video_counters.queue_length} 帧`);
+      const queueLabel = session.status === 'failed' ? '最后记录的队列剩余' : '停止时队列剩余';
+      lines.push(`播放器复用 ${video_counters.reused_frames} 帧 · ${queueLabel} ${video_counters.queue_length} 帧`);
     }
     if (content_summary?.drafts) {
       const {drafts, tracked_drafts, revised_drafts, recorded_publications} = content_summary;
@@ -2232,7 +2233,7 @@ $('live-compare-form').addEventListener('submit', event => {
           `${item.title}（版本 ${item.product_version}）`).join(' → ')}`);
       const counters = result.video_counters;
       const diagnostics = counters ? [
-        `${label} · 直驱播放器复用 ${counters.reused_frames} 帧 · 停止时队列剩余 ${counters.queue_length} 帧`,
+        `${label} · 直驱播放器复用 ${counters.reused_frames} 帧 · 最后记录的队列剩余 ${counters.queue_length} 帧`,
       ] : [];
       return [summary, ...diagnostics, reviewLine,
         `${label} · 已记录的重复问题 ${result.repeated_question_groups} 组（首次之后 ${result.repeat_question_occurrences} 次）· 未入队提问 ${result.unqueued_questions} 条`,

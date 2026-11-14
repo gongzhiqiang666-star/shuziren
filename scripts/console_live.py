@@ -367,7 +367,7 @@ class ConsoleLive:
         state = self.status
         keys = ('reused_frames', 'queue_length')
         diagnostics = {'video_counters': {key: state[key] for key in keys}} if (
-            state.get('mode') == 'local_video' and state['status'] == 'stopped'
+            state.get('mode') == 'local_video' and state['status'] in {'stopped', 'failed'}
             and all(key in state for key in keys)) else {}
         try:
             self.tts.products.record_live_session(

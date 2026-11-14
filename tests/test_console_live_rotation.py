@@ -24,6 +24,17 @@ class LiveRotationTests(unittest.TestCase):
             recorded = live.tts.products.record_live_session.call_args.kwargs
             self.assertEqual(recorded['status'], 'failed')
             self.assertEqual(recorded['failure_reason'], 'worker unavailable')
+            self.assertNotIn('video_counters', recorded)
+
+    def test_video_failure_records_last_observed_counters(self):
+        with tempfile.TemporaryDirectory() as directory:
+            live = ConsoleLive(Mock(), directory)
+            live.status = {'id': 'scene', 'status': 'failed', 'mode': 'local_video',
+                           'requested_at': 100, 'ended_at': 104, 'frames': 72,
+                           'error': 'worker exited', 'reused_frames': 2, 'queue_length': 4}
+            live._record_session()
+            recorded = live.tts.products.record_live_session.call_args.kwargs
+            self.assertEqual(recorded['video_counters'], {'reused_frames': 2, 'queue_length': 4})
 
     def test_failed_preparation_application_keeps_pending_rotation_audio(self):
         with tempfile.TemporaryDirectory() as directory:
