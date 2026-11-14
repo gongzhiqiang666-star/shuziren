@@ -89,7 +89,7 @@
 | LIV-013 | 实拍报时公告生成和插播 | `prepare_record_announcement` 调用链 | `record_live_manager.py`, `generate_broadcast_time_video.py` | 静态验证通过 | 真实 TTS/视频、取消竞态和临时文件所有权 |
 | LIV-014 | 人脸人手直播与商品素材调度 | `FaceHandLiveManager`；2026-11-10 Windows原生切片对照见 `evidence/v00-baseline.md` | `face_hand_live_manager.py`, `face_hand_player.py`, `face_hand_vad_split.py`, `image_rtmp_face_reader.py` | 静态验证通过 | Windows切片、manifest v2、返回结构、默认参数、随机分段及 RTMP 首帧签名已与原 `.pyd` 差分对齐；完整恢复契约 128/128 通过。真实淘宝场次、长稳及商品切换仍待端到端验证 |
 | LIV-015 | AI 互动回复和人工接管 | 互动 LLM/控制提交链 | `face_hand_live_manager.py`, `llm_reply.py` | 静态验证通过 | 真实弹幕、超时、审核、回退和接管恢复 |
-| LIV-016 | 虚拟摄像头输出 | `virtual_cam.pyd` | `virtual_cam.py`、`scripts/live_device_output.py`、`scripts/live_av_device_sink.py` | 开发中 | V05-04b 真实 20 秒/500 帧、欠载 0 及回收通过。新的 2 ms 精确截止调度将迟到 P95 降至 1.521 ms；回采全窗口从缺 11/重复 11 改善为缺 0/启动首帧重复 1，语音区 183 帧零缺失/重复/乱序；但第二条回采相关性 0.556，本轮仍失败，见 `evidence/v05-received-voices.md`。驱动安装、平台客户端、其他分辨率、零启动重复及长稳待验 |
+| LIV-016 | 虚拟摄像头输出 | `virtual_cam.pyd` | `virtual_cam.py`、`scripts/live_device_output.py`、`scripts/live_av_device_sink.py` | 静态验证通过 | V05-04b 时钟消融确认平滑视频时钟对连续性必需；恢复后同配置真实 20 秒/500 帧复现通过，迟到 P95 1.654ms、超 5ms 比例 0.203%，两段回采相关性均大于 0.99999987、音画偏差约 11.4ms，语音区 198 帧零缺失/重复/乱序。全窗口仍有启动首帧重复 1；驱动安装、平台客户端、其他分辨率、零启动重复及长稳待集中验收，见 `evidence/v05-received-voices.md` |
 | LIV-017 | SRS 本地流媒体服务和推流地址 | `assets/srs/srs-live.bat`、`get_stream_urls` | `main.py`, `srs_runtime.py` | 静态验证通过 | 已改为直接启动随包 `srs.exe`，验证缺文件、端口冲突、异常早退、三端口就绪及仅按本实例 PID 回收；本机真实 RTMP 推流、HTTP-FLV 拉流和 API 探活通过，见 `evidence/v00-srs-runtime.md`。打包后页面状态、长稳和异常断流仍待验 |
 | LIV-018 | 输出分辨率五档及画面适配 | `output_resolution.pyd` | `output_resolution.py`, `image_position_compat.py` | 静态验证通过 | 各档真实输出、横竖屏、旋转和播放器兼容 |
 
@@ -97,8 +97,8 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 56 |
-| 开发中 | 2 |
+| 静态验证通过 | 57 |
+| 开发中 | 1 |
 | 已分析 | 0 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |

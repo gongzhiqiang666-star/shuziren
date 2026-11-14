@@ -11,9 +11,7 @@ MATRIX = ROOT / 'docs' / 'FUNCTION_MATRIX.md'
 ROW = re.compile(r'^\| ((?:SYS|CNT|MED|LIV)-\d{3}) \|(?:[^|]*\|){3} ([^|]+) \|', re.M)
 
 QUEUES = {
-    'development': {
-        'CNT-014', 'LIV-016',
-    },
+    'development': {'CNT-014'},
     'external': {
         'SYS-006', 'SYS-008', 'SYS-010', 'SYS-011',
         'CNT-001', 'CNT-002', 'CNT-003', 'CNT-004', 'CNT-007', 'CNT-009',
@@ -28,7 +26,7 @@ QUEUES = {
         'CNT-005', 'CNT-006', 'CNT-008', 'CNT-010', 'CNT-012', 'CNT-015', 'CNT-016',
         'MED-001', 'MED-002', 'MED-003', 'MED-004', 'MED-005', 'MED-006',
         'MED-007', 'MED-008', 'MED-010', 'MED-011', 'MED-012',
-        'LIV-001', 'LIV-002', 'LIV-003', 'LIV-004', 'LIV-013', 'LIV-017', 'LIV-018',
+        'LIV-001', 'LIV-002', 'LIV-003', 'LIV-004', 'LIV-013', 'LIV-016', 'LIV-017', 'LIV-018',
     },
 }
 
