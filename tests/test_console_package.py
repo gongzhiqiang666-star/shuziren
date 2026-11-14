@@ -76,10 +76,17 @@ class ConsolePackageTests(unittest.TestCase):
                   patch('scripts.console_package.check_release', return_value=(root, {})),
                   patch('scripts.console_package.subprocess.call', return_value=0) as launch,
                   patch.dict('scripts.console_package.os.environ', {'SHUZIREN_MANAGED_ACCESS_ROLE': 'admin'})):
-                self.assertEqual(run_release(root, 0, shop_id='pilot', access_role='viewer'), 0)
+                self.assertEqual(run_release(root, 0, shop_id='pilot', access_role='viewer',
+                                             account_id='auditor-1'), 0)
             environment = launch.call_args.kwargs['env']
             self.assertEqual(environment['SHUZIREN_MANAGED_ACCESS_ROLE'], 'viewer')
+            self.assertEqual(environment['SHUZIREN_MANAGED_ACCOUNT_ID'], 'auditor-1')
             self.assertEqual(environment['SHUZIREN_MANAGED_SHOP_ID'], 'pilot')
+
+    def test_managed_release_rejects_invalid_account_id(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, 'account id'):
+                run_release(Path(directory), 0, account_id='../other-shop')
 
     def test_shop_migration_preserves_prepared_avatar(self):
         try:

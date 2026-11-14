@@ -58,7 +58,7 @@ async function load() {
   $('live-status').textContent = state.live_status;
   const roleName = {viewer:'只读', operator:'运营', admin:'管理员'}[session.access_role] || session.access_role;
   $('data-directory').textContent = (session.shop_id ? '店铺 ' + session.shop_id + ' · ' : '')
-    + '角色：' + roleName + ' · 配置目录：' + state.data_directory;
+    + '账号：' + session.account_id + ' · 角色：' + roleName + ' · 配置目录：' + state.data_directory;
   document.title = session.shop_id ? '数字人工作台 · ' + session.shop_id : '数字人工作台';
 }
 $('settings').addEventListener('submit', event => {event.preventDefault(); action(async () => {

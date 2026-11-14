@@ -6,6 +6,7 @@ from collections import Counter
 import json
 import logging
 import os
+import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import secrets
@@ -24,6 +25,7 @@ from scripts.console_comment_reply import ConsoleCommentReply
 
 WEB = Path(__file__).parent / "local-console"
 ACCESS_ROLES = ('viewer', 'operator', 'admin')
+ACCESS_ACCOUNT = re.compile(r'[a-z0-9][a-z0-9_-]{0,39}')
 OPERATOR_POST_PATHS = {
     '/api/live/start', '/api/live/video-seek', '/api/live/rotation', '/api/live/control',
     '/api/live/stop', '/api/live/enqueue', '/api/live/insert', '/api/live/speak',
@@ -40,6 +42,10 @@ def role_allows_post(role, path):
     if role == 'operator':
         return path in OPERATOR_POST_PATHS
     return path == '/api/preflight'
+
+
+def valid_access_account(value):
+    return isinstance(value, str) and ACCESS_ACCOUNT.fullmatch(value) is not None
 
 
 class ConsoleServer(ThreadingHTTPServer):
@@ -147,11 +153,25 @@ def live_advice(session, repeated_questions=()):
 
 
 def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=None, shop_id=None,
-                  access_role='admin'):
+                  access_role='admin', access_account='local'):
     if access_role not in ACCESS_ROLES:
         raise ValueError('控制台访问角色无效')
+    if not valid_access_account(access_account):
+        raise ValueError('控制台账号编号无效')
     token = secrets.token_urlsafe(32)
     lock = threading.RLock()
+    audit_lock = threading.Lock()
+    def authorization_audit(path, allowed):
+        from datetime import datetime, timezone
+        event = {
+            'occurred_at': datetime.now(timezone.utc).isoformat(),
+            'shop_id': shop_id, 'account_id': access_account, 'access_role': access_role,
+            'path': path, 'allowed': allowed,
+        }
+        with audit_lock:
+            store.directory.mkdir(parents=True, exist_ok=True)
+            with (store.directory / 'authorization-audit.jsonl').open('a', encoding='utf-8', newline='\n') as stream:
+                stream.write(json.dumps(event, ensure_ascii=False, separators=(',', ':')) + '\n')
     product_lock = threading.Lock()
     product_store = None
     def products():
@@ -471,7 +491,7 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     return self.respond(200, {'devices': devices})
                 if path == "/api/session":
                     return self.respond(200, {"token": token, "tts_engine": tts_engine, "shop_id": shop_id,
-                                              "access_role": access_role})
+                                              "access_role": access_role, "account_id": access_account})
                 if path == '/api/voices':
                     voices=VoiceStore(store.directory)
                     return self.respond(200,{'voices':voices.list(),'selected':voices.selected()})
@@ -664,7 +684,10 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                 if not isinstance(value, dict):
                     raise ConfigError("请求必须为对象")
                 path = urlsplit(self.path).path
-                if not role_allows_post(access_role, path):
+                allowed = role_allows_post(access_role, path)
+                if path != '/api/preflight':
+                    authorization_audit(path, allowed)
+                if not allowed:
                     return self.respond(403, {"error": "当前账号角色无权执行此操作", "access_role": access_role})
                 if path in {'/api/taobao/goods', '/api/taobao/explain'}:
                     fields = {'capture_id'} if path.endswith('/goods') else {'capture_id', 'goods_id'}
@@ -1156,6 +1179,8 @@ def main(argv=None):
     parser.add_argument("--access-role", choices=ACCESS_ROLES,
                         default=os.environ.get('SHUZIREN_MANAGED_ACCESS_ROLE', 'admin'),
                         help="当前本机入口的访问角色")
+    parser.add_argument("--account-id", default=os.environ.get('SHUZIREN_MANAGED_ACCOUNT_ID', 'local'),
+                        help="写入本店权限审计的账号编号")
     parser.add_argument("--port", type=int)
     parser.add_argument("--tts-engine", choices=("indextts", "zipvoice", "omnivoice"), default="indextts")
     parser.add_argument("--tts-model-root", type=Path)
@@ -1174,7 +1199,7 @@ def main(argv=None):
         server = create_server(store, args.port, tts_engine=args.tts_engine,
                                tts_model_root=args.tts_model_root,
                                shop_id=args.shop_id or os.environ.get('SHUZIREN_MANAGED_SHOP_ID'),
-                               access_role=args.access_role)
+                               access_role=args.access_role, access_account=args.account_id)
     except OSError as error:
         instance.__exit__()
         logging.error("启动失败：%s", error)

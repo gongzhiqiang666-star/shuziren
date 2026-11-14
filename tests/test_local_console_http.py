@@ -138,7 +138,8 @@ class ConsoleHTTPTests(unittest.TestCase):
         clients = {}
         for role in ('viewer', 'operator', 'admin'):
             config = ConfigStore(shop_data_directory(self.directory.name, role))
-            server = create_server(config, port=0, shop_id=role, access_role=role)
+            server = create_server(config, port=0, shop_id=role, access_role=role,
+                                   access_account='account-' + role)
             self.addCleanup(server.server_close)
             worker = threading.Thread(target=server.serve_forever, daemon=True)
             worker.start()
@@ -149,6 +150,7 @@ class ConsoleHTTPTests(unittest.TestCase):
             session = client.call('/api/session')[1]
             client.token = session['token']
             self.assertEqual(session['access_role'], role)
+            self.assertEqual(session['account_id'], 'account-' + role)
             clients[role] = client
 
         product = {'title': '角色测试商品', 'content': '仅管理员可修改', 'product_index': 1}
@@ -161,6 +163,15 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(clients['operator'].call('/api/live/stop', {'session_id': 'missing'})[0], 409)
         self.assertEqual(clients['admin'].call('/api/products', product)[0], 200)
         self.assertEqual(clients['viewer'].call('/api/products')[1]['products'], [])
+        audit_path = shop_data_directory(self.directory.name, 'viewer') / 'authorization-audit.jsonl'
+        events = [json.loads(line) for line in audit_path.read_text(encoding='utf-8').splitlines()]
+        self.assertEqual([(event['account_id'], event['path'], event['allowed']) for event in events], [
+            ('account-viewer', '/api/products', False),
+        ])
+
+    def test_invalid_access_account_is_rejected_before_server_start(self):
+        with self.assertRaisesRegex(ValueError, '账号编号无效'):
+            create_server(self.store, port=0, access_account='../other-shop')
 
     def test_promotion_spend_preserves_missing_attribution_and_corrects_bill(self):
         store = ProductStore(self.directory.name)
@@ -1522,7 +1533,11 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(self.call('/api/config', config)[0], 200)
         self.assertEqual(self.call('/api/state')[1]['config'], config)
         self.assertEqual(self.call('/api/preflight', config)[1]['ready'], False)
-        self.assertEqual([p.name for p in Path(self.directory.name).iterdir()], ['console.json'])
+        self.assertEqual(sorted(p.name for p in Path(self.directory.name).iterdir()),
+                         ['authorization-audit.jsonl', 'console.json'])
+        events = (Path(self.directory.name) / 'authorization-audit.jsonl').read_text(encoding='utf-8').splitlines()
+        self.assertEqual([(event['path'], event['allowed']) for event in map(json.loads, events)],
+                         [('/api/config', True)])
 
     def test_cross_origin_token_and_host_checks(self):
         config = self.store.load()
