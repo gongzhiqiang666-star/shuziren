@@ -74,13 +74,14 @@ class ConsoleHTTPTests(unittest.TestCase):
         with (patch('scripts.local_console.preflight', return_value={'runtime_root': self.directory.name}),
               patch('scripts.tts_tasks.TTSTasks'), patch('scripts.render_tasks.RenderTasks') as render_type):
             render_type.return_value.publication_package.return_value = package
-            url = self.base + '/api/live/content-package?' + urlencode({
-                'session_id': 'scene', 'task_id': 'spoken', 'render_task_id': 'rendered'})
-            with urlopen(url, timeout=3) as response:
+            request = Request(self.base + '/api/live/content-package',
+                data=json.dumps({'session_id':'scene','task_id':'spoken','render_task_id':'rendered'}).encode(),
+                headers={'Origin':self.base,'Content-Type':'application/json','X-Console-Token':self.token})
+            with urlopen(request, timeout=3) as response:
                 self.assertEqual(response.headers['Content-Type'], 'application/zip')
                 self.assertEqual(response.read(), package.read_bytes())
             render_type.return_value.publication_package.assert_called_once_with('scene', 'spoken', 'rendered')
-        self.assertEqual(self.call('/api/live/content-package?session_id=scene&task_id=spoken')[0], 400)
+        self.assertEqual(self.call('/api/live/content-package', {'session_id':'scene','task_id':'spoken'})[0], 400)
 
     def test_shop_workspaces_keep_product_and_metrics_data_isolated(self):
         first = ProductStore(shop_data_directory(self.directory.name, 'first'))
@@ -194,6 +195,9 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(clients['viewer'].call('/api/preflight', {'version': 1, 'runtime_root': '', 'port': 5158})[0], 200)
         status, denied = clients['operator'].call('/api/products', product)
         self.assertEqual((status, denied['access_role']), (403, 'operator'))
+        package_request = {'session_id': 'scene', 'task_id': 'spoken', 'render_task_id': 'rendered'}
+        self.assertEqual(clients['viewer'].call('/api/live/content-package', package_request)[0], 403)
+        self.assertEqual(clients['operator'].call('/api/live/content-package', package_request)[0], 403)
         self.assertEqual(clients['operator'].call('/api/preparation-templates', {
             'name': '无权模板', 'goal': '目标', 'audience': '', 'constraints': '',
         })[0], 403)
@@ -204,6 +208,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         events = [json.loads(line) for line in audit_path.read_text(encoding='utf-8').splitlines()]
         self.assertEqual([(event['account_id'], event['path'], event['allowed']) for event in events], [
             ('account-viewer', '/api/products', False),
+            ('account-viewer', '/api/live/content-package', False),
         ])
 
     def test_shared_preparation_template_reuses_structure_without_shop_facts(self):

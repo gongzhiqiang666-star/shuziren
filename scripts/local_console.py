@@ -479,17 +479,6 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     from scripts.media_http import serve_file
                     return serve_file(self, products().live_content_audio_path(
                         query['session_id'][0], query['task_id'][0]), 'audio/wav')
-                if path == '/api/live/content-package':
-                    query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
-                    if (set(query) != {'session_id', 'task_id', 'render_task_id'}
-                            or any(len(values) != 1 or not 1 <= len(values[0]) <= 64
-                                   for values in query.values())):
-                        raise ProductError('需要有效的口播和成片任务编号')
-                    from scripts.media_http import serve_file
-                    manager = render_manager if render_manager is not None else renders()
-                    package = manager.publication_package(query['session_id'][0], query['task_id'][0],
-                                                          query['render_task_id'][0])
-                    return serve_file(self, package, 'application/zip')
                 if path == '/api/live/rotation/events':
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                     sessions = query.get('session_id', [])
@@ -945,6 +934,15 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                         if avatar_manager is not None and (avatar_manager.state() or {}).get('status') == 'running':
                             raise Conflict('正在制作形象，请完成或取消后再合成视频')
                         return self.respond(202, {'task': renders().start_content(**value)})
+                    if path == '/api/live/content-package':
+                        if set(value) != {'session_id', 'task_id', 'render_task_id'} or not all(
+                                isinstance(value[key], str) and 1 <= len(value[key]) <= 64 for key in value):
+                            raise ProductError('需要有效的口播和成片任务编号')
+                        from scripts.media_http import serve_file
+                        manager = render_manager if render_manager is not None else renders()
+                        package = manager.publication_package(value['session_id'], value['task_id'],
+                                                              value['render_task_id'])
+                        return serve_file(self, package, 'application/zip')
                     if path == '/api/render/cancel':
                         if set(value)!={'task_id'} or not isinstance(value['task_id'],str):
                             raise ProductError('视频取消字段无效')

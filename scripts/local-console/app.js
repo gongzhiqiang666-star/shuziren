@@ -2441,11 +2441,25 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
     const scheduleStatus = document.createElement('p');
     scheduleStatus.setAttribute('role', 'status');
     const revisionStatus = document.createElement('p');
-    const packageDownload = document.createElement('a');
+    const packageDownload = document.createElement('button');
+    packageDownload.type = 'button';
     packageDownload.textContent = '下载发布准备包';
-    packageDownload.download = '数字人发布准备包.zip';
     packageDownload.hidden = true;
     scheduleForm.append(scheduleSave, scheduleStatus, revisionStatus, packageDownload);
+    packageDownload.addEventListener('click', async () => {
+      if(packageDownload.disabled || !renderState) return;
+      packageDownload.disabled=true;scheduleStatus.textContent='正在核对并生成发布准备包…';
+      try {
+        const response=await fetch('/api/live/content-package', {method:'POST',
+          headers:{'Content-Type':'application/json','X-Console-Token':token},
+          body:JSON.stringify({session_id:sessionId,task_id:params.get('task_id'),render_task_id:renderState.id})});
+        if(!response.ok) {const error=await response.json();throw new Error(error.error || '发布准备包生成失败');}
+        const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');
+        link.href=url;link.download='数字人发布准备包.zip';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+        scheduleStatus.textContent='发布准备包已下载';
+      } catch(error) {scheduleStatus.textContent=error.message;}
+      finally {packageDownload.disabled=false;}
+    });
     function showRevisionCount(schedule) {
       revisionStatus.textContent = !schedule ? '' : schedule.revision_count == null
         ? '历史改稿次数未记录' : `已保存改稿 ${schedule.revision_count} 次`;
@@ -2505,10 +2519,6 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
         const matchingRender = renderState?.status === 'succeeded' && renderState.source_kind === 'live_content'
           && renderState.content_session_id === sessionId && renderState.content_task_id === params.get('task_id');
         packageDownload.hidden = !(schedule?.draft_matches && !schedule?.withdrawn && matchingRender);
-        if (!packageDownload.hidden) packageDownload.href = '/api/live/content-package?' + new URLSearchParams({
-          session_id:sessionId, task_id:params.get('task_id'), render_task_id:renderState.id,
-        });
-        else packageDownload.removeAttribute('href');
         showPublicationReceipt(schedule);
       } catch (error) {
         scheduleStatus.textContent = error.message;
