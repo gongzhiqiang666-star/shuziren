@@ -80,7 +80,7 @@
 | LIV-004 | 手动口播与模拟提问 | `Api.speak/simulate_question` | `main.py`, `digital_live_manager.py`, `face_hand_live_manager.py` | 静态验证通过 | 三种直播模式、停止竞态和前端反馈 |
 | LIV-005 | 弹幕采集启动/停止 | `start_danmu_capture/stop_danmu_capture` | `danmu_bridge.py`, `ws_capture.py`, `digital_live_manager.py` | 静态验证通过 | 启动、自然结束、迭代异常、stop 异常的状态切断与重启通过 2 项专项测试；PDD 7 项和包含快手/淘宝/Shopee 协议的完整契约通过，见 `evidence/v07-danmu-lifecycle.md`。抖音/淘宝/快手/Shopee/PDD 真实账号与直播间仍待平台验收 |
 | LIV-006 | 快手 WebSocket 协议、心跳和重连 | `KsLive/hq/ks.pyd` | `kuaishou_v2/*` | 静态验证通过 | 真实账号/直播间、协议变化、掉线重连 |
-| LIV-007 | 淘宝弹幕、账号登录和商品同步 | `get/login/probe/sync_taobao_*` | `taobao_live_control.py`, `taobao_control_capture.py` | 开发中 | 淘宝账号、验证码、商品页变化、风控和断线恢复 |
+| LIV-007 | 淘宝弹幕、账号登录和商品同步 | `get/login/probe/sync_taobao_*` | `taobao_live_control.py`, `taobao_control_capture.py` | 静态验证通过 | 登录截止/取消、Playwright 线程所有权、商品 ID、快照去重、浏览器断线后带 storage state 退避重建以及登录失效不循环通过 7 项专项和完整契约，见 `evidence/v07-taobao-reconnect.md`。真实淘宝账号、验证码、商品页变化、弹卡和风控仍待平台验收 |
 | LIV-008 | 淘宝自动讲解、点品及控制页自愈 | 淘宝控制 Ghidra 调用链 | `taobao_live_control.py`, `face_hand_live_manager.py` | 静态验证通过 | 淘宝真实直播控制台长稳验证 |
 | LIV-009 | Shopee 登录态、商品轮播和控制恢复 | Shopee 控制 Ghidra 调用链 | `shopee_live_control.py`, `shopee_control_capture.py` | 静态验证通过 | 真实卖家账号、区域站点和页面升级 |
 | LIV-010 | 拼多多弹幕采集 | `assets/ws_danmu_capture/pdd` | `danmu_bridge.py`, `digital_live_manager.py`, `recovered/assets/ws_danmu_capture/pdd/*` | 静态验证通过 | 管理器现启动自有 PDD wrapper，使用动态回环端口并发送经官方 HTTPS 域名校验的直播 URL；Cookie 位于用户数据目录，事件规范化，兼容同步/异步 broadcast，帧和 gzip 解压限制 8 MiB。7 项专项测试、真实 wrapper 动态端口连接/停止及既有 protobuf 样本通过。真实拼多多账号、扫码、直播间和协议变化待平台验证，见 `evidence/v07-pdd-capture.md` |
@@ -97,8 +97,8 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 53 |
-| 开发中 | 5 |
+| 静态验证通过 | 54 |
+| 开发中 | 4 |
 | 已分析 | 0 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |

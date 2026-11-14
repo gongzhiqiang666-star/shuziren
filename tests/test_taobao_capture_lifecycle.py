@@ -60,3 +60,38 @@ class TaobaoCaptureLifecycleTests(unittest.TestCase):
             self.assertEqual(next(stream)['content'], 'fresh')
             capture.stop()
             self.assertEqual(list(stream), [])
+
+    def test_owned_capture_recreates_browser_session_after_disconnect(self):
+        first = Mock()
+        first.open_control_page.return_value = True
+        first.connected.return_value = False
+        first.fetch_comments.side_effect = OSError('browser closed')
+        second = Mock()
+        second.open_control_page.return_value = True
+        second.connected.return_value = True
+        second.fetch_comments.return_value = [
+            {'content': 'reconnected', 'nickname': 'buyer', 'time': '10:00'}]
+        capture = TaobaoControlDanmuCapture._configured(
+            storage_state='state.json', poll_interval_sec=0, prime_existing=False)
+        with patch('recovered.taobao_control_capture.TaobaoLiveControl', side_effect=[first, second]), \
+                self.assertLogs('recovered.taobao_control_capture', 'ERROR'):
+            stream = iter(capture)
+            capture.start()
+            self.assertEqual(next(stream)['content'], 'reconnected')
+            capture.stop()
+            self.assertEqual(list(stream), [])
+        first._connect_configured.assert_called_once_with(storage_state='state.json')
+        second._connect_configured.assert_called_once_with(storage_state='state.json')
+        first.shutdown.assert_called_once_with()
+        second.shutdown.assert_called_once_with()
+
+    def test_login_expiry_is_not_retried_forever(self):
+        controller = Mock()
+        controller._connect_configured.side_effect = __import__(
+            'recovered.taobao_live_control', fromlist=['TaobaoLoginRequired']).TaobaoLoginRequired('login expired')
+        capture = TaobaoControlDanmuCapture._configured(poll_interval_sec=0)
+        capture.start()
+        with patch('recovered.taobao_control_capture.TaobaoLiveControl', return_value=controller):
+            with self.assertRaisesRegex(Exception, 'login expired'):
+                next(iter(capture))
+        controller.shutdown.assert_called_once_with()

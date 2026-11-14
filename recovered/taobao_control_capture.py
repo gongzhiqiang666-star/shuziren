@@ -63,17 +63,31 @@ class TaobaoControlDanmuCapture:
         if self._controller is not None:
             yield from self._poll(self._controller)
             return
-
-        controller = TaobaoLiveControl()
-        try:
-            controller._connect_configured(storage_state=self._storage_state)
-            if self._stopped.is_set():
-                return
-            if not controller.open_control_page():
-                raise RuntimeError("Taobao live control page unavailable")
-            yield from self._poll(controller)
-        finally:
-            controller.shutdown()
+        failures = 0
+        while not self._stopped.is_set():
+            controller = TaobaoLiveControl()
+            try:
+                controller._connect_configured(storage_state=self._storage_state)
+                if self._stopped.is_set():
+                    return
+                if not controller.open_control_page():
+                    raise RuntimeError("Taobao live control page unavailable")
+                failures = 0
+                yield from self._poll(controller)
+                if self._stopped.is_set():
+                    return
+                raise RuntimeError("Taobao comment stream ended unexpectedly")
+            except TaobaoLoginRequired:
+                raise
+            except Exception:
+                failures += 1
+                logging.getLogger(__name__).exception(
+                    "Taobao capture session disconnected; retry=%s", failures)
+                delay = min(10.0, max(0.25, float(self.poll_interval_sec)) * (2 ** min(failures - 1, 5)))
+                if self._stopped.wait(delay):
+                    return
+            finally:
+                controller.shutdown()
 
     def _is_anchor(self, item):
         return "主播" in str(item.get("tag") or "")

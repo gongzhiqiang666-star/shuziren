@@ -768,6 +768,8 @@ class Api(PluginInstallerApi):
             )
         except TaobaoLoginRequired as error:
             return {"status": "error", "message": str(error)}
+        except Exception as error:
+            return {"status": "error", "message": f"淘宝商品同步失败: {error}"}
         return {"status": "success", "products": products}
 
     def start_live(self, data):
