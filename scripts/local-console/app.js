@@ -669,7 +669,11 @@ $('business-import-form').addEventListener('submit', async event => {
     let csv;
     try { csv = new TextDecoder('utf-8', {fatal:true}).decode(bytes); }
     catch { throw new Error('请使用 UTF-8 编码的 CSV 文件'); }
-    const result = await request(metricsRoute + '/import', {product_id:product.id, csv});
+    const payload = {product_id:product.id, csv};
+    if (new TextEncoder().encode(JSON.stringify(payload)).byteLength > 1048576) {
+      throw new Error('CSV 加上请求字段后超过 1 MiB，请拆分后导入');
+    }
+    const result = await request(metricsRoute + '/import', payload);
     if (currentProduct === product) {
       showBusinessMetrics(result.records);
       $('metrics-status').textContent = `已导入 ${result.imported} 行经营数据`;
