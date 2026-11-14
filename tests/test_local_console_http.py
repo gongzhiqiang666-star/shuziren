@@ -917,6 +917,7 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(report['session']['status'], 'failed')
         self.assertEqual(report['session']['frames'], 72)
+        self.assertEqual(report['session']['failure_reason'], 'worker exited')
         self.assertEqual(report['video_counters'], counters)
 
     def test_live_report_isolates_sessions_and_keeps_missing_metrics_explicit(self):
