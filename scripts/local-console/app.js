@@ -619,6 +619,7 @@ function showBusinessMetrics(records) {
 async function loadBusinessMetrics() {
   const product = currentProduct;
   if (!product) return;
+  $('metrics-error').textContent = '';
   try {
     const result = await request(metricsRoute + '?product_id=' + encodeURIComponent(product.id));
     if (currentProduct === product) showBusinessMetrics(result.records);
