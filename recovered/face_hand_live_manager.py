@@ -93,6 +93,7 @@ class FaceHandLiveManager:
         self.question_blocked_keywords=[]
         self._taobao_controller=None; self._product_popup=None
         self.product_image_items=[]
+        self._product_image_index_map={}
         self.product_image_jitter_level=5
         self._synced_goods_id=None
         self._synced_image_goods_id=None
@@ -214,6 +215,7 @@ class FaceHandLiveManager:
                 unload_product_cutout()
             except Exception: pass
         self.product_image_items=[]; self._synced_goods_id=None; self._synced_image_goods_id=None
+        self._product_image_index_map={}
         self._started_cycle=False
         return True
 
@@ -324,6 +326,18 @@ class FaceHandLiveManager:
                 "itemName":str(item.get("itemName") or item.get("item_name") or "").strip(),
                 "itemId":str(item.get("itemId") or item.get("item_id") or "").strip(),
             })
+        return result
+
+    @staticmethod
+    def _build_product_image_index_map(products):
+        result={}; output_position=0
+        for source_position,item in enumerate(products or []):
+            if not isinstance(item,dict):
+                continue
+            try: product_index=int(item.get("product_index",source_position))
+            except (TypeError,ValueError): product_index=source_position
+            result.setdefault(product_index,output_position)
+            output_position+=1
         return result
 
     def _pending_audio_snapshot(self):
@@ -706,14 +720,16 @@ class FaceHandLiveManager:
     def _prepare_product_images(self):
         if not self._live_config.get("enable_product_image_sync"):
             self.product_image_items=[]
+            self._product_image_index_map={}
             return
         from .product_image_popup import clamp_product_image_jitter_level,get_product_image_popup
         enable_cutout=bool(self._live_config.get("enable_product_image_cutout"))
         if enable_cutout:
             from .product_cutout import load_product_cutout
             load_product_cutout()
-        self.product_image_items=self._build_product_image_items(
-            self._live_config.get("products") or self._live_config.get("product_scripts") or [])
+        products=self._live_config.get("products") or self._live_config.get("product_scripts") or []
+        self.product_image_items=self._build_product_image_items(products)
+        self._product_image_index_map=self._build_product_image_index_map(products)
         self.product_image_jitter_level=clamp_product_image_jitter_level(
             self._live_config.get("product_image_jitter_level",5))
         self._product_popup=get_product_image_popup()
@@ -724,12 +740,19 @@ class FaceHandLiveManager:
     def _sync_product_image(self,product_index):
         if not self._live_config.get("enable_product_image_sync"):
             return
-        if not (0<=product_index<len(self.product_image_items)):
+        try: product_index=int(product_index)
+        except (TypeError,ValueError): return
+        position=self._product_image_index_map.get(product_index)
+        item=(self.product_image_items[position]
+              if position is not None and 0<=position<len(self.product_image_items)
+              else None)
+        if item is None and not self._product_image_index_map and 0<=product_index<len(self.product_image_items):
+            item=self.product_image_items[product_index]
+        if item is None:
             return
         from .product_image_popup import get_product_image_popup
         popup=self._product_popup or get_product_image_popup()
         self._product_popup=popup
-        item=self.product_image_items[product_index]
         try: goods_id=int(item.get("itemId") or product_index)
         except (TypeError,ValueError): goods_id=product_index
         if goods_id == self._synced_image_goods_id:
