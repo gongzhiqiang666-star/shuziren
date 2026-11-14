@@ -47,6 +47,23 @@ class AVDeviceSink:
             self.video_thread=threading.Thread(target=self._video,name='device-video-clock');self.video_thread.start()
         except BaseException:self.abort();raise
 
+    def _wait_video_deadline(self, due_ns):
+        """Avoid carrying Windows timer-granularity jitter into the camera clock."""
+        while True:
+            remaining_ns = due_ns - time.perf_counter_ns()
+            if remaining_ns <= 0:
+                return False
+            if remaining_ns > 2_000_000:
+                if self.stop_event.wait((remaining_ns - 1_500_000) / 1e9):
+                    return True
+            else:
+                # Yield while there is still scheduler headroom, then use only
+                # the final short interval for a bounded spin.
+                if remaining_ns > 250_000:
+                    time.sleep(0)
+                elif self.stop_event.is_set():
+                    return True
+
     def _callback(self,outdata,frames,timing,status):
         try:
             if status:raise RuntimeError('Audio device status: '+str(status))
@@ -84,7 +101,7 @@ class AVDeviceSink:
                     if self.draining and self.finished.is_set() and self.camera.frames==self.frames:return
                     continue
                 dequeued=time.perf_counter_ns()
-                if self.stop_event.wait(max(0,(due-dequeued)/1e9)):return
+                if self._wait_video_deadline(due):return
                 send_started=time.perf_counter_ns()
                 self.camera.send(index,image)
                 if self.on_present:self.on_present({'event':'video_sent','frame_index':index,

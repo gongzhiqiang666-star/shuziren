@@ -1,6 +1,7 @@
 import hashlib
 import queue
 import threading
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
@@ -14,6 +15,14 @@ class AbortCallback(Exception):pass
 
 
 class CombinedCallbackTests(unittest.TestCase):
+    def test_precise_video_wait_reaches_deadline_and_honours_stop(self):
+        sink=self.sink();sink.stop_event=threading.Event()
+        due=time.perf_counter_ns()+5_000_000
+        self.assertFalse(sink._wait_video_deadline(due))
+        self.assertGreaterEqual(time.perf_counter_ns(),due)
+        sink.stop_event.set()
+        self.assertTrue(sink._wait_video_deadline(time.perf_counter_ns()+1_000_000_000))
+
     def test_four_frame_candidate_prefills_on_owner_thread(self):
         sink=self.sink()
         sink.closed=sink.started=False
