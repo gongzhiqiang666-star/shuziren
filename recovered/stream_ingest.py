@@ -72,8 +72,11 @@ class LiveStreamIngestProcess:
         self.config = dict(config or {})
         self.process: Optional[subprocess.Popen] = None
         self.stderr_thread: Optional[threading.Thread] = None
+        self.monitor_thread: Optional[threading.Thread] = None
         self.stderr_lines = deque(maxlen=80)
         self._stop_requested = False
+        self._stop_event = threading.Event()
+        self._room_url = ""
         self.stream_name = f"douyin_relay_{uuid4().hex}"
         self.local_playback_url = self._build_local_playback_url()
         self.last_error = ""
@@ -82,29 +85,68 @@ class LiveStreamIngestProcess:
     def start(self, room_url: str) -> str:
         self.stop()
         self._stop_requested = False
+        self._stop_event.clear()
         self.stderr_lines.clear()
         data = self.resolver.resolve(room_url)
+        if not self._launch_candidates(data):
+            raise RuntimeError(self.last_error)
+        self._room_url = str(room_url)
+        self.monitor_thread = threading.Thread(
+            target=self._monitor_loop,
+            name="DouyinStreamIngest.monitor",
+            daemon=True,
+        )
+        self.monitor_thread.start()
+        return self.local_playback_url
+
+    def _launch_candidates(self, data: Dict[str, Any]) -> bool:
         failed_error = ""
         candidates = data.get("candidates") or self.resolver.build_candidates(data)
         allow_transcode = self._as_bool(self.config.get("douyin_transcode_fallback", True))
         for upstream_url, mode in candidates:
+            if self._stop_requested:
+                return False
             if mode == "transcode" and not allow_transcode:
                 continue
             try:
                 self._start_ffmpeg(upstream_url, mode)
                 if self._wait_until_stable():
-                    return self.local_playback_url
+                    self.last_error = ""
+                    return True
                 code = self.process.poll() if self.process is not None else -1
                 failed_error = self._format_ffmpeg_error(-1 if code is None else code)
             except Exception as error:
                 failed_error = str(error)
             self._stop_process()
         self.last_error = failed_error or "无法启动抖音直播流转发"
-        raise RuntimeError(self.last_error)
+        return False
+
+    def _monitor_loop(self) -> None:
+        restart_delay = max(
+            0.1, float(self.config.get("douyin_ingest_restart_delay", 2.0))
+        )
+        while not self._stop_event.wait(0.5):
+            if self.is_running():
+                continue
+            self._stop_process()
+            try:
+                data = self.resolver.resolve(self._room_url)
+                if self._stop_requested:
+                    return
+                if self._launch_candidates(data):
+                    continue
+            except Exception:
+                self.last_error = "抖音直播流中断，正在等待重连"
+            if self._stop_event.wait(restart_delay):
+                return
 
     def stop(self) -> None:
         self._stop_requested = True
+        self._stop_event.set()
         self._stop_process()
+        monitor, self.monitor_thread = self.monitor_thread, None
+        if monitor is not None and monitor is not threading.current_thread():
+            monitor.join(timeout=2)
 
     def is_running(self) -> bool:
         return self.process is not None and self.process.poll() is None
