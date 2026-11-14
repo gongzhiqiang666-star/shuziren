@@ -59,6 +59,7 @@ def _bounded_read_bytes(path, maximum, label):
 
 class Api(PluginInstallerApi):
     _INLINE_MEDIA_MAX_BYTES = 64 * 1024 * 1024
+    _TOKEN_MAX_CHARS = 16 * 1024
 
     @staticmethod
     def _default_runtime_dir():
@@ -179,6 +180,8 @@ class Api(PluginInstallerApi):
     def save_token(self, token):
         if not isinstance(token, str):
             raise TypeError("token must be a str")
+        if len(token) > self._TOKEN_MAX_CHARS:
+            return {"error": "Token长度超过限制"}
         try:
             self._save_user_config({"token": token})
             self.config["token"] = token
