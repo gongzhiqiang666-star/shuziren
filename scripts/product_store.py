@@ -1094,7 +1094,7 @@ class ProductStore:
             raise ProductError('售后 CSV 为空')
         required = {'source', 'period_start', 'period_end'}
         categories = {'quality', 'size', 'expectation', 'fulfillment', 'other'}
-        reader = csv.DictReader(io.StringIO(content.lstrip('\ufeff')), strict=True)
+        reader = csv.DictReader(io.StringIO(content.removeprefix('\ufeff'), newline=''), strict=True)
         rows = []
         keys = set()
         try:

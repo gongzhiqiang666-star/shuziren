@@ -13,6 +13,19 @@ from scripts.product_store import Conflict, ProductError, ProductStore, product_
 
 
 class ProductStoreTests(unittest.TestCase):
+    def test_after_sales_csv_rejected_correction_keeps_existing_snapshot(self):
+        product_id = self.product()['id']
+        header = 'source,period_start,period_end,quality\r\n'
+        first = '"CSV, Shop",2026-11-01,2026-11-01,0\r\n'
+        corrected = '"CSV, Shop",2026-11-01,2026-11-01,4\r\n'
+        invalid = 'Other,2026-11-02,2026-11-02,-1\r\n'
+        self.assertEqual(self.store.import_after_sales(product_id, '\ufeff' + header + first), 1)
+        before = self.store.after_sales(product_id)
+        with self.assertRaisesRegex(ProductError, '第 3 行'):
+            self.store.import_after_sales(product_id, header + corrected + invalid)
+        self.assertEqual(self.store.after_sales(product_id), before)
+        self.assertEqual(self.store.import_after_sales(product_id, header + corrected), 1)
+
     def test_revised_legacy_script_keeps_assistant_role(self):
         product = self.store.save(title='茶杯', content='商品事实', product_index=1,
                                   extra={'v122': {'script_roles': ['host', 'assistant']}})
