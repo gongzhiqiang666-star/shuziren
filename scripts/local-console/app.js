@@ -1,16 +1,21 @@
 'use strict';
 const $ = id => document.getElementById(id);
+function revealWorkspaceAnchor(hash) {
+  const target = $(hash.slice(1));
+  for (let panel = target?.closest('details'); panel; panel = panel.parentElement.closest('details')) {
+    panel.open = true;
+  }
+  return target;
+}
+window.addEventListener('hashchange', () => revealWorkspaceAnchor(location.hash)?.scrollIntoView());
+revealWorkspaceAnchor(location.hash);
 document.querySelector('.workspace-nav').addEventListener('click', event => {
   const link = event.target.closest('a[href^="#"]');
   if (!link) return;
-  const target = $(link.hash.slice(1));
+  const target = revealWorkspaceAnchor(link.hash);
   if (target?.hidden) {
     event.preventDefault();
     location.hash = 'products-panel';
-    return;
-  }
-  for (let panel = target?.closest('details'); panel; panel = panel.parentElement.closest('details')) {
-    panel.open = true;
   }
 });
 const productFactsText = product => product?.extra?.product_facts === undefined ? '' : JSON.stringify(product.extra.product_facts, null, 2);
