@@ -8,7 +8,7 @@ from scripts.local_console_config import ConfigError, ConfigStore, preflight, va
 from scripts.v122_package_policy import REQUIRED_RUNTIME_FILES
 from scripts.media_runtime import (
     INDEPENDENT, LEGACY_PYTHON, MANIFEST_NAME, MEDIA_FILES, MODEL_FILES, PROVIDER_FILES,
-    runtime_fingerprints, runtime_python, verify_fingerprints,
+    ORIGIN_VIDEO_FILES, inspect_runtime, runtime_fingerprints, runtime_python, verify_fingerprints,
 )
 
 
@@ -22,8 +22,20 @@ class ConsoleConfigTests(unittest.TestCase):
             file.parent.mkdir(parents=True, exist_ok=True)
             file.write_bytes(name.encode())
         inventory = runtime_fingerprints(runtime)
+        missing = inspect_runtime(runtime, include_origin_video=True)
+        self.assertFalse(missing['ready'])
+        self.assertEqual([item['path'] for item in missing['checks'] if not item['present']],
+                         list(ORIGIN_VIDEO_FILES))
+        for name in ORIGIN_VIDEO_FILES:
+            file = runtime / name
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_bytes(name.encode())
+        video_inventory = runtime_fingerprints(runtime, include_origin_video=True)
         moved = runtime.rename(self.root / 'moved media')
         self.assertTrue(verify_fingerprints(moved, inventory)['verified'])
+        self.assertTrue(verify_fingerprints(moved, video_inventory)['verified'])
+        (moved / ORIGIN_VIDEO_FILES[0]).write_bytes(b'changed provider')
+        self.assertEqual(verify_fingerprints(moved, video_inventory)['mismatches'], [ORIGIN_VIDEO_FILES[0]])
         (moved / MODEL_FILES[0]).write_bytes(b'changed')
         result = verify_fingerprints(moved, inventory)
         self.assertFalse(result['verified'])
