@@ -12,6 +12,13 @@ python -m pip check
 
 源码包包含控制台、恢复源码和依赖版本说明。形象、音频、驱动、模型及 GPU 运行环境需要另行配置。当前媒体运行仍需兼容的外置运行目录。模型和依赖独立交付、升级回滚和干净 Windows 验收另有任务记录。
 
+若发布包附带 `assets/plugin` 下的可选驱动或运行库安装器，必须先在最终待发布目录生成并复核完整性清单。工具只接受产品代码中已有入口对应的四个固定文件名，拒绝额外 EXE、链接/重解析文件、空文件和超过 1 GiB 的文件；安装器本身仍须由维护者从可信官方来源取得并完成签名审查，不提交到仓库。
+
+```powershell
+python -m scripts.plugin_installer_manifest build --plugin-root "<发布目录>\assets\plugin"
+python -m scripts.plugin_installer_manifest verify --plugin-root "<发布目录>\assets\plugin"
+```
+
 ## 独立媒体运行目录
 
 运行 `python -m scripts.media_runtime initialize --root <媒体运行目录>` 创建布局清单。将目标 Python 环境放在 `_internal/env`，独立环境的入口是 `Scripts/python.exe`。FFmpeg 和 FFprobe 放在 `_internal/env/ffmpeg/bin`。模型及 IndexTTS、WeNet 提供方代码按 `python -m scripts.media_runtime check --root <媒体运行目录>` 的分组清单安装。清单检查关键入口文件，完整依赖、驱动、模型来源和推理能力另行验收。验证过的 Python/CUDA 包版本见 `recovered/requirements-*.txt`。
