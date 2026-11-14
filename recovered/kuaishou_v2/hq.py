@@ -176,10 +176,17 @@ class Tool:
     def generate_cookie(self):
         return "did=" + str(generate_did())
 
+    def _slide_match(self, target_bytes, background_bytes, simple_target):
+        if self.det is None:
+            raise RuntimeError("快手验证码 OCR 未配置，请安装独立平台工具环境后重试")
+        if simple_target:
+            return self.det.slide_match(
+                target_bytes, background_bytes, simple_target=True
+            )
+        return self.det.slide_match(target_bytes, background_bytes)
+
     def slide_match(self, target_bytes, background_bytes):
-        return self.det.slide_match(
-            target_bytes, background_bytes, simple_target=True
-        )
+        return self._slide_match(target_bytes, background_bytes, True)
 
     def handle_captcha(self, resp_data):
         import requests
@@ -237,7 +244,7 @@ class Tool:
                 image_params = {"captchaSn": captcha_sn}
                 bg_img = requests.get(bg_pic_url, params=image_params).content
                 cut_img = requests.get(cut_pic_url, params=image_params).content
-                slide_result = self.det.slide_match(cut_img, bg_img)
+                slide_result = self._slide_match(cut_img, bg_img, False)
                 distance = int(round(int(slide_result["target"][0]) * 0.469))
                 trajectory = Generate_trajectory().get_slide_track(
                     int(distance * 3.42)

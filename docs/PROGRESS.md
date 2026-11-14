@@ -1,5 +1,7 @@
 # 四期任务进度与验证结果
 
+A02-03 快手 OCR 缺失诊断子任务完成。统一私有提供者边界在未配置 ddddocr 时立即给出独立平台工具环境错误，不再由 `None.slide_match` 进入三轮通用重试；公开 `Tool.slide_match` 保持原 `.pyd` 的三参数签名。首次增加参数被恢复兼容门禁拒绝，修正后 3 项专项和恢复五关通过。真实快手房间、验证码流程和 headless OpenCV 独立 worker 仍按 E13 条件处理，本次不计平台通过。
+
 V01 控制台状态令牌收口完成。前端只从同源 `/api/session` 获取写入令牌，`/api/state` 的重复 token 字段未被使用却会被诊断工具输出，现已移除并增加连续刷新不暴露令牌的断言。真实 FFmpeg 条件下控制台 HTTP 59 项全部通过，前端脚本语法通过；现有 Host、Origin、写令牌和角色权限校验保持不变。证据见 `docs/evidence/v01-state-token-hardening.md`。
 
 A07-05 核心媒体与可选工具隔离门禁完成。源码检索确认 JAX/JAXlib、py3langid、Streamlit 未进入正式产品入口，新增机器规则禁止四者混入核心媒体解释器；14 项专项通过。现有独立环境实测四项均存在，故即使 37/37 直接锁版本匹配仍保持 core_isolated=false、ready=false。ddddocr 被快手 OCR 实际引用，不列为可删除工具；其 headless OpenCV 及 FunASR/Pandas/PyCUDA/Ultralytics 缺失传递依赖必须由新 wheelhouse 闭合。证据见 `docs/evidence/a07-media-software-gate.md`。
