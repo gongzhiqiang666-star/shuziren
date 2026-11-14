@@ -268,19 +268,15 @@ class Api(PluginInstallerApi):
             return {"error": str(error)}
 
     def clear_cache(self):
-        import tempfile
-        removed = 0
+        running_error = self._running_live_error()
+        if running_error:
+            return {**running_error, 'removed': 0, 'removed_bytes': 0, 'failures': []}
         try:
-            roots = [Path(tempfile.gettempdir()) / name for name in
-                     ("short_video", "converted_audio_for_player", "voice_infer", "ip_agent")]
-            for root in roots:
-                if root.is_dir():
-                    for path in root.rglob("*"):
-                        if path.is_file():
-                            try: path.unlink(); removed += 1
-                            except OSError: pass
-            return {"status": "success", "removed": removed, "message": "缓存清理完成"}
-        except Exception as error: return {"status": "error", "message": str(error), "removed": removed}
+            from .cache_cleanup import clear_known_caches
+            return clear_known_caches()
+        except Exception as error:
+            return {"status": "error", "message": str(error), "removed": 0,
+                    'removed_bytes': 0, 'failures': []}
 
     def _get_gpu_info(self):
         import re
