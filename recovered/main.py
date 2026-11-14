@@ -2078,8 +2078,9 @@ class Api(PluginInstallerApi):
         for path in existing: shutil.copy2(path, history / path.name)
 
     def _attach_live_sticker_previews(self, project):
-        path = str(project.get("fg_white_path") or "").strip()
-        project["fg_white_preview_url"] = self._encode_preview_image(path)
+        for field in ("bg", "fg_white", "fg_alpha", "cover"):
+            path = str(project.get(field + "_path") or "").strip()
+            project[field + "_preview_url"] = self._encode_preview_image(path)
         titles = project.get("room_titles")
         if not isinstance(titles, list):
             titles = []

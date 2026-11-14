@@ -1,5 +1,7 @@
 import tempfile
 import unittest
+import base64
+import io
 from pathlib import Path
 
 from PIL import Image
@@ -23,17 +25,21 @@ class LiveStickerProjectTests(unittest.TestCase):
 
     def generate(self, colours, fail_at=None):
         calls = 0
-        def provider(*, dest, **_):
+        ratios = []
+        def provider(*, dest, aspect_ratio='9:16', **_):
             nonlocal calls
             calls += 1
+            ratios.append(aspect_ratio)
             if calls == fail_at: raise RuntimeError('provider interrupted')
             self.png(dest, colours[calls - 1])
         self.api._generate_live_sticker_image_file = provider
-        return self.api.generate_live_sticker_images({
+        result = self.api.generate_live_sticker_images({
             'project_id': self.project['id'], 'runninghub_api_key': 'local-test-key',
             'background_prompt': 'background', 'foreground_prompt': 'foreground',
             'cover_prompt': 'cover',
         })
+        result['requested_ratios'] = ratios
+        return result
 
     def asset_bytes(self):
         outputs = self.api._get_live_sticker_output_paths(self.project['id'])
@@ -61,6 +67,19 @@ class LiveStickerProjectTests(unittest.TestCase):
         self.assertEqual(len(archived), 2)
         self.assertEqual({item.read_bytes() for item in archived}, {first['bg'], second['bg']})
         self.assertEqual(self.api.get_live_sticker_project(self.project['id'])['project']['status'], 'success')
+
+    def test_complete_project_exposes_all_previews_and_expected_provider_ratios(self):
+        result = self.generate(['red', 'green', 'blue'])
+        self.assertEqual(result['requested_ratios'], ['9:16', '9:16', '1:1'])
+        project = self.api.get_live_sticker_project(self.project['id'])['project']
+        for field in ('bg', 'fg_white', 'fg_alpha', 'cover'):
+            url = project[field + '_preview_url']
+            self.assertTrue(url.startswith('data:image/png;base64,'), field)
+            with Image.open(io.BytesIO(base64.b64decode(url.split(',', 1)[1]))) as image:
+                self.assertGreater(image.width, 0)
+                self.assertGreater(image.height, 0)
+        with Image.open(project['cover_path']) as cover:
+            self.assertEqual(cover.size, (750, 750))
 
 
 if __name__ == '__main__': unittest.main()
