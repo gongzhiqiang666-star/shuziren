@@ -51,7 +51,7 @@ $env:PATH = "$runtime\_internal\env\ffmpeg\bin;" + $env:PATH
 
 原.pyd：face_count=2、hand_count=2，返回含status=success，face/hand为绝对路径，manifest为version=2字典，有normalize/details/参数。恢复版初次返回face_count=0、hand_count=0，但磁盘存在切片；路径分类修复后既有真实媒体测试通过（2+2段、1080×1920、25fps）。
 
-未解决：完整返回结构、manifest v2、默认参数（原能量阈值200.0等）和分段细节仍需定向对齐。仅记录实际已知差异，不按单个样本猜测所有边界。LIV-014退回开发中，X15-02保持未完成。
+后续在 2026-11-14 使用同一原 `.pyd` 直接补齐：返回结构、manifest v2、全部公开默认参数、原始 PCM RMS 和随机分段语义均已实测恢复；同输入同随机种子的规范化 manifest 完全一致，恢复版真实成片规格亦通过。LIV-014 提升为静态验证通过，真实淘宝场次和长稳仍未因此放行；X15-02 的方案对照结论不由本项替代。
 
 ## 源码集成边界
 

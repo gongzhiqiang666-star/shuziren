@@ -15,20 +15,21 @@ from tempfile import TemporaryDirectory
 
 import numpy as np
 
-FRAME_MS = 20
-TARGET_SAMPLE_RATE = 16000
+FRAME_MS = 40
+TARGET_SAMPLE_RATE = 48000
+VAD_SAMPLE_RATE = 16000
 TARGET_WIDTH = 1080
 TARGET_HEIGHT = 1920
 TARGET_FPS = 25
-DEFAULT_MIN_CLIP_MS = 3000
+DEFAULT_MIN_CLIP_MS = 20000
 DEFAULT_MAX_CLIP_MS = 30000
-DEFAULT_FACE_KEEP_MIN_MS = 1000
-DEFAULT_RMS_SILENCE_THRES = 0.015
+DEFAULT_FACE_KEEP_MIN_MS = 15000
+DEFAULT_RMS_SILENCE_THRES = 200.0
 DEFAULT_MIN_SPEECH_RUN_MS = 200
-DEFAULT_SPEECH_MERGE_GAP_MS = 500
+DEFAULT_SPEECH_MERGE_GAP_MS = 1200
 FACE_HAND_MANIFEST_NAME = "manifest.json"
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}
-_CUT_WORKERS = max(1, min(4, os.cpu_count() or 1))
+_CUT_WORKERS = 4
 
 
 def _resolve_ffmpeg():
@@ -46,7 +47,7 @@ def _resolve_ffprobe():
 
 def _extract_wav_16k(media_path: str, wav_path: str) -> None:
     result = subprocess.run([_resolve_ffmpeg(), "-y", "-i", media_path, "-vn", "-ac", "1", "-ar",
-                             str(TARGET_SAMPLE_RATE), "-acodec", "pcm_s16le", wav_path], capture_output=True, text=True)
+                             str(VAD_SAMPLE_RATE), "-acodec", "pcm_s16le", wav_path], capture_output=True, text=True)
     if result.returncode:
         raise RuntimeError(result.stderr.strip()[-2000:])
 
@@ -70,7 +71,7 @@ def _frame_rms_series(wav_path: str, *, frame_ms: int = FRAME_MS):
     frame_samples = max(1, round(rate * frame_ms / 1000))
     count = (len(samples) + frame_samples - 1) // frame_samples
     padded = np.zeros(count * frame_samples, dtype=np.float32)
-    padded[:len(samples)] = samples.astype(np.float32) / 32768.0
+    padded[:len(samples)] = samples.astype(np.float32)
     rms = np.sqrt(np.mean(padded.reshape(count, frame_samples) ** 2, axis=1)) if count else np.zeros(0)
     return rms, rate
 
@@ -120,7 +121,8 @@ def _split_long_segment(start_ms: int, end_ms: int, *, min_ms: int, max_ms: int)
     pieces = []
     cursor = start_ms
     while end_ms - cursor > max_ms:
-        pieces.append((cursor, cursor + max_ms)); cursor += max_ms
+        length = random.randint(min_ms, max_ms)
+        pieces.append((cursor, cursor + length)); cursor += length
     remain = end_ms - cursor
     if remain >= min_ms:
         pieces.append((cursor, end_ms))
@@ -153,10 +155,9 @@ def plan_hand_random_segments(duration_ms: int, *, min_ms: int = DEFAULT_MIN_CLI
                               max_ms: int = DEFAULT_MAX_CLIP_MS):
     if duration_ms <= 0 or min_ms <= 0 or max_ms < min_ms:
         return []
-    rng = random.Random(duration_ms)
     output, cursor = [], 0
     while duration_ms - cursor >= min_ms:
-        length = min(duration_ms - cursor, rng.randint(min_ms, max_ms))
+        length = min(duration_ms - cursor, random.randint(min_ms, max_ms))
         output.append((cursor, cursor + length)); cursor += length
     if output and cursor < duration_ms:
         output[-1] = (output[-1][0], duration_ms)
@@ -225,8 +226,27 @@ def clip_face_hand_video_group(face_video_path: str, hand_video_path: str, *, ou
                 if Path(job[3]).parent == root / "face"]
     hand_rel = [Path(job[3]).relative_to(root).as_posix() for job in jobs
                 if Path(job[3]).parent == root / "hand"]
-    manifest = {"created_at": datetime.now().isoformat(), "face_source": face, "hand_source": hand,
-                "face": face_rel, "hand": hand_rel, "face_count": len(face_rel), "hand_count": len(hand_rel),
-                "face_method": "energy_vad", "hand_method": "random_duration"}
+    details = {}
+    for kind, source, duration, segments, paths in (
+            ('face', face, face_duration, face_segments, face_rel),
+            ('hand', hand, hand_duration, hand_segments, hand_rel)):
+        details[kind] = {'source': source, 'duration_ms': duration, 'segments': [
+            {'start_ms': start, 'end_ms': end, 'duration_ms': end - start, 'path': path}
+            for (start, end), path in zip(segments, paths)
+        ]}
+    manifest = {
+        'version': 2, 'created_at': datetime.now().strftime('%Y%m%d_%H%M%S'),
+        'face_source': face, 'hand_source': hand,
+        'min_clip_ms': min_clip_ms, 'max_clip_ms': max_clip_ms,
+        'face_keep_min_ms': face_keep_min_ms, 'rms_silence_thres': rms_silence_thres,
+        'merge_gap_ms': merge_gap_ms, 'face_method': 'energy_vad', 'hand_method': 'random_duration',
+        'normalize': {'fps': TARGET_FPS, 'sample_rate': TARGET_SAMPLE_RATE,
+                      'width': TARGET_WIDTH, 'height': TARGET_HEIGHT,
+                      'audio_channels': 1, 'pixel_format': 'yuv420p'},
+        'face': face_rel, 'hand': hand_rel, 'details': details,
+    }
     (root / FACE_HAND_MANIFEST_NAME).write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    return {"output_dir": str(root), "manifest": str(root / FACE_HAND_MANIFEST_NAME), **manifest}
+    return {'status': 'success', 'output_dir': str(root.resolve()),
+            'face_count': len(face_rel), 'hand_count': len(hand_rel),
+            'face': [str((root / path).resolve()) for path in face_rel],
+            'hand': [str((root / path).resolve()) for path in hand_rel], 'manifest': manifest}

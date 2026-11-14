@@ -196,3 +196,5 @@ G10-01 跨店准备模板正式包验证通过。从提交 ea3b59f 构建 440 �
 SYS-009 Windows 缓存清理专项 4 项通过。实际创建已知缓存和无关目录，清理只删除目标文件并统计 7 字节，无关文件保留；模拟直播状态在触碰文件前拒绝；部分失败结构原样返回。另持有真实 Windows 文件句柄触发 WinError 32，结果为 partial、文件保留，释放后重试成功。完整恢复契约使用 v122 参考根、随包 FFmpeg 和 UTF-8 运行到最终签名审计，因既有 `RtmpFaceReader._wait_for_initial_frame` 二进制/恢复版参数数目差异停止，该差异不归因于缓存改造。
 
 LIV-014 RTMP reader 签名兼容修复后，专项 10 项通过，覆盖首帧、EOF、取消、停止释放及输入节奏。完整恢复契约以 `D:\TEMP\v122-minimum-proof-ready\runtime\yunchuang_v122\_internal` 为授权原运行根，显式加入随包 FFmpeg 并使用 UTF-8 解释器，最终报告 `PASS: 128/128`，二进制类方法签名缺口清零。首轮缺 FFmpeg、第二轮 GBK 越南语输出失败均为环境条件，保留在执行过程但不作为代码失败。
+
+LIV-014 原 `.pyd` manifest v2 差分完成。证据目录 `logs/validation/liv014-original-manifest-v2-01` 使用同一 320×240/25fps/1.2 秒含声输入；原版实测返回 success、绝对 face/hand 路径和 manifest 字典。恢复版对齐默认参数、原始 PCM RMS、随机长段切割、返回结构及 v2 manifest，实际输出 2+2 段且四段媒体规格均为 1080×1920、25fps、48 kHz 单声道。两端设相同随机种子后，规范化 manifest 完全相等，切点分别为 face 600/1200、hand 775/1200 ms。真实场次长稳另验。
