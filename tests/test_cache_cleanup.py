@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -63,6 +64,24 @@ class CacheCleanupTests(unittest.TestCase):
             self.assertEqual(retry['status'], 'success')
             self.assertEqual(retry['removed'], 1)
             self.assertFalse(path.exists())
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows junction semantics required')
+    def test_windows_junction_is_removed_without_following_external_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache = root/'short_video'; cache.mkdir()
+            external = root/'customer-data'; external.mkdir()
+            keep = external/'keep.txt'; keep.write_text('do not delete', encoding='utf-8')
+            junction = cache/'external-link'
+            created = subprocess.run(
+                ['cmd', '/c', 'mklink', '/J', str(junction), str(external)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(created.returncode, 0, created.stderr or created.stdout)
+            result = clear_known_caches(root)
+            self.assertEqual(result['status'], 'success')
+            self.assertFalse(junction.exists())
+            self.assertEqual(keep.read_text(encoding='utf-8'), 'do not delete')
 
 
 if __name__ == '__main__':

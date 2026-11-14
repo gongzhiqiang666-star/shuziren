@@ -11,9 +11,23 @@ CACHE_DIRECTORIES = (
 _LOCK = threading.Lock()
 
 
+def _is_reparse_point(path):
+    attributes = getattr(path.lstat(), 'st_file_attributes', 0)
+    return bool(attributes & 0x400)  # FILE_ATTRIBUTE_REPARSE_POINT
+
+
 def _remove(path, result):
     try:
-        if path.is_symlink() or path.is_file():
+        if path.is_symlink() or _is_reparse_point(path):
+            size = path.lstat().st_size
+            if path.is_dir() and not path.is_symlink():
+                path.rmdir()
+            else:
+                path.unlink()
+            result['removed'] += 1
+            result['removed_bytes'] += size
+            return
+        if path.is_file():
             size = path.lstat().st_size
             path.unlink()
             result['removed'] += 1
