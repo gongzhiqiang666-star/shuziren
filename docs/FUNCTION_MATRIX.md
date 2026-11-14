@@ -49,7 +49,7 @@
 | CNT-011 | IP 视频发布 | `publish_ip_agent_video` | `main.py`, `ip_publish.py` | 静态验证通过 | 四平台白名单；媒体与字段门禁、预演、幂等、任务先落盘、同项目并发拒绝、异常可重试、中断结果未知确认、删除前独立审计归档；控制台支持事务式成片导入和完整发布表单。专项 13 项（含创建到删除审计全链）、控制台 HTTP 59 项及前端语法通过，未对外发布。真实账号登录、草稿/立即/定时发布及失败重试待授权平台验证，见 `evidence/v02-ip-publish.md` |
 | CNT-012 | 直播贴片项目管理 | main CRUD/helper wrapper/body 与 26 字段 YAML、五类固定输出、历史归档及旧项目迁移证据，见 `rea-output/main-live-sticker-project-notes.md` | `main.py` | 静态验证通过 | Windows 原 `.pyd` 响应差分、真实旧项目、连续生成归档、文件占用/权限错误和前端预览 |
 | CNT-013 | 贴片提示词、房间标题和图片生成 | 对应 `live_sticker_*` 原生模块 | `live_sticker_prompts.py`, `live_sticker_titles.py`, `runninghub_image.py` | 静态验证通过 | 真实 LLM/图片服务、失败重试和图片比例 |
-| CNT-014 | 云端数字人项目与音视频生成 | `cloud_dh` 项目 API | `main.py`, `runninghub_talk.py`, `cloud_dh_prompts.py` | 开发中 | RunningHub 无 URL 完成态、轮询边界、HTTPS/大小/MP4 下载校验、临时写入原子发布及“新片完整后才归档旧片”通过 4 项测试和完整契约，见 `evidence/v02-cloud-dh-transaction.md`。经授权真实 API 的图片生成、上传、队列轮询、超时和成片归档仍待验 |
+| CNT-014 | 云端数字人项目与音视频生成 | `cloud_dh` 项目 API | `main.py`, `runninghub_talk.py`, `cloud_dh_prompts.py` | 静态验证通过 | 无 URL 完成态、轮询边界、HTTPS/2GiB/MP4/原子下载、素材验证、版本归档、取消及重启中断 9 项通过，见 `evidence/v02-cloud-dh-transaction.md`。经授权真实 API 的图片生成、上传、队列轮询、超时和成片归档转 E03 外部验收 |
 | CNT-015 | 短视频配音、合成、列表和删除 | `generate_audio_for_short_video/create_short_video` | `short_video_audio_synthesis.py`, `generate_lip_sync_video.py` | 静态验证通过 | Windows FFmpeg、各语言 TTS、真实长视频和失败清理 |
 | CNT-016 | 字幕生成和烧录 | `add_subtitles_to_video.pyd`、SRT 链 | `add_subtitles_to_video.py`, `get_srt.py` | 静态验证通过 | 中文字体、长文本、时间轴、硬件编码和成片校验 |
 
@@ -97,14 +97,14 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 57 |
-| 开发中 | 1 |
+| 静态验证通过 | 58 |
+| 开发中 | 0 |
 | 已分析 | 0 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |
 | 合计 | 58 |
 
-当前已有局部Windows原生差分和V00～V02本机流程证据，仍不足以将完整原功能标为端到端通过。下一阶段优先闭环 P0 主路径：`SYS-001~005`、`LIV-001~005`、`MED-001~010`，并为“开发中/已分析”条目补齐真实测试。
+当前已有局部 Windows 原生差分、一期至四期本机流程和候选包证据，仍不足以将完整原功能标为 Windows 或端到端通过。源码开发队列已清零；后续按 A07 的本机集中验收与外部队列继续提升真实状态，不用静态通过替代生产验收。
 
 ## 证据索引
 
