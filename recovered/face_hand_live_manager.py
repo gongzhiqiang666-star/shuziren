@@ -10,7 +10,7 @@ import traceback
 from .local_voice import synthesize_local_audio
 from .live_platform import normalize_live_platform
 from .face_hand_player import FaceHandVideoStreamManager
-from .face_hand_video_group import load_face_hand_video_group
+from .face_hand_video_group import load_face_hand_video_group, validate_face_hand_video_group
 from .output_resolution import resolve_portrait_size
 from .text_processing import process_script_options, process_special_variables, strip_prohibited_words
 
@@ -133,6 +133,11 @@ class FaceHandLiveManager:
         try:
             products = config.get("products") or config.get("product_scripts") or []
             product_groups = self._build_product_groups(products)
+            valid_group, group_error, _ = validate_face_hand_video_group(
+                config["face_hand_video_group_dir"]
+            )
+            if not valid_group:
+                raise ValueError(group_error)
             group = load_face_hand_video_group(config["face_hand_video_group_dir"])
             width, height = resolve_portrait_size(config.get("resolution"))
             player = FaceHandVideoStreamManager(

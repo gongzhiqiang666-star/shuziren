@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 FACE_HAND_MANIFEST_NAME = "manifest.json"
-VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
+VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".m4v", ".mkv", ".webm"}
 
 
 def _list_videos(directory):
@@ -59,4 +59,10 @@ def validate_face_hand_video_group(group_dir):
     for name in ("face", "hand"):
         if not counts[f"{name}_count"]:
             return False, f"视频组缺少 {name}/ 视频", counts
+        for item in group[name]:
+            try:
+                if Path(item).stat().st_size <= 0:
+                    return False, f"视频组包含空的 {name} 素材：{Path(item).name}", counts
+            except OSError:
+                return False, f"视频组无法读取 {name} 素材：{Path(item).name}", counts
     return True, "", counts
