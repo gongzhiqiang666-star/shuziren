@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import Mock, patch
 
 from recovered.face_hand_player import FaceHandVideoStreamManager
 from recovered.output_mode import normalize_output_mode
@@ -26,6 +27,27 @@ class OutputModeTests(unittest.TestCase):
             FaceHandVideoStreamManager(
                 face_videos=[], hand_videos=[], image_output_mode="silent-no-output"
             )
+
+    def test_recorded_virtual_camera_keeps_independent_audio_output(self):
+        audio = Mock(sample_rate=48000)
+        worker = Mock(last_error="", finished=False)
+        worker.has_media_packets.return_value = True
+        play_thread = Mock()
+        player = Player(output_mode="virtual_cam")
+        with patch("recovered.video_player._AudioOutput", return_value=audio) as audio_type, patch(
+                "recovered.video_player._SourceWorker", return_value=worker) as worker_type, patch(
+                "recovered.video_player._probe_fps", return_value=25.0), patch(
+                "recovered.video_player.Thread", return_value=play_thread):
+            player.start("source.mp4")
+
+        audio_type.assert_called_once_with()
+        worker_type.assert_called_once_with(
+            "source.mp4", True, frame_processor=None, audio_sample_rate=48000
+        )
+        worker.start.assert_called_once_with()
+        worker.wait_until_ready.assert_called_once_with(timeout_seconds=0.75)
+        self.assertIs(player._audio_output, audio)
+        play_thread.start.assert_called_once_with()
 
 
 if __name__ == "__main__":

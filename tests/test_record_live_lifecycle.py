@@ -71,7 +71,9 @@ class RecordLiveLifecycleTests(unittest.TestCase):
             source.write_bytes(b"not-a-video")
             manager = RecordLiveManager({})
 
-            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            fake_audio = SimpleNamespace(sample_rate=44100, close=lambda: None)
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch(
+                    "recovered.video_player._AudioOutput", return_value=fake_audio):
                 result = manager.start_live(str(source), output_mode="vcam")
 
             self.assertFalse(result)

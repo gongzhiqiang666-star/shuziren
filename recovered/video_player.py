@@ -273,7 +273,7 @@ class Player:
             with self._switch_lock:
                 self._stop_event.clear()
                 self.fps = _probe_fps(source)
-                if self.output_mode == "window" and self._audio_output is None:
+                if self._audio_output is None:
                     audio = _AudioOutput()
                     self._audio_output = audio
                 self._main_worker = _SourceWorker(
