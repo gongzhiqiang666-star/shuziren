@@ -62,6 +62,7 @@ class Api(PluginInstallerApi):
     _TOKEN_MAX_CHARS = 16 * 1024
     _IP_PROJECT_SAVE_LOCK = RLock()
     _STICKER_PROJECT_SAVE_LOCK = RLock()
+    _CLOUD_PROJECT_SAVE_LOCK = RLock()
 
     @staticmethod
     def _default_runtime_dir():
@@ -2534,19 +2535,20 @@ class Api(PluginInstallerApi):
     def _save_cloud_dh_project(self, project_id, data):
         from datetime import datetime
         import yaml
-        directory = Path(self._get_cloud_dh_project_dir(project_id)); directory.mkdir(parents=True, exist_ok=True)
-        value = dict(data); value["id"] = project_id; value["outputs"] = self._get_cloud_dh_output_paths(project_id)
-        value["updated_at"] = datetime.now().isoformat(timespec="seconds")
-        target = Path(self._get_cloud_dh_project_info_path(project_id))
-        temporary = target.with_name(".project_info.yaml.pending")
-        try:
-            with temporary.open("w", encoding="utf-8", newline="\n") as stream:
-                stream.write(yaml.safe_dump(value, allow_unicode=True, sort_keys=False))
-                stream.flush(); os.fsync(stream.fileno())
-            os.replace(temporary, target)
-        finally:
-            temporary.unlink(missing_ok=True)
-        return value
+        with self._CLOUD_PROJECT_SAVE_LOCK:
+            directory = Path(self._get_cloud_dh_project_dir(project_id)); directory.mkdir(parents=True, exist_ok=True)
+            value = dict(data); value["id"] = project_id; value["outputs"] = self._get_cloud_dh_output_paths(project_id)
+            value["updated_at"] = datetime.now().isoformat(timespec="seconds")
+            target = Path(self._get_cloud_dh_project_info_path(project_id))
+            temporary = target.with_name(".project_info.yaml.pending")
+            try:
+                with temporary.open("w", encoding="utf-8", newline="\n") as stream:
+                    stream.write(yaml.safe_dump(value, allow_unicode=True, sort_keys=False))
+                    stream.flush(); os.fsync(stream.fileno())
+                os.replace(temporary, target)
+            finally:
+                temporary.unlink(missing_ok=True)
+            return value
 
     def _recover_cloud_dh_project(self, project_id, info):
         task = info.get("generation_task")
@@ -2624,8 +2626,9 @@ class Api(PluginInstallerApi):
 
     def update_cloud_dh_project(self, project_id, data):
         try:
-            info = self._load_cloud_dh_project(project_id); info.update(data or {})
-            return {"status": "success", "project": self._save_cloud_dh_project(project_id, info)}
+            with self._CLOUD_PROJECT_SAVE_LOCK:
+                info = self._load_cloud_dh_project(project_id); info.update(data or {})
+                return {"status": "success", "project": self._save_cloud_dh_project(project_id, info)}
         except Exception as error: return {"status": "error", "message": str(error)}
 
     def delete_cloud_dh_project(self, project_id):
