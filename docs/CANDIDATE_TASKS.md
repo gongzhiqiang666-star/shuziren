@@ -175,6 +175,8 @@ X09-01 已完成，固定 OpenSpline、Pipecat、LiveKit Agents 的提交、许�
 
 X10-01 已完成，浏览器轻量三维与 NVIDIA Audio2Face-3D 分成独立路线，见 [X10 三维基线](evidence/x10-3d-avatar-baseline.md)。历史 `codex/low-end-3d-preview` 的真实 GLB/WebGL 原型有可复用证据，但属于旧前端，X10-02 仍需最小迁移到当前控制台并做 Windows/中文/OBS 实测；不得整体合并后冒充当前产品完成。Audio2Face 缺 NGC/许可核对、容器、绑定角色和独立资源，保持条件缺失。轻量路线保留候选，Audio2Face 延期，不阻塞真人高级款。
 
+X10-02 当前 Windows 条件复核：历史分支独立 worktree `D:\TEMP\shuziren` 固定在 `80282eb`，源码含 Vue/TypeScript/Three.js、HeadAudio Worker、GLB 安全校验及固定依赖锁；当前目录没有 `node_modules`、构建产物或 CC0 样例 GLB。本机 Node 24.22.1 可运行，但 npm 不在 PATH。当前原生控制台没有 Node 运行依赖，不能只复制渲染片段或改用假几何冒充迁移。恢复条件为受控 Node/npm 依赖缓存、固定许可资产和当前 Windows 浏览器构建/测试；随后完整迁入独立路由并保留原 78 项测试、中文/OBS/性能边界。此项保持条件缺失并继续主线。
+
 ## X11 录播互动 / 手持商品
 
 触发/前置：A03-05与A06-04通过后。
