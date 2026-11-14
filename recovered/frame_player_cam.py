@@ -3,6 +3,7 @@
 import logging
 
 from .frame_player_kt import FPS, StreamPlayer as WindowStreamPlayer, _apply_kt_overlay
+from .frame_geometry import fit_frame_to_canvas
 
 
 class StreamPlayer(WindowStreamPlayer):
@@ -27,7 +28,7 @@ class StreamPlayer(WindowStreamPlayer):
             pass
         size = (self.window_width, self.window_height)
         if frame.shape[:2] != size[::-1]:
-            frame = cv2.resize(frame, size)
+            frame = fit_frame_to_canvas(frame, *size)
         if self._camera is None:
             self._camera = pyvirtualcam.Camera(
                 width=size[0], height=size[1], fps=FPS,

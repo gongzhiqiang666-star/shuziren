@@ -15,6 +15,7 @@ from threading import Event, Thread, current_thread
 from time import sleep, time
 
 from .output_mode import normalize_output_mode
+from .frame_geometry import fit_frame_to_canvas
 
 
 DEFAULT_FPS = 25
@@ -232,7 +233,7 @@ class _VirtualCamOutput:
 
     def render(self, frame):
         if frame.shape[:2] != self._size[::-1]:
-            frame = self._cv2.resize(frame, self._size)
+            frame = fit_frame_to_canvas(frame, *self._size)
         self._camera.send(self._cv2.cvtColor(frame, self._cv2.COLOR_BGR2RGB))
         return True
 
