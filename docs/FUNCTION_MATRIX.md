@@ -30,7 +30,7 @@
 | SYS-009 | 缓存清理 | `Api.clear_cache` | `main.py`, `cache_cleanup.py`, `audio_cache.py` | Windows 验证通过 | 直播中拒绝；仅清理 8 类已知缓存并统计文件/字节，Windows 占用文件保留且释放后重试成功；真实目录 junction 只移除联接、不进入外部客户目录，5 项专项及恢复五关通过，见 `evidence/a07-cache-cleanup.md`。页面点击和生产缓存规模仍待集中验收 |
 | SYS-010 | 应用更新状态、下载/启动更新器 | `get_update_status/start_app_update` | `main.py`, `update_integrity.py`, `update_text.py` | Windows 验证通过 | 强制远端 HTTPS（回环测试除外）及每包 SHA-256，拒绝路径穿越/绝对路径/符号链接；本机服务版本解析、逐文件暂存/哈希/原子替换、单包覆盖与新增回滚通过。Windows 占用目标时旧文件不变且暂存清理，释放后重试成功，8 项专项及恢复五关通过。正式 HTTPS 服务、更新器窗口、物理断电和跨多包整场回滚待最终验收，见 `evidence/v09-legacy-updater-hardening.md` |
 | SYS-011 | 插件安装与 OBA Live 工具 | `PluginInstallerService`、`launch_oba_live_tool` | `main.py`, `main_plugins.py` | 静态验证通过 | 随包安装器提权前强制受信目录、清单、大小和 SHA-256；OBA 下载强制 HTTPS、配置哈希、临时写入和原子发布，已安装 EXE 只接受三个批准根。7 项专项测试及 13 项完整性相关回归通过。授权 v122 旧包没有清单，会安全拒绝；自有打包清单、真实 UAC、安装/卸载及 OBA 正式签名仍待 Windows 验证，见 `evidence/v09-plugin-installer-integrity.md` |
-| SYS-012 | Windows 安装包及可复现打包 | 原 PyInstaller 交付结构 | `scripts/console_package.py`, `scripts/media_runtime.py`, `packaging/*` | 静态验证通过 | 固定 Git 提交确定性构建、路径/哈希/大小门禁、分阶段新目录安装、候选启动健康检查、原子版本指针和回滚已实现；当前 `9d8aef9` 两次构建 442 文件且 ZIP SHA-256 同为 `c924edaa…c5212`，校验、带空格隔离安装、deploy 启动检查及 11 项回归通过。干净 Windows、离线依赖、卸载、驱动及完整媒体包仍待最终验收，见 `evidence/v09-current-package.md` |
+| SYS-012 | Windows 安装包及可复现打包 | 原 PyInstaller 交付结构 | `scripts/console_package.py`, `scripts/media_runtime.py`, `packaging/*` | Windows 验证通过 | 固定提交 `2230614` 在 Windows 独立构建两次，均为 459 个受控文件且 ZIP SHA-256 同为 `127030fb…043ae`；独立 verify、全新 install 及 5258 隔离启动健康检查通过，状态不暴露 token。路径/哈希/大小门禁、原子版本指针与回滚已有回归。干净 Win10/11、完整离线依赖、卸载、驱动和完整媒体包待最终验收，见 `evidence/v09-current-package.md` |
 
 ## P0：项目、文案与内容生产
 
@@ -97,10 +97,10 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 51 |
+| 静态验证通过 | 50 |
 | 开发中 | 0 |
 | 已分析 | 0 |
-| Windows 验证通过 | 7 |
+| Windows 验证通过 | 8 |
 | 端到端验证通过 | 0 |
 | 合计 | 58 |
 
