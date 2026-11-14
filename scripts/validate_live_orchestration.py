@@ -1,5 +1,6 @@
 """Exercise V06 controls against a real Windows console and virtual devices."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -204,7 +205,9 @@ def main():
         call(route + '/rotation', {'revision': previous_revision}, expected=409)
         preparation_revision = call(route + '/package')['revision']
         call(route + '/rotation', {'revision': preparation_revision}, expected=409)
-        call(route + '/review', {'revision': preparation_revision, 'review': '本机轮播验收'})
+        review_text = '本机轮播验收'
+        call(route + '/review', {'revision': preparation_revision, 'review': review_text})
+        review_digest = hashlib.sha256(review_text.encode('utf-8')).hexdigest()
         report['preparation_review_refresh_verified'] = True
         device = next(item for item in call('/api/live/devices')['devices']
                       if 'CABLE Input' in item['name'] and 'WASAPI' in item['host'])
@@ -328,11 +331,12 @@ def main():
                 applications = scene_report['preparation_applications']
                 if not any(
                     entry['revision'] == preparation_revision
+                    and entry.get('review_digest') == review_digest
                     and {item['product_id']: (item['product_version'], item['script_id'])
                          for item in entry['items']} == expected_scripts
                     for entry in applications
                 ):
-                    raise RuntimeError('Session report did not contain the applied preparation revision')
+                    raise RuntimeError('Session report did not match the applied preparation revision and review')
                 report['session_report_verified'] = True
                 if args.legacy_assistant_script:
                     for event in events:
