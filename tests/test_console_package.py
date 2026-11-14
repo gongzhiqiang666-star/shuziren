@@ -176,6 +176,9 @@ class ConsolePackageTests(unittest.TestCase):
             products.select(product['id'])
             script = products.add_script(product, '原有话术')
             products.select_script(product['id'], script)
+            counters = {'reused_frames': 0, 'queue_length': 5}
+            products.record_live_session('direct-video', 1, started_at=2, ended_at=3,
+                                         status='stopped', frames=57, video_counters=counters)
             voices = VoiceStore(source)
             voice_id = str(uuid.uuid4())
             voice_directory = voices.root / voice_id
@@ -209,6 +212,10 @@ class ConsolePackageTests(unittest.TestCase):
             shop = managed / 'data/shops/shop-pilot'
             self.assertEqual(Path(shop_result['data_directory']), shop)
             self.assertEqual(ProductStore(shop).selected_script(product['id']), script)
+            for destination in (target, shop):
+                report = ProductStore(destination).live_session_report('direct-video')
+                self.assertEqual(report['session']['frames'], 57)
+                self.assertEqual(report['video_counters'], counters)
             self.assertEqual(ConfigStore(shop).load(), config)
             migrated_voices = VoiceStore(shop)
             self.assertEqual(migrated_voices.selected(), voice_id)
