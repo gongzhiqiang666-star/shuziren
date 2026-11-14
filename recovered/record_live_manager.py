@@ -233,6 +233,7 @@ class RecordLiveManager:
         session = self.announcement_session
         worker = session["worker_thread"]
         output = None
+        inserted = False
         try:
             print(f"[RealShot] 开始处理实拍视频: {video_path}, 替换区间: {start_time}s - {end_time}s")
             template = video_config.get("audio_text_template", video_config.get("audio_text") or "{time}")
@@ -268,6 +269,7 @@ class RecordLiveManager:
                     session["temp_files"].append(str(output))
                     try:
                         self.video_player.insert_video(str(output))
+                        inserted = True
                         if str(output) in session["temp_files"]:
                             session["temp_files"].remove(str(output))
                         print("[RealShot] 自动插入视频")
@@ -278,6 +280,11 @@ class RecordLiveManager:
         except Exception as error:
             print(f"[RealShot] 处理失败: {error}")
         finally:
+            if output is not None and not inserted:
+                try:
+                    Path(output).unlink(missing_ok=True)
+                except OSError as error:
+                    print(f"[RealShot] 清理未插入成片失败: {error}")
             if session["worker_thread"] is worker:
                 print("[RealShot] 任务完成，自动结束会话")
                 self._cleanup_session()

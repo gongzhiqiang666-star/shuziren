@@ -3,6 +3,10 @@ from contextlib import redirect_stderr, redirect_stdout
 import io
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from contextlib import nullcontext
+import sys
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from recovered.record_live_manager import RecordLiveManager
 
@@ -71,6 +75,49 @@ class RecordLiveLifecycleTests(unittest.TestCase):
             self.assertIn("视频源解码失败", manager.last_error)
             self.assertFalse(manager.is_broadcasting)
             self.assertIsNone(manager.video_player)
+
+    def test_cancelled_announcement_removes_late_output(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source.mp4"
+            narration = root / "narration.wav"
+            source.write_bytes(b"source")
+            narration.write_bytes(b"narration")
+            manager = RecordLiveManager({})
+            owner = object()
+            manager.announcement_session = {
+                "is_active": True,
+                "temp_files": [],
+                "worker_thread": owner,
+            }
+            outputs = []
+
+            def synthesize(**_kwargs):
+                manager.announcement_session["is_active"] = False
+                manager.announcement_session["worker_thread"] = None
+                return str(narration)
+
+            def mux(_video, _audio, output, _startupinfo=None):
+                Path(output).write_bytes(b"late-output")
+                outputs.append(Path(output))
+
+            mixed = SimpleNamespace(export=lambda *_args, **_kwargs: nullcontext())
+            audio_segment = SimpleNamespace(
+                from_wav=lambda _path: object(),
+                from_file=lambda _path: object(),
+            )
+            manager._synthesize_local_audio = synthesize
+            with patch.dict(sys.modules, {"pydub": SimpleNamespace(AudioSegment=audio_segment)}), patch(
+                    "recovered.record_live_manager._extract_real_shot_audio"), patch(
+                    "recovered.record_live_manager._mix_real_shot_audio", return_value=mixed), patch(
+                    "recovered.record_live_manager._mux_real_shot_video", side_effect=mux):
+                manager._process_real_shot_task(
+                    str(source), 0, 1, {"voice_id": "test", "audio_text": "test"}
+                )
+
+            self.assertEqual(len(outputs), 1)
+            self.assertFalse(outputs[0].exists())
+            self.assertEqual(manager.announcement_session["temp_files"], [])
 
 
 if __name__ == "__main__":
