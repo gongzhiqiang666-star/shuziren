@@ -331,7 +331,10 @@ class ConsoleLive:
                     reader.join()
                 while not events.empty():
                     event = events.get_nowait()
-                    if event.get('event') == 'stopped':
+                    if event.get('event') == 'stopped' or (
+                        event.get('event') == 'progress' and
+                        (final_event is None or final_event.get('event') != 'stopped')
+                    ):
                         final_event = event
                 process.stdin.close()
                 process.stdout.close()
