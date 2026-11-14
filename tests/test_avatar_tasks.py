@@ -7,6 +7,7 @@ import uuid
 
 from scripts.avatar_tasks import AvatarTasks
 from scripts.avatar_store import AvatarError
+from scripts.avatar_prepare_worker import validate_face_coverage
 
 
 class AvatarTaskTests(unittest.TestCase):
@@ -45,6 +46,16 @@ class AvatarTaskTests(unittest.TestCase):
             spawn.assert_not_called()
         self.assertIsNone(tasks.process)
         self.assertEqual(tasks.state()['status'],'failed')
+
+    def test_face_coverage_rejects_ambiguous_and_occluded_video(self):
+        validate_face_coverage({'total_frames':100,'face_frames':90,
+                                'no_face_frames':list(range(0,10)),'multi_face_frames':0})
+        for info, message in ((
+            {'total_frames':100,'face_frames':99,'no_face_frames':[0],'multi_face_frames':1},'多张人脸'),(
+            {'total_frames':100,'face_frames':79,'no_face_frames':list(range(21,42)),'multi_face_frames':0},'不足80%'),(
+            {'total_frames':100,'face_frames':87,'no_face_frames':list(range(13)),'multi_face_frames':0},'0.48秒'),(
+            {'total_frames':100,'face_frames':90,'no_face_frames':[0],'multi_face_frames':0},'不完整')):
+            with self.assertRaisesRegex(AvatarError,message):validate_face_coverage(info)
 
 
 if __name__=='__main__':

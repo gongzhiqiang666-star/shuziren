@@ -112,6 +112,8 @@ class AvatarStore:
             import cv2
             dimensions = None
             face_frames = 0
+            multi_face_frames = 0
+            longest_no_face = current_no_face = 0
             for index, frame_path in enumerate(files):
                 if frame_path.name != f'{index:06d}.jpg':
                     raise AvatarError('形象帧编号必须从000000连续排列')
@@ -151,9 +153,26 @@ class AvatarStore:
                         raise AvatarError('形象人脸位置无效')
                     if box[1] <= box[0] or box[3] <= box[2]:
                         raise AvatarError('形象人脸位置范围无效')
+                    if box[0] < 0 or box[2] < 0 or box[1] > height or box[3] > width:
+                        raise AvatarError('形象人脸位置超出画面')
+                    count = metadata.get('face_count', 1)
+                    if type(count) is not int or count < 1:
+                        raise AvatarError('形象人脸数量记录无效')
+                    if count > 1:
+                        multi_face_frames += 1
                     face_frames += 1
+                    current_no_face = 0
+                else:
+                    current_no_face += 1
+                    longest_no_face = max(longest_no_face, current_no_face)
             if not face_frames:
                 raise AvatarError('形象中没有可驱动的人脸')
+            if multi_face_frames:
+                raise AvatarError('形象视频存在多人脸，请只保留一个人物')
+            if face_frames / len(files) < .8:
+                raise AvatarError('形象可驱动人脸帧不足80%')
+            if longest_no_face > 12:
+                raise AvatarError('形象连续超过0.48秒未检测到人脸')
             for asset_name in ('normalized_video.mp4', 'model_info.yaml'):
                 path = source/asset_name
                 if path.exists():

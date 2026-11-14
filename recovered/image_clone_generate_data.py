@@ -30,11 +30,13 @@ def read_video_frames(video_path, output_dir):
     return {"fps":fps,"width":width,"height":height,"total_frames":count}
 
 
-def save_frame_data(idx,positions_dir,video_info,frame_data,is_no_face):
+def save_frame_data(idx,positions_dir,video_info,frame_data,is_no_face,face_count=None):
     position_data={
         "fps":video_info["fps"],"width":video_info["width"],
         "height":video_info["height"],"is_no_face":is_no_face,
     }
+    if face_count is not None:
+        position_data["face_count"]=int(face_count)
     if "bounding_box" in frame_data:
         value=frame_data["bounding_box"]
         position_data["bounding_box"]=value.tolist() if isinstance(value,np.ndarray) else value
@@ -46,9 +48,10 @@ def save_frame_data(idx,positions_dir,video_info,frame_data,is_no_face):
         for key,value in position_data.items():stream.write(f"{key}: {value}\n")
 
 
-def _face_landmarks(frame,detector,landmark_detector,include_right=True):
+def _face_landmarks(frame,detector,landmark_detector,include_right=True,with_count=False):
     boxes,_=detector.get_bboxes(frame)
-    if not len(boxes):return None
+    count=len(boxes)
+    if not count:return (None,0) if with_count else None
     box=boxes[int(np.nanargmax(np.asarray(boxes)[:,4]))]
     x1,y1,x2,y2=np.asarray(box[:4],dtype=np.int32)
     # Native preprocessing includes context beside/below the detector box.
@@ -60,7 +63,8 @@ def _face_landmarks(frame,detector,landmark_detector,include_right=True):
     if face_img.size==0:raise ValueError("Face crop for landmarks is empty.")
     landmarks=np.asarray(landmark_detector.forward(face_img)[0],dtype=np.float32)
     landmarks+=np.asarray([x1,y1],dtype=np.float32)
-    return landmarks.astype(np.int32)
+    landmarks=landmarks.astype(np.int32)
+    return (landmarks,count) if with_count else landmarks
 
 
 def _position_box(landmarks,shape,wh_ratio):
@@ -88,6 +92,7 @@ def process_face_frames(frames_dir,total_frames,output_dir,video_info,img_size=2
     positions=Path(output_dir)/"positions";positions.mkdir(parents=True,exist_ok=True)
     print("计算人脸宽高比...")
     wh_list=[]
+    face_frames=0;multi_face_frames=0;no_face_frames=[]
     for index in range(int(total_frames)):
         try:
             frame=cv2.imread(str(Path(frames_dir)/f"{index:06d}.jpg"))
@@ -101,14 +106,19 @@ def process_face_frames(frames_dir,total_frames,output_dir,video_info,img_size=2
     print("开始逐帧处理并即时保存数据...")
     for index in range(int(total_frames)):
         print(f"处理帧: {index}")
-        frame_data={};is_no_face=True
+        frame_data={};is_no_face=True;face_count=0
         try:
             frame=cv2.imread(str(Path(frames_dir)/f"{index:06d}.jpg"))
-            landmarks=_face_landmarks(frame,detector,landmark_detector)
+            landmarks,face_count=_face_landmarks(frame,detector,landmark_detector,with_count=True)
             if landmarks is not None:
                 frame_data={"bounding_box":_position_box(landmarks,frame.shape,wh_ratio),"landmarks":landmarks}
-                is_no_face=False
+                is_no_face=False;face_frames+=1
+                if face_count>1:multi_face_frames+=1
+            else:no_face_frames.append(index)
         except Exception as error:print(f"处理面部失败 (帧 {index}): {error}")
-        save_frame_data(index,positions,video_info,frame_data,is_no_face)
+        if is_no_face and index not in no_face_frames:no_face_frames.append(index)
+        save_frame_data(index,positions,video_info,frame_data,is_no_face,face_count)
         if (index+1)%100==0:print(f"已处理 {index+1} 帧")
     print("人脸处理与数据保存完成.")
+    return {"face_frames":face_frames,"no_face_frames":no_face_frames,
+            "multi_face_frames":multi_face_frames}

@@ -87,6 +87,20 @@ class AvatarTests(unittest.TestCase):
         for value in ('../source', 'bad', None):
             with self.assertRaises(AvatarError): self.store.get(value)
 
+    def test_ambiguous_partial_and_out_of_bounds_faces_rejected(self):
+        first = self.source/'positions/000000.txt'
+        original = first.read_text(encoding='utf-8')
+        first.write_text(original + 'face_count: 2\n', encoding='utf-8')
+        with self.assertRaisesRegex(AvatarError, '多人脸'):
+            self.store.import_prepared(self.source, '多人')
+        first.write_text(original.replace('bounding_box: [2, 20, 3, 22]',
+                                          'bounding_box: [2, 40, 3, 22]'), encoding='utf-8')
+        with self.assertRaisesRegex(AvatarError, '超出画面'):
+            self.store.import_prepared(self.source, '越界')
+        first.write_text(original.replace('is_no_face: False', 'is_no_face: True'), encoding='utf-8')
+        with self.assertRaisesRegex(AvatarError, '不足80%'):
+            self.store.import_prepared(self.source, '遮挡')
+
     def test_delete_rejects_selected_and_removes_unselected_atomically(self):
         selected = self.store.import_prepared(self.source, '使用中')
         removable = self.store.import_prepared(self.source, '可删除')

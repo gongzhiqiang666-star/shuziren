@@ -53,6 +53,7 @@ def prepare(runtime_root, source, output, resolution):
     info = preprocess_video(normalized, output, face_model_path=internal/'assets/pretrained_models/face_detect')
     if not 1 <= info['total_frames'] <= 6000:
         raise AvatarError('视频制作帧数超出当前支持范围')
+    validate_face_coverage(info)
     import yaml
     (output/'model_info.yaml').write_text(yaml.safe_dump({
         'resolution': resolution, 'fps': info['fps'], 'width': info['width'],
@@ -61,6 +62,27 @@ def prepare(runtime_root, source, output, resolution):
     stage('validating')
     return {'prepared_directory': str(output), 'frames': info['total_frames'],
             'width': info['width'], 'height': info['height'], 'source_sha256': digest(source)}
+
+
+def validate_face_coverage(info):
+    """Reject ambiguous or mostly unusable recordings before library import."""
+    total = int(info.get('total_frames') or 0)
+    face_frames = int(info.get('face_frames') or 0)
+    no_face = sorted(set(int(value) for value in info.get('no_face_frames') or []))
+    multi = int(info.get('multi_face_frames') or 0)
+    if total <= 0 or face_frames + len(no_face) != total:
+        raise AvatarError('人脸检测结果不完整，请重新制作')
+    if multi:
+        raise AvatarError(f'视频有{multi}帧检测到多张人脸，请只保留一个人物')
+    if face_frames / total < .8:
+        raise AvatarError('可驱动人脸帧不足80%，请减少遮挡、侧脸或离开画面')
+    longest = current = previous = None
+    for index in no_face:
+        current = current + 1 if previous is not None and index == previous + 1 else 1
+        longest = max(longest or 0, current)
+        previous = index
+    if (longest or 0) > 12:
+        raise AvatarError('连续超过0.48秒未检测到人脸，请保持正脸清晰可见')
 
 
 def main():
