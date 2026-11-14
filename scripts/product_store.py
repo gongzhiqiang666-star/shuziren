@@ -390,14 +390,7 @@ class ProductStore:
                 'missing': missing,
                 'assets': ['核对商品展示图或实拍视频'],
             })
-        selected_versions = {item['product_id']: item['product_version'] for item in items}
-        selected_scripts = {item['product_id']: item['script_id'] for item in items}
-        improvements = [task for task in self.live_improvements(adopted_only=True)
-                        if task['product_id'] is None or (
-                            task['product_id'] in selected_versions
-                            and task['product_version'] == selected_versions[task['product_id']]
-                            and (task['script_id'] is None
-                                 or task['script_id'] == selected_scripts[task['product_id']]))]
+        improvements = self._preparation_improvements(items)
         package = {**preparation, 'items': items, 'improvements': improvements,
                    'after_sales_tasks': self.after_sales_tasks(preparation['draft']['product_ids'], current_only=True),
                    'segments': {
@@ -410,6 +403,16 @@ class ProductStore:
             row = db.execute('SELECT review FROM live_preparation_review WHERE revision=?',
                              (revision,)).fetchone()
         return {**package, 'revision': revision, 'review': row['review'] if row else None}
+
+    def _preparation_improvements(self, items, *, connection=None):
+        selected_versions = {item['product_id']: item['product_version'] for item in items}
+        selected_scripts = {item['product_id']: item['script_id'] for item in items}
+        return [task for task in self.live_improvements(adopted_only=True, connection=connection)
+                        if task['product_id'] is None or (
+                            task['product_id'] in selected_versions
+                            and task['product_version'] == selected_versions[task['product_id']]
+                            and (task['script_id'] is None
+                                 or task['script_id'] == selected_scripts[task['product_id']]))]
 
     def save_live_preparation_review(self, revision, review):
         review = text(review, '准备包审阅稿', 100000)
@@ -464,6 +467,9 @@ class ProductStore:
                     )
                     if current_tasks != preparation['after_sales_tasks']:
                         raise Conflict('售后整改已变化，请重新预览准备包')
+                if ('improvements' in preparation and preparation['improvements']
+                        != self._preparation_improvements(preparation['items'], connection=db)):
+                    raise Conflict('运营改进任务已变化，请重新预览准备包')
             db.execute("""
                 INSERT INTO live_preparation_applications (session_id, revision, snapshot)
                 VALUES (?, ?, ?) ON CONFLICT(session_id, snapshot) DO NOTHING
@@ -828,8 +834,8 @@ class ProductStore:
             if not result.rowcount:
                 raise ProductError('该场次没有对应的答复记录')
 
-    def live_improvements(self, session_id=None, *, adopted_only=False):
-        with self.connect() as db:
+    def live_improvements(self, session_id=None, *, adopted_only=False, connection=None):
+        with self.connect() if connection is None else nullcontext(connection) as db:
             rows = db.execute("""
                 SELECT task.session_id, task.fault_id, task.owner, task.goal, task.adopted,
                        fault.reason, fault.occurred_at, fault.product_id, fault.product_version, fault.script_id
