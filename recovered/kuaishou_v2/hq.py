@@ -166,12 +166,19 @@ class Tool:
             "Cookie": self.cookie,
         }
         try:
-            response = requests.get(_ROOM_DETAIL_URL, params=params, headers=headers)
+            response = requests.get(_ROOM_DETAIL_URL, params=params, headers=headers, timeout=10)
+            if getattr(response, "status_code", 200) != 200:
+                raise ValueError("room detail status")
             resp_json = response.json()
-        except Exception:
-            traceback.print_exc()
-        live_stream = resp_json["data"]["liveStream"]
-        return live_stream.get("liveStreamId") or live_stream.get("id")
+            data = resp_json.get("data") if isinstance(resp_json, dict) else None
+            live_stream = data.get("liveStream") if isinstance(data, dict) else None
+            live_id = ((live_stream.get("liveStreamId") or live_stream.get("id"))
+                       if isinstance(live_stream, dict) else None)
+            if not isinstance(live_id, str) or not live_id.strip():
+                raise ValueError("room detail payload")
+            return live_id
+        except Exception as error:
+            raise RuntimeError("快手直播间信息获取失败，请检查地址、网络或登录状态") from error
 
     def generate_cookie(self):
         return "did=" + str(generate_did())
