@@ -174,8 +174,8 @@ def verify_audio_devices_contract():
     sys.modules["pyaudio"] = types.SimpleNamespace(PyAudio=FakePyAudio)
     try:
         assert audio_devices.get_audio_devices() == {
-            "input": [{"index": 0, "name": "mic"}, {"index": 2, "name": "duplex"}],
-            "output": [{"index": 1, "name": "speaker"}, {"index": 2, "name": "duplex"}],
+            "input": [{"index": 99, "name": "mic"}, {"index": 97, "name": "duplex"}],
+            "output": [{"index": 98, "name": "speaker"}, {"index": 97, "name": "duplex"}],
         }
     finally:
         if previous is None: sys.modules.pop("pyaudio", None)
@@ -198,8 +198,8 @@ def verify_audio_devices_contract():
     try:
         with contextlib.redirect_stdout(sink):
             partial = audio_devices.get_audio_devices()
-        assert partial == {"input": [{"index": 0, "name": "mic"}], "output": []}
-        assert output.text == "枚举音频设备失败: portaudio failure\n"
+        assert partial == {"input": [{"index": 0, "name": "mic"}, {"index": 2, "name": "mic"}], "output": []}
+        assert output.text == "枚举音频设备 1 失败: portaudio failure\n"
     finally:
         if previous is None: sys.modules.pop("pyaudio", None)
         else: sys.modules["pyaudio"] = previous

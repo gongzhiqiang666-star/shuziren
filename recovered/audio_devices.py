@@ -12,8 +12,13 @@ def get_audio_devices() -> dict:
     try:
         player = pyaudio.PyAudio()
         host = player.get_host_api_info_by_index(0)
-        for device_index in range(host.get("deviceCount")):
-            info = player.get_device_info_by_host_api_device_index(0, device_index)
+        for host_device_index in range(int(host.get("deviceCount") or 0)):
+            try:
+                info = player.get_device_info_by_host_api_device_index(0, host_device_index)
+            except Exception as error:
+                print(f"枚举音频设备 {host_device_index} 失败: {error}")
+                continue
+            device_index = int(info.get("index", host_device_index))
             if info.get("maxInputChannels") > 0:
                 devices["input"].append({"index": device_index, "name": info.get("name")})
             if info.get("maxOutputChannels") > 0:
