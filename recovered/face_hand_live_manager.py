@@ -633,6 +633,7 @@ class FaceHandLiveManager:
 
     def start_danmu(self):
         if self._danmu_capturer: return False
+        capture = None
         try:
             platform=normalize_live_platform(self._live_config.get("live_platform","douyin")); url=self._live_config.get("live_url")
             if platform=="taobao" and self._taobao_controller:
@@ -651,7 +652,14 @@ class FaceHandLiveManager:
                 from .ws_capture import BarrageCapture
                 capture=BarrageCapture(platform,url)
             capture.start(); self._danmu_capturer=capture; self._danmu_thread=Thread(target=self._danmu_loop,daemon=True); self._danmu_thread.start(); return True
-        except Exception as error: self._last_error=str(error); return False
+        except Exception as error:
+            self._last_error=str(error)
+            if capture is not None:
+                try: capture.stop()
+                except Exception: pass
+            if self._danmu_capturer is capture:
+                self._danmu_capturer=None; self._danmu_thread=None
+            return False
     def _danmu_loop(self):
         capture=self._danmu_capturer
         try:
@@ -660,6 +668,12 @@ class FaceHandLiveManager:
                 self.submit_danmu(message)
         except Exception as error:
             if capture is self._danmu_capturer: self._last_error=str(error)
+        finally:
+            try: capture.stop()
+            except Exception as error:
+                if capture is self._danmu_capturer: self._last_error=str(error)
+            if capture is self._danmu_capturer:
+                self._danmu_capturer=None; self._danmu_thread=None
     def stop_danmu(self):
         capture,self._danmu_capturer=self._danmu_capturer,None
         if capture:
