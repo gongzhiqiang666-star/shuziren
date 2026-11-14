@@ -813,3 +813,5 @@ V09-03 在 C 盘全新临时目录从授权本机参考环境运行 stage_media_
 V09-03 / A01-05 全新构建媒体目录的 CUDA 直驱实测通过。正式控制台 HTTP 开播后输出 26 帧，跳转 2000 ms 后增至 51，正常停播记录 56 帧。证据 logs/validation/v09-fresh-media-gpu-01/result.json。此次使用现有 Windows 主机和 WASAPI 虚拟音频，无接收端回采。
 
 V09-03 / A01-05 新媒体目录的直驱音频回采首轮完成 6 秒录制和跳转，但对照素材经 FFprobe 确认为仅视频轨，回采六段峰值均为 2，不能用于验证原声。证据 logs/validation/v09-fresh-media-audio-01/receiver.wav。下轮使用确认含非静音音轨的样片复验。
+
+V09-03 / A01-05 新媒体目录直驱原声回采通过频率对照。含 440/880 Hz 两段测试音的视频经 WASAPI 输出，跳转到 14 秒前后分别回采到对应频率，场次正常停播共 218 帧。音轨实收 6.98 秒。首轮统计误将 FFT 频点当作 Hz，按实际采样率和分段长度换算后通过 2 Hz 误差校验。证据 logs/validation/v09-fresh-media-audio-02/result.json。逐样本连续性和视频回采仍待验。
