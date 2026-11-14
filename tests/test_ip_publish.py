@@ -293,6 +293,57 @@ class IpPublishTests(unittest.TestCase):
             self.assertEqual(imported["project"]["status"], "ready_to_publish")
             self.assertEqual(len(imported["project"]["final_video_sha256"]), 64)
 
+    def test_project_create_import_publish_reopen_idempotency_and_archive_chain(self):
+        with tempfile.TemporaryDirectory() as root:
+            projects = Path(root) / "projects"
+            api = Api.__new__(Api)
+            api.runtime_dir = Path(root)
+            api._get_ip_agent_base_dir = lambda: str(projects)
+            project = api.create_ip_agent_project("端到端项目")["project"]
+            project_id = project["id"]
+            source = Path(root) / "final.mp4"
+            source.write_bytes(b"verified-final-video")
+            with mock.patch("recovered.douyin_benchmark.resolve_ffprobe", return_value="ffprobe"), \
+                    mock.patch("recovered.douyin_benchmark.probe_video"):
+                imported = api.import_ip_agent_final_video(project_id, source)
+                preview = api.publish_ip_agent_video(project_id, {
+                    "platforms": ["douyin", "kuaishou"], "title": "端到端标题",
+                    "tags": ["数字人"], "account_names": {"douyin": "shop", "kuaishou": "shop"},
+                    "dry_run": True})
+            self.assertEqual(imported["status"], "success")
+            self.assertTrue(preview["dry_run"])
+            calls = []
+
+            async def succeed_upload(**kwargs):
+                calls.append(kwargs)
+                return {"success": True, "results": {
+                    "douyin": {"success": True, "work_id": "dy-1"},
+                    "kuaishou": {"success": True, "work_id": "ks-1"}}}
+
+            modules, _module = self._uploader_modules(succeed_upload)
+            payload = {"platforms": ["douyin", "kuaishou"], "title": "端到端标题",
+                       "tags": ["数字人"], "account_names": {"douyin": "shop", "kuaishou": "shop"}}
+            with mock.patch.dict("sys.modules", modules), \
+                    mock.patch("recovered.douyin_benchmark.resolve_ffprobe", return_value="ffprobe"), \
+                    mock.patch("recovered.douyin_benchmark.probe_video"):
+                published = api.publish_ip_agent_video(project_id, payload)
+                duplicate = api.publish_ip_agent_video(project_id, payload)
+            self.assertEqual(published["status"], "success")
+            self.assertTrue(duplicate["already_published"])
+            self.assertEqual(len(calls), 1)
+
+            reopened = Api.__new__(Api)
+            reopened.runtime_dir = Path(root)
+            reopened._get_ip_agent_base_dir = lambda: str(projects)
+            saved = reopened.get_ip_agent_project(project_id)["project"]
+            self.assertEqual(saved["publish_task"]["status"], "success")
+            self.assertEqual(saved["publish_last_result"]["results"]["douyin"]["work_id"], "dy-1")
+            deleted = reopened.delete_ip_agent_project(project_id)
+            self.assertEqual(deleted["status"], "success")
+            audit = yaml.safe_load(Path(deleted["publish_audit_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(audit["publish_last_result"]["results"]["kuaishou"]["work_id"], "ks-1")
+            self.assertFalse((projects / project_id).exists())
+
 
 if __name__ == "__main__":
     unittest.main()
