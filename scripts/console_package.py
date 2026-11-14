@@ -35,6 +35,7 @@ SUFFIXES = {'.py', '.js', '.html', '.css', '.md', '.txt', '.yaml', '.json', '.cm
 REQUIRED = {'scripts/local_console.py', 'scripts/local-console/index.html', 'packaging/start-console.cmd',
             'packaging/requirements-console.txt', 'packaging/README.md'}
 COMMIT_ID = re.compile(r'[0-9a-f]{40}(?:[0-9a-f]{24})?')
+BACKUP_ID = re.compile(r'[0-9]{8}T[0-9]{6}Z-[0-9a-f]{32}')
 
 
 def allowed(name):
@@ -205,6 +206,125 @@ def create_data_backup(root, current_commit, target_commit):
             json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True).encode('utf-8') + b'\n')
         stage.rename(final)
     return final
+
+
+def verify_data_backup(root, backup_id):
+    root = Path(root).resolve()
+    if not isinstance(backup_id, str) or BACKUP_ID.fullmatch(backup_id) is None:
+        raise ValueError('Invalid backup identifier')
+    backup = root / 'backups' / backup_id
+    if not backup.is_dir() or _reparse(backup) or backup.resolve().parent != (root / 'backups').resolve():
+        raise ValueError('Backup does not exist or is unsafe')
+    manifest_path = backup / 'backup-manifest.json'
+    if not manifest_path.is_file() or _reparse(manifest_path) or manifest_path.stat().st_size > 16 * 1024 * 1024:
+        raise ValueError('Backup manifest is missing or unsafe')
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError('Backup manifest is unreadable') from error
+    records = manifest.get('files') if isinstance(manifest, dict) else None
+    if (not isinstance(manifest, dict) or manifest.get('version') != 1 or not isinstance(records, dict)
+            or COMMIT_ID.fullmatch(str(manifest.get('current_commit', ''))) is None
+            or COMMIT_ID.fullmatch(str(manifest.get('target_commit', ''))) is None):
+        raise ValueError('Unsupported backup manifest')
+    data = backup / 'data'
+    if not data.is_dir() or _reparse(data):
+        raise ValueError('Backup data directory is missing or unsafe')
+    actual = set()
+    for directory, names, files in os.walk(data, followlinks=False):
+        directory = Path(directory)
+        for name in names:
+            if _reparse(directory / name):
+                raise ValueError('Backup contains a linked directory')
+        for name in files:
+            candidate = directory / name
+            if not candidate.is_file() or _reparse(candidate):
+                raise ValueError('Backup contains an unsafe file')
+            actual.add(candidate.relative_to(data).as_posix())
+    if actual != set(records):
+        raise ValueError('Backup contents disagree with manifest')
+    for relative, record in records.items():
+        path = PurePosixPath(relative)
+        if (not path.parts or path.is_absolute() or '..' in path.parts or not isinstance(record, dict)
+                or type(record.get('size')) is not int or record['size'] < 0
+                or record.get('kind') not in {'file', 'sqlite'}):
+            raise ValueError(f'Invalid backup record: {relative}')
+        expected = record.get('sha256')
+        candidate = data.joinpath(*path.parts)
+        payload = candidate.read_bytes()
+        if (not isinstance(expected, str) or len(expected) != 64
+                or record['size'] != len(payload) or digest(payload) != expected):
+            raise ValueError(f'Backup file hash mismatch: {relative}')
+        if record['kind'] == 'sqlite':
+            with closing(sqlite3.connect(candidate.as_uri() + '?mode=ro', uri=True)) as database:
+                if database.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
+                    raise ValueError(f'Backup database failed integrity check: {relative}')
+    return backup, manifest
+
+
+def _verify_restored_copy(directory, manifest):
+    expected = manifest['files']
+    actual = {path.relative_to(directory).as_posix() for path in directory.rglob('*') if path.is_file()}
+    if actual != set(expected):
+        raise ValueError('Staged restore contents disagree with manifest')
+    for relative, record in expected.items():
+        candidate = directory.joinpath(*PurePosixPath(relative).parts)
+        payload = candidate.read_bytes()
+        if len(payload) != record['size'] or digest(payload) != record['sha256']:
+            raise ValueError(f'Staged restore hash mismatch: {relative}')
+        if record['kind'] == 'sqlite':
+            with closing(sqlite3.connect(candidate.as_uri() + '?mode=ro', uri=True)) as database:
+                if database.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
+                    raise ValueError(f'Staged restore database is corrupt: {relative}')
+
+
+def restore_data_backup(root, backup_id):
+    """Restore a verified backup while retaining a safety snapshot of current data."""
+    from scripts.local_console import InstanceLock
+
+    root = Path(root).resolve()
+    with InstanceLock(root / '.deployment'), ExitStack() as running:
+        for directory in (root / '.running').iterdir() if (root / '.running').is_dir() else ():
+            if not directory.is_dir() or directory.resolve() != directory:
+                raise ValueError('Invalid managed instance lock directory')
+            running.enter_context(InstanceLock(directory))
+        # Probe direct/manual instances. Release these file handles before the
+        # directory swap; the deployment and managed-instance locks stay held.
+        probes = ExitStack()
+        try:
+            if (root / 'data').is_dir():
+                probes.enter_context(InstanceLock(root / 'data'))
+                for directory in (root / 'data/shops').glob('shop-*'):
+                    if directory.is_dir() and directory.resolve() == directory:
+                        probes.enter_context(InstanceLock(directory))
+        finally:
+            probes.close()
+        backup, manifest = verify_data_backup(root, backup_id)
+        active = read_active(root)
+        current = active['current'] or '0' * 40
+        safety = create_data_backup(root, current, current)
+        with tempfile.TemporaryDirectory(prefix='.restore-', dir=root) as temporary:
+            temporary = Path(temporary)
+            staged = temporary / 'data-new'
+            shutil.copytree(backup / 'data', staged)
+            _verify_restored_copy(staged, manifest)
+            old = temporary / 'data-old'
+            data = root / 'data'
+            replaced = False
+            try:
+                if data.exists():
+                    data.rename(old)
+                staged.rename(data)
+                replaced = True
+            except Exception:
+                if not data.exists() and old.exists():
+                    old.rename(data)
+                raise
+            if not replaced:
+                raise RuntimeError('Data restore did not complete')
+        return {'status': 'ok', 'backup': backup_id,
+                'safety_backup': safety.name if safety is not None else None,
+                'files': len(manifest['files'])}
 
 
 def check_release(root, commit):
@@ -406,7 +526,13 @@ def main():
     legacy_products.add_argument('--root', type=Path, required=True)
     legacy_products.add_argument('--source', type=Path, required=True)
     legacy_products.add_argument('--shop-id', help='将旧商品与话术迁移到独立的店铺目录')
+    restore = commands.add_parser('restore-data')
+    restore.add_argument('--root', type=Path, required=True)
+    restore.add_argument('--backup', required=True, help='backups 目录中的备份编号')
     args = parser.parse_args()
+    if args.command == 'restore-data':
+        print(json.dumps(restore_data_backup(args.root, args.backup), ensure_ascii=False))
+        return 0
     if args.command == 'migrate-v122-products':
         from scripts.console_data_migration import migrate_v122_products
         print(json.dumps(migrate_v122_products(args.root, args.source, args.shop_id), ensure_ascii=False))

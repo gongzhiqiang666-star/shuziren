@@ -10,7 +10,8 @@ import wave
 from zipfile import ZipFile
 
 from scripts.console_package import (MANIFEST, REQUIRED, create_data_backup, digest, install,
-                                     run_release, switch_release)
+                                     restore_data_backup, run_release, switch_release,
+                                     verify_data_backup)
 from scripts.console_data_migration import import_v122_products, migrate_data, migrate_v122_assets, migrate_v122_products
 from scripts.avatar_store import AvatarStore
 from scripts.local_console import InstanceLock
@@ -62,6 +63,37 @@ class ConsolePackageTests(unittest.TestCase):
                 with self.assertRaisesRegex(OSError, 'disk full'):
                     switch_release(root)
             write.assert_not_called()
+
+    def test_restore_verifies_backup_and_keeps_safety_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            data = root / 'data'
+            data.mkdir()
+            (data / 'console.json').write_text('old', encoding='utf-8')
+            wanted = create_data_backup(root, 'a' * 40, 'b' * 40)
+            (data / 'console.json').write_text('new-current', encoding='utf-8')
+            (root / 'active.json').write_text(json.dumps({
+                'current': 'b' * 40, 'previous': 'a' * 40,
+            }), encoding='utf-8')
+            result = restore_data_backup(root, wanted.name)
+            self.assertEqual(result['status'], 'ok')
+            self.assertEqual((data / 'console.json').read_text(encoding='utf-8'), 'old')
+            safety, _ = verify_data_backup(root, result['safety_backup'])
+            self.assertEqual((safety / 'data/console.json').read_text(encoding='utf-8'), 'new-current')
+            self.assertEqual(json.loads((root / 'active.json').read_text(encoding='utf-8'))['current'], 'b' * 40)
+
+    def test_tampered_backup_is_rejected_without_changing_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            data = root / 'data'
+            data.mkdir()
+            current = data / 'console.json'
+            current.write_text('before', encoding='utf-8')
+            backup = create_data_backup(root, 'a' * 40, 'b' * 40)
+            (backup / 'data/console.json').write_text('tampered', encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'hash mismatch'):
+                restore_data_backup(root, backup.name)
+            self.assertEqual(current.read_text(encoding='utf-8'), 'before')
 
     def test_release_switch_respects_shop_process_lock_without_launcher(self):
         with tempfile.TemporaryDirectory() as directory:
