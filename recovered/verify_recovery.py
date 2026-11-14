@@ -512,6 +512,29 @@ def verify_edit_audio_contract():
         ]
         assert (root / "2.wav").read_bytes() == generated_bytes
         assert (root / "2.txt").read_text(encoding="utf-8") == "新文本"
+        rollback_audio = (root / "2.wav").read_bytes()
+        rollback_text = (root / "2.txt").read_text(encoding="utf-8")
+        generated_failure = root / "generated-failure.wav"
+        write_wav(generated_failure, 480)
+        api._ensure_synthesizer = lambda *_args: types.SimpleNamespace(
+            synthesize=lambda **_kwargs: str(generated_failure))
+        original_replace = edit_audio.os.replace
+        replace_calls = []
+        def fail_second_replace(source, target):
+            replace_calls.append((str(source), str(target)))
+            if len(replace_calls) == 2:
+                raise OSError("txt replace failed")
+            return original_replace(source, target)
+        edit_audio.os.replace = fail_second_replace
+        try:
+            rolled_back = api.convert_item("2", "失败文本")
+        finally:
+            edit_audio.os.replace = original_replace
+        assert rolled_back["success"] is False and "txt replace failed" in rolled_back["message"]
+        assert (root / "2.wav").read_bytes() == rollback_audio
+        assert (root / "2.txt").read_text(encoding="utf-8") == rollback_text
+        assert api.items["2"]["original_text"] == "新文本"
+        api.items["2"]["current_text"] = "新文本"
         assert api.convert_item("missing", "x")["message"] == "目标音频不存在"
         unchanged = api.convert_all(api._serialize_items())
         assert unchanged["success"] is False

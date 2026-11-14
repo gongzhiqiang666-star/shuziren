@@ -9,6 +9,7 @@ import shutil
 import sys
 import wave
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Dict, List, Optional
 
 import yaml
@@ -444,8 +445,35 @@ class AudioEditorAPI:
         if not temp_output_path or not Path(temp_output_path).is_file():
             raise RuntimeError(f"{basename} 未生成有效音频")
         self._validate_wav(Path(temp_output_path))
-        shutil.move(temp_output_path, item["wav_path"])
-        Path(item["txt_path"]).write_text(text_content, encoding="utf-8")
+        wav_path, txt_path = Path(item["wav_path"]), Path(item["txt_path"])
+        try:
+            with TemporaryDirectory(prefix=".edit-audio-", dir=self.current_folder) as transaction:
+                transaction = Path(transaction)
+                old_wav, old_txt = transaction / "old.wav", transaction / "old.txt"
+                staged_wav, staged_txt = transaction / "new.wav", transaction / "new.txt"
+                shutil.copy2(wav_path, old_wav)
+                shutil.copy2(txt_path, old_txt)
+                shutil.copy2(temp_output_path, staged_wav)
+                with staged_txt.open("w", encoding="utf-8") as target:
+                    target.write(text_content)
+                    target.flush()
+                    os.fsync(target.fileno())
+                replaced_wav = replaced_txt = False
+                try:
+                    os.replace(staged_wav, wav_path); replaced_wav = True
+                    os.replace(staged_txt, txt_path); replaced_txt = True
+                except Exception:
+                    if replaced_wav:
+                        os.replace(old_wav, wav_path)
+                    if replaced_txt:
+                        os.replace(old_txt, txt_path)
+                    raise
+        finally:
+            try:
+                if Path(temp_output_path).resolve() != wav_path.resolve():
+                    Path(temp_output_path).unlink(missing_ok=True)
+            except OSError:
+                pass
         item["original_text"] = item["current_text"] = text_content
         return {"success": True, "changed": True, "message": "转化完成"}
 
