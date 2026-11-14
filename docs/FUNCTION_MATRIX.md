@@ -38,7 +38,7 @@
 |---|---|---|---|---|---|
 | CNT-001 | LLM 配置保存和连通性测试 | `save_llm_config` `0x180068800/0x180068ac0`; `test_llm_availability` `0x180057640/0x180057900` | `main.py`, `llm_base_chat.py` | 静态验证通过 | 已修复连接失败字符串被误报为可用；DeepSeek 配置保存、本机成功、401、拒绝连接、HTTPS/URL 门禁和密钥脱敏 3 项，控制台 LLM 11 项及恢复五关通过，见 `evidence/a07-llm-availability.md`。本机未配置专用密钥，真实 DeepSeek 鉴权/限流/质量和 Windows 原 `.pyd` 差分待外部条件 |
 | CNT-002 | 商品直播话术生成 | `generate_script` wrapper/body `0x180036950/0x180037230` | `main.py`, `generate_structured_speech.py` | 静态验证通过 | 空/短/异常及多商品部分失败契约通过；新增事实门禁，输出含输入不存在的阿拉伯数字或无依据价格时重试并最终明确失败，输入已有数字/价格正常通过，3 项专项及恢复五关通过，见 `evidence/a07-script-grounding.md`。真实 DeepSeek 质量、隐含承诺人审及 Windows 原 `.pyd` 差分待外部条件 |
-| CNT-003 | 文本翻译与多语言提示词 | `translate_text` wrapper/body `0x18004f510/0x18004f8c0` | `main.py`, `llm_reply.py`, `language_prompts.py` | 静态验证通过 | Windows 原 `.pyd` 差分、全语言真实模型输出质量 |
+| CNT-003 | 文本翻译与多语言提示词 | `translate_text` wrapper/body `0x18004f510/0x18004f8c0` | `main.py`, `llm_reply.py`, `language_prompts.py` | 静态验证通过 | 非中文目标不再静默删除汉字；逐段检查汉字残留及数字新增/遗漏并最多重试一次，两次无效明确失败。汉字重试、`530→500` 修正和连续失败 3 项及恢复五关通过，见 `evidence/a07-translation-grounding.md`。11 种语言真实 DeepSeek 自然度、人审及 Windows 原 `.pyd` 差分待外部条件 |
 | CNT-004 | 话术泛化与标题生成 | `generalize_sentences_api` 及 Ghidra 契约 | `generalize_sentences.py`, `generate_title.py` | 静态验证通过 | 真实 LLM 差分、异常输出和重试 |
 | CNT-005 | 违禁词检测/替换 | `forbidden_words.pyd`、`replace_forbidden_words.pyd` | `forbidden_words.py`, `replace_forbidden_words.py` | 静态验证通过 | 原词库、用户增补词、大小写/中英文边界 |
 | CNT-006 | IP Agent 项目创建、查询、更新、删除 | `Api.create/get/update/delete_ip_agent_project` | `main.py`, `ip_agent_post_process.py` | 静态验证通过 | 旧项目迁移、并发保存、损坏项目恢复 |

@@ -156,10 +156,32 @@ def translate_text_llm(text,target_language,*,raise_on_failure=False):
     code=normalize_language_code(target_language); template=get_language_template(code)
     chunks=[x for x in re.findall(r".*?[。！？!?；;\n]+|.+$",str(text or "")) if x.strip()]
     try:
-        translated=[base_chat(chunk,template["translation_prompt"]+"\n只输出译文，不要解释。",
-                              model_type="script",raise_on_failure=True) for chunk in chunks]
+        translated=[]
+        for chunk in chunks:
+            source_numbers=set(re.findall(r"(?<![\d.])\d+(?:\.\d+)?(?![\d.])",chunk))
+            last_error=None
+            for attempt in range(2):
+                prompt=template["translation_prompt"]+"\n只输出译文，不要解释。"
+                if attempt:
+                    prompt += "\n上次输出不符合目标语言或改动了数字，请完整重译并保留所有原始数字。"
+                value=base_chat(chunk,prompt,model_type="script",raise_on_failure=True)
+                output_numbers=set(re.findall(r"(?<![\d.])\d+(?:\.\d+)?(?![\d.])",value))
+                if language_forbids_han(code) and contains_han_text(value):
+                    last_error=RuntimeError("翻译结果仍包含禁止的中文字符")
+                    continue
+                invented=sorted(output_numbers-source_numbers)
+                if invented:
+                    last_error=RuntimeError("翻译结果包含原文不存在的数字: "+", ".join(invented))
+                    continue
+                missing=sorted(source_numbers-output_numbers)
+                if missing:
+                    last_error=RuntimeError("翻译结果遗漏原文数字: "+", ".join(missing))
+                    continue
+                translated.append(value)
+                break
+            else:
+                raise last_error or RuntimeError("翻译结果不符合目标语言")
         result="".join(translated).strip()
-        result=filter_han_for_language(result,code)
         if not result: raise RuntimeError("翻译结果为空")
         return result
     except Exception as error:
