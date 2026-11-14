@@ -1,5 +1,18 @@
 'use strict';
 const $ = id => document.getElementById(id);
+document.querySelector('.workspace-nav').addEventListener('click', event => {
+  const link = event.target.closest('a[href^="#"]');
+  if (!link) return;
+  const target = $(link.hash.slice(1));
+  if (target?.hidden) {
+    event.preventDefault();
+    location.hash = 'products-panel';
+    return;
+  }
+  for (let panel = target?.closest('details'); panel; panel = panel.parentElement.closest('details')) {
+    panel.open = true;
+  }
+});
 const productFactsText = product => product?.extra?.product_facts === undefined ? '' : JSON.stringify(product.extra.product_facts, null, 2);
 let token = '';
 function clearChecks() { $('checks').replaceChildren(); $('scope').textContent = '尚未检查当前资源。'; }
