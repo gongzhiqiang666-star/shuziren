@@ -61,6 +61,7 @@ class Api(PluginInstallerApi):
     _INLINE_MEDIA_MAX_BYTES = 64 * 1024 * 1024
     _TOKEN_MAX_CHARS = 16 * 1024
     _IP_PROJECT_SAVE_LOCK = RLock()
+    _STICKER_PROJECT_SAVE_LOCK = RLock()
 
     @staticmethod
     def _default_runtime_dir():
@@ -2260,27 +2261,28 @@ class Api(PluginInstallerApi):
 
     def _save_live_sticker_project(self, project_id, data):
         from datetime import datetime
-        directory = self._get_live_sticker_project_dir(project_id)
-        if not os.path.isdir(directory):
-            raise FileNotFoundError("贴片项目不存在")
-        current = self._read_yaml_file(self._get_live_sticker_project_info_path(project_id)) or {}
-        name = str(current.get("name") or data.get("name") or f"贴片项目-{project_id}").strip()
-        value = self._default_live_sticker_project_info(project_id, name)
-        value.update(current)
-        value.update(data)
-        value["id"] = project_id
-        value["name"] = str(value.get("name") or f"贴片项目-{project_id}").strip()
-        value["create_time"] = value.get("create_time") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        value["update_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        titles = value.get("room_titles")
-        if isinstance(titles, str):
-            titles = [item.strip() for item in titles.replace("，", ",").split(",") if item.strip()]
-        elif not isinstance(titles, list):
-            titles = []
-        value["room_titles"] = titles
-        value["room_title"] = str(value.get("room_title") or (titles[0] if titles else "")).strip()
-        self._write_yaml_file(self._get_live_sticker_project_info_path(project_id), value)
-        return self._load_live_sticker_project(project_id)
+        with self._STICKER_PROJECT_SAVE_LOCK:
+            directory = self._get_live_sticker_project_dir(project_id)
+            if not os.path.isdir(directory):
+                raise FileNotFoundError("贴片项目不存在")
+            current = self._read_yaml_file(self._get_live_sticker_project_info_path(project_id)) or {}
+            name = str(current.get("name") or data.get("name") or f"贴片项目-{project_id}").strip()
+            value = self._default_live_sticker_project_info(project_id, name)
+            value.update(current)
+            value.update(data)
+            value["id"] = project_id
+            value["name"] = str(value.get("name") or f"贴片项目-{project_id}").strip()
+            value["create_time"] = value.get("create_time") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            value["update_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            titles = value.get("room_titles")
+            if isinstance(titles, str):
+                titles = [item.strip() for item in titles.replace("，", ",").split(",") if item.strip()]
+            elif not isinstance(titles, list):
+                titles = []
+            value["room_titles"] = titles
+            value["room_title"] = str(value.get("room_title") or (titles[0] if titles else "")).strip()
+            self._write_yaml_file(self._get_live_sticker_project_info_path(project_id), value)
+            return self._load_live_sticker_project(project_id)
 
     def _live_sticker_image_ready(self, image_config):
         return bool(image_config) and all(Path(path).is_file() for path in image_config.values())
