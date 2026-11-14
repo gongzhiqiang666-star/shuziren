@@ -51,6 +51,7 @@ class RenderTests(unittest.TestCase):
         source = self.root / 'spoken.wav'; source.write_bytes(b'RIFF retained live audio fixture')
         audio_hash = hashlib.sha256(source.read_bytes()).hexdigest()
         self.audio.products.archive_live_content_audio('scene', 'spoken', source, audio_hash)
+        self.audio.products.record_live_session('scene', 1, started_at=2, ended_at=3, status='stopped')
         self.audio.products.record_rotation_completion('scene', 'spoken', {
             'product_id': self.product['id'], 'product_version': self.product['version'],
             'script_id': script_id,
@@ -183,6 +184,10 @@ class RenderTests(unittest.TestCase):
             self.assertNotIn(str(self.root), json.dumps(metadata, ensure_ascii=False))
             self.assertTrue(all(item.date_time == (1980, 1, 1, 0, 0, 0) for item in archive.infolist()))
         self.assertEqual(digest(self.tasks.publication_package('scene', 'spoken', task_id)), first_package_hash)
+        self.audio.products.record_live_content_receipt('scene', 'spoken', 'platform-work-1')
+        publication, = self.audio.products.live_session_report('scene')['content_publications']
+        self.assertEqual((publication['package_sha256'], publication['render_task_id']),
+                         (first_package_hash, task_id))
         self.audio.products.save_live_content_draft('scene', 'spoken', '排期后又修改的文案')
         with self.assertRaises(Conflict):
             self.tasks.publication_package('scene', 'spoken', task_id)

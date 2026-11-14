@@ -353,6 +353,10 @@ class ProductStoreTests(unittest.TestCase):
         self.assertIsNone(record['parent_script_id'])
         migrated.add_script(a,'从旧话术修改保存',parent_script_id='old-script')
         self.assertEqual(len(ProductStore(directory).scripts(a['id'])),2)
+        with sqlite3.connect(path) as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 4)
+            tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        self.assertTrue({'live_content_exports', 'live_content_receipt_exports'} <= tables)
 
     def test_script_selection_persists_and_product_edits_invalidate(self):
         a,b=self.product(8),self.product(3)

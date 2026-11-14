@@ -2066,6 +2066,7 @@ $('live-report').addEventListener('click', () => liveAction(async () => {
       lines.push(`已登记作品 ${publication.publication_id} · 账号 ${publication.account} · 任务 ${publication.task_id}`);
       lines.push(`计划发布 ${formatTime(Date.parse(publication.publish_at) / 1000)} · 发布范围 ${publication.audience}`);
       lines.push(`本机登记时间 ${formatTime(publication.recorded_at)}`);
+      if(publication.package_sha256) lines.push(`实际导出包 SHA-256 ${publication.package_sha256} · 成片任务 ${publication.render_task_id}`);
     }
     for (const application of preparation_applications) {
       lines.push(`已载入准备包 ${application.revision}`);

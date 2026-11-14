@@ -319,6 +319,8 @@ class RenderTasks:
                 temporary.replace(package)
             finally:
                 temporary.unlink(missing_ok=True)
+            self.tts.products.record_live_content_export(
+                session_id, source_task_id, render_task_id, digest(package), assets)
             return package
 
     def subtitle(self, task_id):

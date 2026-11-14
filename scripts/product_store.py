@@ -118,7 +118,7 @@ class ProductStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, 4):
+            if version not in (0, 1, 2, 3, 4, 5):
                 raise ProductError("不支持的商品数据库版本")
             db.executescript('''
                 CREATE TABLE IF NOT EXISTS products (
@@ -220,6 +220,13 @@ class ProductStore:
                     session_id TEXT NOT NULL, task_id TEXT NOT NULL, path TEXT NOT NULL,
                     sha256 TEXT NOT NULL, bytes INTEGER NOT NULL,
                     PRIMARY KEY(session_id, task_id));
+                CREATE TABLE IF NOT EXISTS live_content_exports (
+                    session_id TEXT NOT NULL, task_id TEXT NOT NULL, package_sha256 TEXT NOT NULL,
+                    render_task_id TEXT NOT NULL, snapshot TEXT NOT NULL, exported_at REAL NOT NULL,
+                    PRIMARY KEY(session_id, task_id, package_sha256));
+                CREATE TABLE IF NOT EXISTS live_content_receipt_exports (
+                    session_id TEXT NOT NULL, task_id TEXT NOT NULL, package_sha256 TEXT NOT NULL,
+                    PRIMARY KEY(session_id, task_id));
                 CREATE TABLE IF NOT EXISTS live_advice_acknowledgments (
                     session_id TEXT NOT NULL, advice TEXT NOT NULL, acknowledged_at REAL NOT NULL,
                     PRIMARY KEY(session_id, advice));
@@ -292,6 +299,8 @@ class ProductStore:
                 db.execute('ALTER TABLE live_rotation_events ADD COLUMN voice_id TEXT')
             if 'speech_provenance' not in event_columns:
                 db.execute('ALTER TABLE live_rotation_events ADD COLUMN speech_provenance TEXT')
+            # Export trace tables are additive and intentionally retain v4 so
+            # the previous release can open the database during rollback.
             db.execute('PRAGMA user_version=4')
 
     @contextmanager
@@ -689,9 +698,14 @@ class ProductStore:
             """, (session_id,)).fetchall()
             publications = db.execute("""
                 SELECT receipt.task_id, receipt.account, receipt.publication_id,
-                       schedule.audience, schedule.publish_at, timing.recorded_at
+                       schedule.audience, schedule.publish_at, timing.recorded_at,
+                       linked.package_sha256, exported.render_task_id, exported.exported_at
                 FROM live_content_receipts receipt JOIN live_content_schedule schedule USING (session_id, task_id)
                 LEFT JOIN live_content_receipt_times timing USING (session_id, task_id)
+                LEFT JOIN live_content_receipt_exports linked USING (session_id, task_id)
+                LEFT JOIN live_content_exports exported
+                  ON exported.session_id=linked.session_id AND exported.task_id=linked.task_id
+                 AND exported.package_sha256=linked.package_sha256
                 WHERE receipt.session_id=? ORDER BY schedule.publish_at, receipt.task_id
             """, (session_id,)).fetchall()
             content_summary = self.live_content_summary(session_id, connection=db)
@@ -705,7 +719,11 @@ class ProductStore:
             'queued_replies': [dict(row) for row in replies],
             'unqueued_replies': [dict(row) for row in unqueued],
             'observed_product_switches': [dict(row) for row in switches],
-            'content_publications': [dict(row) for row in publications],
+            'content_publications': [
+                {key: value for key, value in dict(row).items()
+                 if value is not None or key not in {'package_sha256', 'render_task_id', 'exported_at'}}
+                for row in publications
+            ],
             'content_summary': content_summary,
             'missing': ['product_exposure', 'questions_and_answers', 'platform_product_switches',
                         'fault_events', 'attributed_sales'],
@@ -1038,6 +1056,48 @@ class ProductStore:
             """, (session_id, task_id)).fetchone()
         return {**dict(row), 'draft_matches': bool(row['draft_matches']), 'withdrawn': bool(row['withdrawn'])} if row else None
 
+    def record_live_content_export(self, session_id, task_id, render_task_id, package_sha256, assets):
+        session_id = text(session_id, '场次编号', 64); task_id = text(task_id, '口播任务编号', 64)
+        render_task_id = text(render_task_id, '成片任务编号', 64)
+        if (not isinstance(package_sha256, str) or len(package_sha256) != 64
+                or any(char not in '0123456789abcdef' for char in package_sha256.lower())):
+            raise ProductError('发布准备包摘要无效')
+        if (not isinstance(assets, dict) or not assets
+                or any(not isinstance(name, str) or not isinstance(value, str) or len(value) != 64
+                       for name, value in assets.items())):
+            raise ProductError('发布资产摘要无效')
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('''
+                SELECT schedule.account, schedule.audience, schedule.publish_at, schedule.planned_body,
+                       draft.body, draft.withdrawn
+                FROM live_content_schedule schedule JOIN live_content_drafts draft USING (session_id, task_id)
+                WHERE session_id=? AND task_id=?
+            ''', (session_id, task_id)).fetchone()
+            if row is None or row['withdrawn'] or row['planned_body'] != row['body']:
+                raise Conflict('审核文案与排期已变化，不能登记导出')
+            snapshot = json.dumps({'account': row['account'], 'audience': row['audience'],
+                'publish_at': row['publish_at'], 'body': row['body'], 'assets': assets},
+                ensure_ascii=False, sort_keys=True)
+            existing = db.execute('''SELECT render_task_id, snapshot FROM live_content_exports
+                WHERE session_id=? AND task_id=? AND package_sha256=?''',
+                (session_id, task_id, package_sha256.lower())).fetchone()
+            if existing and (existing['render_task_id'] != render_task_id or existing['snapshot'] != snapshot):
+                raise Conflict('相同发布包摘要已绑定不同内容')
+            db.execute('''INSERT OR IGNORE INTO live_content_exports
+                VALUES (?, ?, ?, ?, ?, ?)''', (session_id, task_id, package_sha256.lower(),
+                render_task_id, snapshot, datetime.now(timezone.utc).timestamp()))
+
+    @staticmethod
+    def _matching_content_export(db, session_id, task_id, schedule):
+        rows = db.execute('''SELECT package_sha256, snapshot FROM live_content_exports
+            WHERE session_id=? AND task_id=? ORDER BY exported_at DESC''', (session_id, task_id)).fetchall()
+        for exported in rows:
+            snapshot = json.loads(exported['snapshot'])
+            if all(snapshot.get(key) == schedule[key] for key in ('account', 'audience', 'publish_at', 'body')):
+                return exported['package_sha256']
+        return None
+
     def save_live_content_schedule(self, session_id, task_id, account, audience, publish_at):
         account = text(account, '发布账号', 120)
         audience = text(audience, '发布范围', 120)
@@ -1084,7 +1144,8 @@ class ProductStore:
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('''
-                SELECT schedule.account, receipt.publication_id, draft.withdrawn,
+                SELECT schedule.account, schedule.audience, schedule.publish_at, draft.body,
+                       receipt.publication_id, draft.withdrawn,
                        schedule.planned_body=draft.body AS draft_matches
                 FROM live_content_schedule schedule
                 JOIN live_content_drafts draft USING (session_id, task_id)
@@ -1094,6 +1155,10 @@ class ProductStore:
             if row is None:
                 raise Conflict('请先保存本机排期')
             if row['publication_id'] == publication_id:
+                package = self._matching_content_export(db, session_id, task_id, row)
+                if package:
+                    db.execute('INSERT OR IGNORE INTO live_content_receipt_exports VALUES (?, ?, ?)',
+                               (session_id, task_id, package))
                 return
             if row['publication_id'] is not None:
                 raise Conflict('该排期已登记其他作品编号')
@@ -1107,6 +1172,10 @@ class ProductStore:
                 raise Conflict('该账号的作品编号已关联其他排期')
             db.execute('INSERT INTO live_content_receipt_times VALUES (?, ?, ?)',
                        (session_id, task_id, datetime.now(timezone.utc).timestamp()))
+            package = self._matching_content_export(db, session_id, task_id, row)
+            if package:
+                db.execute('INSERT INTO live_content_receipt_exports VALUES (?, ?, ?)',
+                           (session_id, task_id, package))
 
     def save_live_content_draft(self, session_id, task_id, body, production_seconds=_UNCHANGED,
                                 baseline_seconds=_UNCHANGED):

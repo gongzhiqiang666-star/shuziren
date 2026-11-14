@@ -73,6 +73,11 @@ def main():
         for name, expected in checksums.items():
             if hashlib.sha256(archive.read(name)).hexdigest() != expected:
                 raise SystemExit('publication package checksum mismatch: ' + name)
+    products.record_live_content_receipt('validation-scene', 'validation-speech', 'validation-work-1')
+    publication, = products.live_session_report('validation-scene')['content_publications']
+    if (publication.get('package_sha256') != package_hash
+            or publication.get('render_task_id') != task['id']):
+        raise SystemExit('publication receipt is not bound to exported package')
     report = {'ok': True, 'task': task, 'video': str(root / 'live-content-avatar.mp4'),
               'subtitle': str(root / 'avatar-subtitles.srt'), 'cover': str(root / 'live-content-cover.jpg'),
               'package': str(root / 'publication-package.zip')}
