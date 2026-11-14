@@ -156,16 +156,24 @@ async function loadPromotionPlans(product) {
     const update = async action => {
       if (currentProduct !== product || consoleClosed) return;
       approve.disabled = pause.disabled = true;
+      let actionError;
       try {
         const {plan: updated} = await request('/api/promotion/plans/action', {plan_id:plan.id, action});
         if (updated.status === 'paused' && plan.status === 'stale') plan.requires_new_plan = true;
         plan.status = updated.status;
-        showStatus(plan.status);
-        if (history.open) await loadActions();
       } catch (error) {
-        showStatus(plan.status);
-        status.textContent = error.message;
+        actionError = error.message;
       }
+      try {
+        const {plans} = await request('/api/promotion/plans?' + new URLSearchParams({product_id:product.id}));
+        const current = plans.find(item => item.id === plan.id);
+        if (current) Object.assign(plan, current);
+      } catch (error) {
+        actionError ??= error.message;
+      }
+      showStatus(plan.status);
+      if (actionError && plan.status !== 'stale' && !plan.requires_new_plan) status.textContent = actionError;
+      if (history.open) await loadActions();
     };
     approve.addEventListener('click', () => update('approved'));
     pause.addEventListener('click', () => update('paused'));
