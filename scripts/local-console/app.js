@@ -1906,6 +1906,10 @@ $('live-video-path').addEventListener('input', renderLiveButtons);
 $('live-products').addEventListener('change', () => { preparedRotation = null; rotationSelectionEdited = true; renderShiftFields(); renderLiveButtons(); });
 $('live-shifts-enabled').addEventListener('change', renderShiftFields);
 $('live-rotation-start').addEventListener('click', () => liveAction(() => {
+  if (preparedRotation && preparationRevision === preparedRotation.revision
+      && $('preparation-package').value !== savedPreparationReview) {
+    throw new Error('请先保存当前审阅稿，再启动轮播');
+  }
   const product_ids = preparedRotation ? preparedRotation.items.map(item => item.product_id)
     : Array.from($('live-products').selectedOptions, option => option.value);
   const payload = {session_id:liveSession.id, product_ids};
