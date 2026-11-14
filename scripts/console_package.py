@@ -16,6 +16,14 @@ from urllib.request import Request, urlopen
 from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile, ZipInfo
 
 
+# Keep the documented ``python scripts/console_package.py ...`` form isolated
+# from unrelated third-party packages that also use the top-level name scripts.
+if __package__ in (None, ''):
+    repository_root = str(Path(__file__).resolve().parent.parent)
+    if repository_root not in sys.path:
+        sys.path.insert(0, repository_root)
+
+
 MANIFEST = 'package-manifest.json'
 ROOTS = {'scripts', 'recovered', 'packaging'}
 SUFFIXES = {'.py', '.js', '.html', '.css', '.md', '.txt', '.yaml', '.json', '.cmd', '.ps1'}

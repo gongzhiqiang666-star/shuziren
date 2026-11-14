@@ -30,7 +30,7 @@
 | SYS-009 | 缓存清理 | `Api.clear_cache` | `main.py`, `cache_cleanup.py`, `audio_cache.py` | 静态验证通过 | 直播中拒绝；仅清理系统临时目录下8类已知缓存，统计文件与字节并报告部分失败；Windows 文件占用实测保留失败文件、释放后重试成功。页面点击和生产缓存规模仍待验 |
 | SYS-010 | 应用更新状态、下载/启动更新器 | `get_update_status/start_app_update` | `main.py`, `update_integrity.py`, `update_text.py` | 静态验证通过 | 已强制远端 HTTPS（本机回环除外）及每包 SHA-256，拒绝路径穿越/绝对路径/符号链接；逐文件临时写入、哈希后原子替换，单版本失败恢复已覆盖和新增文件，6 项专项测试通过。原厂 HTTP 更新端点因安全缺陷不再接受；自有 HTTPS 服务联调、真实更新器窗口、占用文件及整包回滚仍待 Windows 验证，见 `evidence/v09-legacy-updater-hardening.md` |
 | SYS-011 | 插件安装与 OBA Live 工具 | `PluginInstallerService`、`launch_oba_live_tool` | `main.py`, `main_plugins.py` | 静态验证通过 | 随包安装器提权前强制受信目录、清单、大小和 SHA-256；OBA 下载强制 HTTPS、配置哈希、临时写入和原子发布，已安装 EXE 只接受三个批准根。7 项专项测试及 13 项完整性相关回归通过。授权 v122 旧包没有清单，会安全拒绝；自有打包清单、真实 UAC、安装/卸载及 OBA 正式签名仍待 Windows 验证，见 `evidence/v09-plugin-installer-integrity.md` |
-| SYS-012 | Windows 安装包及可复现打包 | 原 PyInstaller 交付结构 | 依赖清单已恢复 | 已分析 | 从干净 Windows 构建、安装、卸载、升级和离线运行 |
+| SYS-012 | Windows 安装包及可复现打包 | 原 PyInstaller 交付结构 | `scripts/console_package.py`, `scripts/media_runtime.py`, `packaging/*` | 静态验证通过 | 固定 Git 提交确定性构建、路径/哈希/大小门禁、分阶段新目录安装、候选启动健康检查、原子版本指针和回滚已实现；当前 `9d8aef9` 两次构建 442 文件且 ZIP SHA-256 同为 `c924edaa…c5212`，校验、带空格隔离安装、deploy 启动检查及 11 项回归通过。干净 Windows、离线依赖、卸载、驱动及完整媒体包仍待最终验收，见 `evidence/v09-current-package.md` |
 
 ## P0：项目、文案与内容生产
 
@@ -97,9 +97,9 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 46 |
+| 静态验证通过 | 47 |
 | 开发中 | 8 |
-| 已分析 | 4 |
+| 已分析 | 3 |
 | Windows 验证通过 | 0 |
 | 端到端验证通过 | 0 |
 | 合计 | 58 |
