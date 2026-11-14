@@ -1178,6 +1178,7 @@ class Api(PluginInstallerApi):
         if not isinstance(llm_config, dict):
             raise TypeError("llm_config must be a dict")
         vendor = ""
+        api_key = ""
         try:
             vendor = llm_config.get("vendor", "").lower()
             model = llm_config.get("model", "")
@@ -1197,6 +1198,7 @@ class Api(PluginInstallerApi):
                 sys_prompt="你是一个助手",
                 chat_history=[],
                 llm_config=llm_config,
+                raise_on_failure=True,
             )
             if reply and len(reply.strip()) > 0 and reply.strip() != " ":
                 return {
@@ -1214,9 +1216,12 @@ class Api(PluginInstallerApi):
                 "provider": provider,
             }
         except Exception as error:
+            message = str(error)
+            if api_key:
+                message = message.replace(str(api_key), "***")
             return {
                 "status": "error",
-                "message": f"测试大模型服务时出错: {error}",
+                "message": f"测试大模型服务时出错: {message}",
                 "is_available": False,
                 "is_recommended_provider": False,
                 "provider": vendor or "unknown",

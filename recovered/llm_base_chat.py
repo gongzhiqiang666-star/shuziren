@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 import yaml
@@ -36,6 +37,16 @@ def _normalize_llm_config(llm_config):
     return value
 
 
+def _validate_llm_endpoint(endpoint):
+    parsed = urlparse(str(endpoint or "").strip())
+    loopback = parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+    if parsed.scheme != "https" and not (parsed.scheme == "http" and loopback):
+        raise ValueError("LLM 地址必须使用 HTTPS（本机回环测试除外）")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError("LLM 地址不能包含账号、查询参数或片段")
+    return parsed.geturl()
+
+
 def get_llm_config(llm_config=None):
     if llm_config is not None:
         return _normalize_llm_config(llm_config)
@@ -52,6 +63,7 @@ def base_chat(question, sys_prompt, chat_history=[], *, model_type="reply",
         config = get_llm_config(llm_config)
         if not all(config.get(key) for key in ("endpoint", "api_key", "model")):
             raise ValueError("请配置 LLM 地址、API Key 和模型")
+        config["endpoint"] = _validate_llm_endpoint(config["endpoint"])
         messages = [{"role": "system", "content": str(sys_prompt)}]
         messages.extend(dict(item) for item in (chat_history or []))
         messages.append({"role": "user", "content": str(question)})

@@ -4537,7 +4537,7 @@ def verify_main_llm_config_contract():
         }
         assert calls.pop()=={
             "question":"回复一个字：好","sys_prompt":"你是一个助手",
-            "chat_history":[],"llm_config":full,
+            "chat_history":[],"llm_config":full,"raise_on_failure":True,
         }
         missing=api.test_llm_availability({"vendor":"SiliconFlow","model":"","endpoint":"e","api_key":"k"})
         assert missing=={

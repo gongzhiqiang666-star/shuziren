@@ -1,5 +1,7 @@
 # 四期任务进度与验证结果
 
+CNT-001 LLM 配置与可用性软件项完成。修复连接失败返回非空错误字符串却被误报“服务正常”；新增远端 HTTPS/URL 凭据门禁和错误密钥脱敏。DeepSeek 本机协议 3 项、控制台 LLM 11 项通过。本机未配置专用密钥，真实 DeepSeek 鉴权和质量登记外部待验，见 `docs/evidence/a07-llm-availability.md`。
+
 SYS-012 最新 Windows 候选完成。提交 `2230614` 两次独立构建均为 459 个受控文件，ZIP SHA-256 同为 `127030fb…043ae`；verify、全新 install 和 5258 隔离启动通过，首页 HTTP 200/33195 字节，状态使用独立数据目录且不暴露 token。最新效果地址为 `http://127.0.0.1:5258/`，见 `docs/evidence/v09-current-package.md`。
 
 SYS-010 Windows 更新事务补验完成。本机更新服务多版本解析与排序通过；Windows 独占目标文件时旧文件保持、暂存清零，释放后重试成功；中途失败恢复覆盖文件并删除新增文件。修正事务登记时机，8 项专项通过；正式 HTTPS 服务与跨多包回滚后置，见 `docs/evidence/v09-legacy-updater-hardening.md`。

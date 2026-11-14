@@ -36,7 +36,7 @@
 
 | ID | 用户功能 | 原入口/主要证据 | 当前重建模块 | 当前状态 | 完成前必须验证 |
 |---|---|---|---|---|---|
-| CNT-001 | LLM 配置保存和连通性测试 | `save_llm_config` `0x180068800/0x180068ac0`; `test_llm_availability` `0x180057640/0x180057900` | `main.py`, `llm_base_chat.py` | 静态验证通过 | Windows 原 `.pyd` 差分及各真实提供商鉴权/超时 |
+| CNT-001 | LLM 配置保存和连通性测试 | `save_llm_config` `0x180068800/0x180068ac0`; `test_llm_availability` `0x180057640/0x180057900` | `main.py`, `llm_base_chat.py` | 静态验证通过 | 已修复连接失败字符串被误报为可用；DeepSeek 配置保存、本机成功、401、拒绝连接、HTTPS/URL 门禁和密钥脱敏 3 项，控制台 LLM 11 项及恢复五关通过，见 `evidence/a07-llm-availability.md`。本机未配置专用密钥，真实 DeepSeek 鉴权/限流/质量和 Windows 原 `.pyd` 差分待外部条件 |
 | CNT-002 | 商品直播话术生成 | `generate_script` wrapper/body `0x180036950/0x180037230` | `main.py`, `generate_structured_speech.py` | 静态验证通过 | Windows 原 `.pyd` 差分和真实 LLM 输出质量 |
 | CNT-003 | 文本翻译与多语言提示词 | `translate_text` wrapper/body `0x18004f510/0x18004f8c0` | `main.py`, `llm_reply.py`, `language_prompts.py` | 静态验证通过 | Windows 原 `.pyd` 差分、全语言真实模型输出质量 |
 | CNT-004 | 话术泛化与标题生成 | `generalize_sentences_api` 及 Ghidra 契约 | `generalize_sentences.py`, `generate_title.py` | 静态验证通过 | 真实 LLM 差分、异常输出和重试 |
