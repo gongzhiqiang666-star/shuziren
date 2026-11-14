@@ -927,18 +927,25 @@ function sourcingDecisionEditor(candidate) {
   let reviewedTrial = null;
   let loaded = false;
   let loading = false;
-  panel.addEventListener('toggle', async () => {
-    if (!panel.open || loaded || loading || consoleClosed) return;
+  const refreshEvidence = document.createElement('button');
+  refreshEvidence.type = 'button';
+  refreshEvidence.textContent = '重新读取试卖依据';
+  form.append(refreshEvidence);
+  async function loadEvidence({preserveDraft = false} = {}) {
+    if (!panel.open || loading || consoleClosed) return;
     loading = true;
+    button.disabled = refreshEvidence.disabled = true;
     try {
       const query = new URLSearchParams({candidate_id:candidate.id});
       const [{decision: record}, {trial}] = await Promise.all([
         request(route + '?' + query), request('/api/sourcing/trial?' + query),
       ]);
       reviewedTrial = trial;
-      decision.value = record?.decision ?? 'continue';
-      rationale.value = record?.rationale ?? '';
-      constraints.value = record?.constraints ?? '';
+      if (!preserveDraft) {
+        decision.value = record?.decision ?? 'continue';
+        rationale.value = record?.rationale ?? '';
+        constraints.value = record?.constraints ?? '';
+      }
       showEvidence(record);
       const original = record?.trial;
       const fields = ['sample_evidence', 'trial_evidence', 'cost_minor', 'verdict'];
@@ -960,12 +967,19 @@ function sourcingDecisionEditor(candidate) {
       status.textContent = error.message;
     } finally {
       loading = false;
+      refreshEvidence.disabled = false;
     }
+  }
+  panel.addEventListener('toggle', () => {
+    if (!loaded) void loadEvidence();
+  });
+  refreshEvidence.addEventListener('click', () => {
+    void loadEvidence({preserveDraft:loaded});
   });
   form.addEventListener('submit', async event => {
     event.preventDefault();
     if (button.disabled || consoleClosed) return;
-    button.disabled = true;
+    button.disabled = refreshEvidence.disabled = true;
     try {
       const {decision: record} = await request(route, {candidate_id:candidate.id, decision:decision.value,
         rationale:rationale.value, constraints:constraints.value, expected_trial:reviewedTrial});
@@ -973,10 +987,9 @@ function sourcingDecisionEditor(candidate) {
       status.textContent = '采购辅助结论已保存';
       if (history.open) await loadHistory();
     } catch (error) {
-      loaded = false;
       status.textContent = error.message;
     } finally {
-      button.disabled = false;
+      button.disabled = refreshEvidence.disabled = false;
     }
   });
   return panel;
