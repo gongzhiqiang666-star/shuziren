@@ -48,6 +48,12 @@ class ConsolePackageTests(unittest.TestCase):
                 launch.side_effect = lambda *args, **kwargs: first_running() if launch.call_count == 1 else 0
                 self.assertEqual(run_release(root, 0, shop_id='first'), 0)
                 self.assertEqual(launch.call_count, 2)
+                for call, shop in zip(launch.call_args_list, ('first', 'second')):
+                    command, = call.args
+                    self.assertNotIn('--shop-id', command)
+                    self.assertEqual(Path(command[command.index('--data-directory') + 1]),
+                                     root / 'data' / 'shops' / ('shop-' + shop))
+                    self.assertEqual(call.kwargs['env']['SHUZIREN_MANAGED_SHOP_ID'], shop)
                 self.assertEqual(switch_release(root), active)
 
     def test_managed_release_rejects_shop_directory_outside_installation(self):
