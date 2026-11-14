@@ -471,6 +471,14 @@ def create_server(store, port=None, *, tts_engine="indextts", tts_model_root=Non
                     source['has_saved_draft'] = products().live_content_draft_body(
                         source['session_id'], source['task_id']) is not None
                     return self.respond(200, {'source': source})
+                if path == '/api/live/content-audio':
+                    query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                    if (set(query) != {'session_id', 'task_id'}
+                            or any(len(values) != 1 or not 1 <= len(values[0]) <= 64 for values in query.values())):
+                        raise ProductError('需要有效的场次和口播任务编号')
+                    from scripts.media_http import serve_file
+                    return serve_file(self, products().live_content_audio_path(
+                        query['session_id'][0], query['task_id'][0]), 'audio/wav')
                 if path == '/api/live/rotation/events':
                     query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
                     sessions = query.get('session_id', [])

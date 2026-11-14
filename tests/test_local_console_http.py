@@ -48,6 +48,26 @@ class ConsoleHTTPTests(unittest.TestCase):
         self.assertEqual(draft['source']['script_id'], script_id)
         self.assertEqual(draft['narration'], '这是一只陶瓷杯。')
 
+    def test_completed_content_audio_supports_verified_range_download(self):
+        store = ProductStore(self.directory.name)
+        product = store.save(title='茶杯', content='商品说明', product_index=1)
+        script = store.add_script(product, '口播内容')
+        store.record_live_session('scene', 100)
+        audio = Path(self.directory.name) / 'source.wav'
+        audio.write_bytes(b'RIFF' + bytes(range(64)))
+        import hashlib
+        digest = hashlib.sha256(audio.read_bytes()).hexdigest()
+        store.archive_live_content_audio('scene', 'spoken', audio, digest)
+        store.record_rotation_completion('scene', 'spoken', {
+            'product_id': product['id'], 'product_version': product['version'], 'script_id': script,
+        }, 0)
+        url = self.base + '/api/live/content-audio?session_id=scene&task_id=spoken'
+        request = Request(url, headers={'Range': 'bytes=4-11'})
+        with urlopen(request, timeout=3) as response:
+            self.assertEqual((response.status, response.headers['Content-Type']), (206, 'audio/wav'))
+            self.assertEqual(response.read(), bytes(range(8)))
+        self.assertEqual(self.call('/api/live/content-audio?session_id=scene&task_id=missing')[0], 400)
+
     def test_shop_workspaces_keep_product_and_metrics_data_isolated(self):
         first = ProductStore(shop_data_directory(self.directory.name, 'first'))
         second = ProductStore(shop_data_directory(self.directory.name, 'second'))

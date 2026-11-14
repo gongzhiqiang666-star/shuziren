@@ -568,6 +568,16 @@ class ConsoleLive:
                                 generated_audio_sha256=utterance.original_sha256,
                                 played_pcm_sha256=utterance.pcm_sha256,
                             )
+                            try:
+                                archived = self.tts.products.archive_live_content_audio(
+                                    session_id, task_id, utterance.path, utterance.original_sha256)
+                                if isinstance(archived, dict):
+                                    rotation['task_speech_provenance'].update(
+                                        content_audio_sha256=archived['sha256'],
+                                        content_audio_bytes=archived['bytes'])
+                            except (OSError, ValueError, sqlite3.Error) as error:
+                                logging.exception('留存口播音频失败')
+                                rotation['task_speech_provenance']['content_audio_error'] = type(error).__name__
                             if 'legacy_script_role' in item:
                                 rotation['task_speech_provenance']['legacy_script_role'] = item['legacy_script_role']
                             pending = None

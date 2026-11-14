@@ -4,6 +4,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 from datetime import date, datetime, timezone
 from pathlib import Path
 import sqlite3
@@ -117,7 +118,7 @@ class ProductStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3):
+            if version not in (0, 1, 2, 3, 4):
                 raise ProductError("不支持的商品数据库版本")
             db.executescript('''
                 CREATE TABLE IF NOT EXISTS products (
@@ -215,6 +216,10 @@ class ProductStore:
                     session_id TEXT NOT NULL, task_id TEXT NOT NULL, recorded_at REAL NOT NULL,
                     PRIMARY KEY(session_id, task_id),
                     FOREIGN KEY(session_id, task_id) REFERENCES live_content_receipts(session_id, task_id));
+                CREATE TABLE IF NOT EXISTS live_content_audio (
+                    session_id TEXT NOT NULL, task_id TEXT NOT NULL, path TEXT NOT NULL,
+                    sha256 TEXT NOT NULL, bytes INTEGER NOT NULL,
+                    PRIMARY KEY(session_id, task_id));
                 CREATE TABLE IF NOT EXISTS live_advice_acknowledgments (
                     session_id TEXT NOT NULL, advice TEXT NOT NULL, acknowledged_at REAL NOT NULL,
                     PRIMARY KEY(session_id, advice));
@@ -287,7 +292,7 @@ class ProductStore:
                 db.execute('ALTER TABLE live_rotation_events ADD COLUMN voice_id TEXT')
             if 'speech_provenance' not in event_columns:
                 db.execute('ALTER TABLE live_rotation_events ADD COLUMN speech_provenance TEXT')
-            db.execute('PRAGMA user_version=3')
+            db.execute('PRAGMA user_version=4')
 
     @contextmanager
     def connect(self):
@@ -870,6 +875,63 @@ class ProductStore:
                   item['script_id'], segment_index, sample_start, sample_end, voice_id,
                   json.dumps(speech_provenance) if speech_provenance else None))
 
+    def archive_live_content_audio(self, session_id, task_id, source, expected_sha256):
+        """Keep an immutable owned WAV for later content production."""
+        session_id = text(session_id, '场次编号', 64)
+        task_id = text(task_id, '口播任务编号', 64)
+        if (not isinstance(expected_sha256, str) or len(expected_sha256) != 64
+                or any(char not in '0123456789abcdef' for char in expected_sha256.lower())):
+            raise ProductError('口播音频摘要无效')
+        source = Path(source).resolve(strict=True)
+        actual = hashlib.sha256(source.read_bytes()).hexdigest()
+        if actual != expected_sha256.lower():
+            raise Conflict('口播音频摘要不一致')
+        key = hashlib.sha256((session_id + '\0' + task_id).encode()).hexdigest()
+        root = (self.path.parent / 'live-content-audio').resolve()
+        root.mkdir(parents=True, exist_ok=True)
+        target = root / (key + '.wav')
+        temporary = root / (key + '.' + uuid.uuid4().hex + '.tmp')
+        try:
+            with self.connect() as db:
+                db.execute('BEGIN IMMEDIATE')
+                current = db.execute('SELECT sha256 FROM live_content_audio WHERE session_id=? AND task_id=?',
+                                     (session_id, task_id)).fetchone()
+                if current is not None and current['sha256'] != actual:
+                    raise Conflict('该口播任务已绑定不同音频')
+                temporary.write_bytes(source.read_bytes())
+                if hashlib.sha256(temporary.read_bytes()).hexdigest() != actual:
+                    raise OSError('口播音频复制校验失败')
+                os.replace(temporary, target)
+                size = target.stat().st_size
+                db.execute('INSERT OR REPLACE INTO live_content_audio VALUES (?, ?, ?, ?, ?)',
+                           (session_id, task_id, str(target), actual, size))
+            return {'path': str(target), 'sha256': actual, 'bytes': size}
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    def live_content_audio_path(self, session_id, task_id):
+        # Require a completed event, but never expose the machine-local path in
+        # the JSON content-source response.
+        with self.connect() as db:
+            row = db.execute('''
+                SELECT audio.path, audio.sha256, audio.bytes
+                FROM live_rotation_events event
+                JOIN live_content_audio audio USING (session_id, task_id)
+                WHERE event.session_id=? AND event.task_id=?
+            ''', (session_id, task_id)).fetchone()
+        if row is None:
+            raise ProductError('原口播音频不存在或校验失败')
+        try:
+            path = Path(row['path']).resolve(strict=True)
+            root = (self.path.parent / 'live-content-audio').resolve()
+            valid = (path.parent == root and path.stat().st_size == row['bytes']
+                     and hashlib.sha256(path.read_bytes()).hexdigest() == row['sha256'])
+        except OSError:
+            valid = False
+        if not valid:
+            raise ProductError('原口播音频路径无效')
+        return path
+
     def rotation_events(self, session_id, *, after=0, product_id=None, task_id=None):
         with self.connect() as db:
             rows = db.execute("""
@@ -889,6 +951,8 @@ class ProductStore:
                 SELECT event.session_id, event.task_id, event.product_id, event.product_version,
                        event.script_id, event.segment_index, event.completed_at,
                        event.sample_start, event.sample_end, event.voice_id, event.speech_provenance,
+                       audio.path AS content_audio_path, audio.sha256 AS content_audio_sha256,
+                       audio.bytes AS content_audio_bytes,
                        script.snapshot, script.text AS script_text,
                        script.created_at AS script_created_at, product.version AS current_product_version,
                        (SELECT COUNT(*) FROM scripts previous WHERE previous.product_id=script.product_id
@@ -897,6 +961,7 @@ class ProductStore:
                 LEFT JOIN scripts script ON script.id=event.script_id AND script.product_id=event.product_id
                                         AND script.product_version=event.product_version
                 LEFT JOIN products product ON product.id=event.product_id
+                LEFT JOIN live_content_audio audio USING (session_id, task_id)
                 WHERE event.session_id=? AND event.task_id=?
             """, (session_id, task_id)).fetchone()
         if row is None:
@@ -904,6 +969,11 @@ class ProductStore:
         source = dict(row)
         provenance = source['speech_provenance']
         source['speech_provenance'] = json.loads(provenance) if provenance else None
+        audio_path = source.pop('content_audio_path', None)
+        source['content_audio_available'] = bool(
+            audio_path and Path(audio_path).is_file()
+            and Path(audio_path).stat().st_size == source.get('content_audio_bytes')
+            and hashlib.sha256(Path(audio_path).read_bytes()).hexdigest() == source.get('content_audio_sha256'))
         snapshot = source.pop('snapshot')
         source['product_snapshot'] = json.loads(snapshot) if snapshot else None
         created_at = source.pop('script_created_at')

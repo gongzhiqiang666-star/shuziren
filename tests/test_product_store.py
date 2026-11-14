@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+import hashlib
 import json
 import subprocess
 import sys
@@ -13,6 +14,27 @@ from scripts.product_store import Conflict, ProductError, ProductStore, product_
 
 
 class ProductStoreTests(unittest.TestCase):
+    def test_completed_live_content_exposes_verified_owned_audio(self):
+        product = self.product()
+        script = self.store.add_script(product, '原口播')
+        self.store.record_live_session('scene', 100)
+        source_audio = Path(self.directory.name) / 'temporary.wav'
+        source_audio.write_bytes(b'RIFF-owned-live-audio')
+        digest = hashlib.sha256(source_audio.read_bytes()).hexdigest()
+        archived = self.store.archive_live_content_audio('scene', 'speech', source_audio, digest)
+        self.store.record_rotation_completion('scene', 'speech', {
+            'product_id': product['id'], 'product_version': product['version'], 'script_id': script,
+        }, 0, speech_provenance={'generated_audio_sha256': digest})
+        source = self.store.live_content_source('scene', 'speech')
+        self.assertTrue(source['content_audio_available'])
+        self.assertEqual((source['content_audio_sha256'], source['content_audio_bytes']),
+                         (digest, len(source_audio.read_bytes())))
+        self.assertNotEqual(Path(archived['path']), source_audio)
+        source_audio.unlink()
+        self.assertTrue(Path(archived['path']).is_file())
+        Path(archived['path']).write_bytes(b'tampered')
+        self.assertFalse(self.store.live_content_source('scene', 'speech')['content_audio_available'])
+
     def test_after_sales_csv_rejected_correction_keeps_existing_snapshot(self):
         product_id = self.product()['id']
         header = 'source,period_start,period_end,quality\r\n'

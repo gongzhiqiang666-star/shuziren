@@ -2668,6 +2668,18 @@ $('live-rotation-events').addEventListener('click', () => liveAction(async () =>
             '', '按原话术还原的片段', source.segment?.content ?? '片段文本无法还原',
             '', '原话术全文', source.script_text].join('\n')
           : '这条口播记录缺少原商品快照或话术。';
+        if (source.content_audio_available && !details.querySelector('.content-audio-preview')) {
+          const audio = document.createElement('audio');
+          audio.className = 'content-audio-preview';
+          audio.controls = true;
+          audio.preload = 'none';
+          audio.src = '/api/live/content-audio?' + params;
+          const download = document.createElement('a');
+          download.href = audio.src;
+          download.download = `口播-${event.task_id.replace(/[^a-zA-Z0-9_-]/g, '_')}.wav`;
+          download.textContent = '下载原口播音频';
+          details.append(audio, download);
+        }
         loaded = true;
       } catch (error) {
         sourceText.textContent = error.message + '。关闭并重新展开可重试。';
