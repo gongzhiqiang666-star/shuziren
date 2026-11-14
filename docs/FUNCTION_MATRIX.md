@@ -40,7 +40,7 @@
 | CNT-002 | 商品直播话术生成 | `generate_script` wrapper/body `0x180036950/0x180037230` | `main.py`, `generate_structured_speech.py` | 静态验证通过 | 空/短/异常及多商品部分失败契约通过；新增事实门禁，输出含输入不存在的阿拉伯数字或无依据价格时重试并最终明确失败，输入已有数字/价格正常通过，3 项专项及恢复五关通过，见 `evidence/a07-script-grounding.md`。真实 DeepSeek 质量、隐含承诺人审及 Windows 原 `.pyd` 差分待外部条件 |
 | CNT-003 | 文本翻译与多语言提示词 | `translate_text` wrapper/body `0x18004f510/0x18004f8c0` | `main.py`, `llm_reply.py`, `language_prompts.py` | 静态验证通过 | 非中文目标不再静默删除汉字；逐段检查汉字残留及数字新增/遗漏并最多重试一次，两次无效明确失败。汉字重试、`530→500` 修正和连续失败 3 项及恢复五关通过，见 `evidence/a07-translation-grounding.md`。11 种语言真实 DeepSeek 自然度、人审及 Windows 原 `.pyd` 差分待外部条件 |
 | CNT-004 | 话术泛化与标题生成 | `generalize_sentences_api` 及 Ghidra 契约 | `generalize_sentences.py`, `generate_title.py`, `content_grounding.py` | 静态验证通过 | 标准/破损 JSON、title/tags 类型与去重 4 项通过；标题/标签新增数字或无依据价格被拒，原稿已有事实允许，泛化首次编造会重试，共 3 项及恢复五关通过，见 `evidence/a07-title-generalization-grounding.md`。真实 DeepSeek 吸引力、语义等价、人审和原 `.pyd` 差分待外部条件 |
-| CNT-005 | 违禁词检测/替换 | `forbidden_words.pyd`、`replace_forbidden_words.pyd` | `forbidden_words.py`, `replace_forbidden_words.py` | 静态验证通过 | 原词库、用户增补词、大小写/中英文边界 |
+| CNT-005 | 违禁词检测/替换 | `forbidden_words.pyd`、`replace_forbidden_words.pyd` | `forbidden_words.py`, `replace_forbidden_words.py` | Windows 验证通过 | 原生 147 项/146 唯一词及 8 组替换由恢复契约锁定；Windows 实测空词跳过、`QQ/qq` 与用户英文大小写不敏感、重叠增补词最长优先 3 项通过，恢复五关通过，见 `evidence/a07-forbidden-words.md`。平台动态词库与类目合规继续由运营规则更新 |
 | CNT-006 | IP Agent 项目创建、查询、更新、删除 | `Api.create/get/update/delete_ip_agent_project` | `main.py`, `ip_agent_post_process.py` | 静态验证通过 | 旧项目迁移、并发保存、损坏项目恢复 |
 | CNT-007 | IP 文案爆款拆解与多版本改写 | `rewrite_ip_script` 主体和常量表 | `main.py` | 静态验证通过 | Windows 原 `.pyd` 输出差分和真实 LLM 输出 |
 | CNT-008 | 抖音/IP 对标视频提取 | `extract_douyin_benchmark` | `main.py`, `douyin_benchmark.py` | 静态验证通过 | 仅接受抖音官方 HTTPS 分享链接，下载产物必须位于工具目录、非空且为允许的视频扩展名，ASR 前用 FFprobe 验证真实视频轨；项目 benchmark 目录事务替换。4 项专项测试通过，本机 1 秒 H.264/AAC 媒体实测视频轨与时长有效。真实抖音登录/验证码/风控、失效短链及下载器升级待平台验证，见 `evidence/v02-douyin-benchmark.md` |
@@ -97,10 +97,10 @@
 
 | 状态 | 数量 |
 |---|---:|
-| 静态验证通过 | 50 |
+| 静态验证通过 | 49 |
 | 开发中 | 0 |
 | 已分析 | 0 |
-| Windows 验证通过 | 8 |
+| Windows 验证通过 | 9 |
 | 端到端验证通过 | 0 |
 | 合计 | 58 |
 

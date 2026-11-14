@@ -43,11 +43,17 @@ def _pick_replacement(info):
     return random.choice(replacements)
 
 
+def _replace_literal(text, word, replacement):
+    flags = re.IGNORECASE if re.search(r"[A-Za-z]", word) else 0
+    return re.sub(re.escape(word), lambda _match: replacement, text, flags=flags)
+
+
 def replace_forbidden_words(text, additional_words=None):
     jieba.initialize()
     result = str(text or "")
     forbidden_words_dict = {item["word"]: item for item in FORBIDDEN_WORDS}
-    for word in additional_words or []:
+    for raw_word in additional_words or []:
+        word = str(raw_word or "").strip()
         if word and word not in forbidden_words_dict:
             replacement = "*" * len(word)
             forbidden_words_dict[word] = {
@@ -55,7 +61,8 @@ def replace_forbidden_words(text, additional_words=None):
                 "level": "medium",
             }
     for word in forbidden_words_dict:
-        jieba.add_word(word)
+        if word:
+            jieba.add_word(word)
     protected, safe_slots = _protect_phrases(result, _SAFE_PHRASES)
     multi_words = sorted(
         (word for word in forbidden_words_dict.keys() if len(word) >= 2),
@@ -63,10 +70,9 @@ def replace_forbidden_words(text, additional_words=None):
         reverse=True,
     )
     for word in multi_words:
-        if word in protected:
-            protected = protected.replace(
-                word, _pick_replacement(forbidden_words_dict[word])
-            )
+        protected = _replace_literal(
+            protected, word, _pick_replacement(forbidden_words_dict[word])
+        )
     protected = _remove_superlative_patterns(protected)
     for word, info in forbidden_words_dict.items():
         if len(word) == 1 and word.startswith("最") and word in protected:
